@@ -63,11 +63,11 @@ TILE = 64  COLS = 11  ROWS = 16   WORLD_W = 704  WORLD_H = 1024
 
 Dynamic map elements drawn live over the terrain: toxic pool glow (`drawPoolGlow`), spawn breach + base reactor (`drawSpawnAndBase`), ground scorch decals (`drawScorches`), and ambient dust/embers (`drawAtmosphere`, ~34 deterministic motes).
 
-## 1.5 Path
+## 1.5 Maps and path
 
-`WAYPOINTS` is `[col,row]` corners; consecutive corners share a row or column. `buildPath` → `PATH_TILES` → `PATH_SET` (lookup) → `PATH_PTS` (tile centers, enemy travel). Reaching the final point is a leak. `buildable(c,r)` is any in-bounds non-path tile.
+`MAPS[]` holds map definitions `{ name, seed, wp }`. Per-map state (`WAYPOINTS, PATH_TILES, PATH_SET, PATH_PTS, DECOR, POOLS`) is `let` and rebuilt by `loadMap(i)` (path from `wp`, decor/pools from `seed`, then a one-time `buildTerrain()` re-bake). `selectMap(i)` re-bakes only when the map changes. `buildable`, `center`, `drawSpawnAndBase`, and terrain all read these by name, so reassignment is safe. **`buildTerrain()` must never run inside the frame loop** — only on map load.
 
-Current path: `[0,1] [9,1] [9,4] [1,4] [1,7] [9,7] [9,10] [1,10] [1,13] [9,13] [9,15] [5,15]`.
+Two maps ship: `Serpentine` (`[0,1] [9,1] [9,4] [1,4] [1,7] [9,7] [9,10] [1,10] [1,13] [9,13] [9,15] [5,15]`) and `Switchback` (`[1,0] [1,2] [9,2] [9,5] [1,5] [1,8] [9,8] [9,11] [1,11] [1,14] [6,14] [6,15]`). Corners share a row/column; spawn is the first point (an edge), base the last. `S.mapIndex` (persisted `map`) selects; the menu has a map picker.
 
 ## 1.6 Economy and progression
 
@@ -114,7 +114,9 @@ Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.13*(wave-
 - **shield**: absorbs the whole hit (no bleed-through that hit); energy strips `*1.6`, kinetic `*0.7`, explosive `*1.0`. Regenerates `shieldMax*0.22`/s after 3s with no damage (`shieldCd`). Boss shield shown on the boss bar; others as a bubble + thin bar.
 - **flying**: only direct-fire towers (turret, tesla) can target; ground splash (mortar, cryo) cannot; splash loops skip flyers. Airstrike hits everything.
 
-`waveComp(n)`: every 5th wave is a boss wave (two juggernauts on 20). Non-boss waves add stalkers/raiders/brutes plus `wraith` (n≥3), `sentinel` (n≥6), `warden` (n≥8) on rising counts, so each trait is introduced with a wave that forces its counter. Leaks cost 1 Core (5 for a juggernaut).
+`waveComp(n)`: every 5th wave is a boss wave (2 juggernauts every 20th wave, else 1). Non-boss waves add stalkers/raiders/brutes plus `wraith` (n≥3), `sentinel` (n≥6), `warden` (n≥8). Counts are capped (rd≤20, br≤12, wr≤10, se≤10, wd≤8, boss-wave extra≤16) so deep **endless** waves stay performant; `statsFor` keeps scaling HP unbounded. Campaign values (n≤20) are below the caps, so the campaign is unchanged. Leaks cost 1 Core (5 for a juggernaut).
+
+**Endless mode** (`S.endless`): reachable from the menu (`∞ Endless`) or by continuing after a campaign victory. Waves never trigger `victory`; `startWave`, the auto-advance countdown, and the HUD deploy control all drop the `TOTAL_WAVES` cap when `S.endless`. Best endless wave persists as `highEndless`. A long endless run is the main Alloy farm (Alloy scales with `S.wave`).
 
 ## 1.9 Active ability — Airstrike
 
@@ -179,6 +181,7 @@ Used by the headless/Playwright harnesses. `build()` places a tower for combat t
 3. **Audio** — procedural synth (noise + filters + compressor) replacing the beeps, plus an ambient music bed.
 4. **Onboarding** — non-blocking first-play coach-marks.
 5. **Meta-progression** — persistent Alloy currency + six-talent Armory.
+6. **Content — endless + second map (Plan A)** — `MAPS[]` + `loadMap`/`selectMap` with a menu picker; a second `Switchback` layout; uncapped Endless mode with capped wave counts, `highEndless` best, and a post-victory "continue into endless".
 
 ## 2.1 Where things are
 
@@ -212,9 +215,9 @@ The four craft gaps from v1 (graphics, depth, feedback/audio, retention) are clo
 
 ## 2.6 Backlog, prioritized (remaining)
 
-1. **Content volume** — endless mode after wave 20 + a second map. Highest impact on play time now that systems are deep.
-2. **Hero / Commander** — one deployable, leveling unit with an active kit. Biggest remaining mechanical gap with the leaders.
-3. **Playtest tuning pass** — verify the difficulty curve, economy pacing (now including Alloy), and that every tower branch + talent is viable. Data-only.
+1. ~~**Content volume — endless + second map**~~ — DONE (Plan A). Further content (more maps, more enemy variants) still adds value.
+2. **Hero / Commander** — one deployable, leveling unit with an active kit. Biggest remaining mechanical gap with the leaders. Now the top priority (Plan B).
+3. **Playtest tuning pass** — verify the difficulty curve, economy pacing (Alloy + endless), and that every tower branch + talent is viable. Data-only (Plan C).
 4. **More enemy behaviors** — healing, splitting, or shielded-aura for real puzzles.
 5. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
 6. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
