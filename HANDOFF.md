@@ -89,7 +89,7 @@ Four archetypes in `TOWERS`, order `[turret, cryo, mortar, tesla]`. Each has a `
 | turret | Auto-Gun | hit (hitscan+tracer) | kinetic | 50/9/152/500 | Gatling: 75, dmg16, rate175 | Breacher: 85, dmg44, rate500, **pierce** |
 | cryo | Cryo Emitter | orb (AoE slow) | energy | 65/4/136/720, splash60 slow0.45 | Glacier: 80, splash96, slow0.84 | Shatter: 95, dmg26, **+90% vs slowed** |
 | mortar | Mortar | lob (arced splash) | explosive | 85/26/150/1150, splash78 | Carpet: 105, dmg56, splash126 | Buster: 135, dmg158, **pierce** |
-| tesla | Rail-Tesla | beam (hitscan bolt) | energy | 95/46/268/1180 | Arc-Coil: 115, dmg66, **chain 3** | Railgun: 155, dmg230, range362 |
+| tesla | Rail-Tesla | beam (hitscan bolt) | energy | 95/40/215/1250 | Arc-Coil: 115, dmg58, range250, **chain 3** | Railgun: 155, dmg205, range320 |
 
 Firing models in `fire(t, p, st)` compute `dmg = st.dmg * dmgMul()` (talent) then: `hit` instant + tracer; `beam` instant + jagged bolt (+ chain if `st.chain`, which also hits flyers); `orb` homing projectile → AoE damage + slow (+shatter bonus vs slowed/frost); `lob` arced shell → AoE explosive (skips flyers). `st.pierce` bypasses armor.
 
@@ -168,7 +168,7 @@ Armory is an HTML overlay (screen `"armory"`) reachable from the main menu and b
 window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render,
                   build(c,r,type), get enemies(){...}, get towers(){...} }
 ```
-Used by the headless/Playwright harnesses. `build()` places a tower for combat tests; `Meta` lets tests grant/inspect Alloy and talents.
+Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for combat tests; `Meta` lets tests grant/inspect Alloy and talents; `sim(stepMs, maxIters)` fast-forwards the simulation with no rendering (returns `{wave, screen, core, kills, iters}`) for auto-battle balancing. The frame update block is factored into `stepSim(stepMs)`, shared by the render loop and `sim`.
 
 ---
 
@@ -182,6 +182,7 @@ Used by the headless/Playwright harnesses. `build()` places a tower for combat t
 4. **Onboarding** — non-blocking first-play coach-marks.
 5. **Meta-progression** — persistent Alloy currency + six-talent Armory.
 6. **Content — endless + second map (Plan A)** — `MAPS[]` + `loadMap`/`selectMap` with a menu picker; a second `Switchback` layout; uncapped Endless mode with capped wave counts, `highEndless` best, and a post-victory "continue into endless".
+7. **Balance pass (Plan C)** — added a headless auto-battle harness (`__GAME.sim`; the frame update block is now `stepSim`). Equal-count and equal-budget sims showed Tesla was the dominant per-scrap option (solo-cleared at L1) while the other three sat in their intended niches (Mortar/Cryo are air-blind by design, so their low *solo* numbers are the flyer counterplay, not weakness — confirmed by mortar+turret clearing wave 20). Fix was a targeted Tesla nerf (range/dmg/rate down across L1–L3); Tesla is now on par per budget and remains the anti-air/anti-shield specialist. No dead branches; mixed play stays challenging (normal ~clears, hard ~wave 20).
 
 ## 2.1 Where things are
 
@@ -217,7 +218,7 @@ The four craft gaps from v1 (graphics, depth, feedback/audio, retention) are clo
 
 1. ~~**Content volume — endless + second map**~~ — DONE (Plan A). Further content (more maps, more enemy variants) still adds value.
 2. **Hero / Commander** — one deployable, leveling unit with an active kit. Biggest remaining mechanical gap with the leaders. Now the top priority (Plan B).
-3. **Playtest tuning pass** — verify the difficulty curve, economy pacing (Alloy + endless), and that every tower branch + talent is viable. Data-only (Plan C).
+3. ~~**Playtest tuning pass**~~ — DONE (Plan C): Tesla dominance fixed via `__GAME.sim` auto-battles; branches/economy verified. Re-run the harness after any future data change.
 4. **More enemy behaviors** — healing, splitting, or shielded-aura for real puzzles.
 5. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
 6. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).

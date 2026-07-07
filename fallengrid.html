@@ -142,10 +142,10 @@
         b: { name: "Buster", short: "BUSTER", desc: "anti-armor shell", cost: 135, dmg: 158, range: 182, rate: 1250, splash: 70, pierce: true },
       } },
     tesla:  { name: "Rail-Tesla", short: "TESLA", kind: "beam", dmgType: "energy", metal: "#4a3a5e", metalLt: "#6a557f", accent: "#e0479a", desc: "long-range nuke",
-      levels: [ { cost: 95, dmg: 46, range: 268, rate: 1180 }, { cost: 85, dmg: 74, range: 290, rate: 1080 }, { cost: 130, dmg: 112, range: 318, rate: 940 } ],
+      levels: [ { cost: 95, dmg: 40, range: 215, rate: 1250 }, { cost: 85, dmg: 64, range: 235, rate: 1150 }, { cost: 130, dmg: 100, range: 258, rate: 980 } ],
       branches: {
-        a: { name: "Arc-Coil", short: "ARC-COIL", desc: "chains + hits air", cost: 115, dmg: 66, range: 300, rate: 820, chain: 3 },
-        b: { name: "Railgun", short: "RAILGUN", desc: "sniper nuke", cost: 155, dmg: 230, range: 362, rate: 1300 },
+        a: { name: "Arc-Coil", short: "ARC-COIL", desc: "chains + hits air", cost: 115, dmg: 58, range: 250, rate: 860, chain: 3 },
+        b: { name: "Railgun", short: "RAILGUN", desc: "sniper nuke", cost: 155, dmg: 205, range: 320, rate: 1320 },
       } },
   };
   const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla"];
@@ -1570,6 +1570,11 @@
   }
 
   /* ---------------- LOOP ---------------- */
+  // one simulation tick (entity updates only); shared by the render loop and the headless sim hook
+  function stepSim(stepMs) {
+    const dt = stepMs / 1000;
+    updSpawns(stepMs); updTowers(dt, stepMs); updEnemies(dt); updProjs(dt); updParts(dt);
+  }
   let last = performance.now();
   function frame(now) {
     let dtMs = now - last; last = now; dtMs = Math.min(dtMs, 50);
@@ -1577,8 +1582,7 @@
     if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - raw * 2.2);
 
     if (S.screen === "playing") {
-      const step = dtMs * S.speed, dt = step / 1000;
-      updSpawns(step); updTowers(dt, step); updEnemies(dt); updProjs(dt); updParts(dt);
+      stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
       if (!S.waveActive && (S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
@@ -1616,6 +1620,16 @@
   // debug hooks (no-op in normal play)
   window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render,
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); return true; },
+    // headless auto-battle: advance the sim (no render) until the run ends or maxIters
+    sim(stepMs, maxIters) {
+      stepMs = stepMs || 40; maxIters = maxIters || 20000; let i = 0;
+      for (; i < maxIters && S.screen === "playing"; i++) {
+        stepSim(stepMs); const d = stepMs / 1000;
+        if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
+        if (!S.waveActive && (S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+      }
+      return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
+    },
     get enemies() { return enemies; }, get towers() { return towers; } };
 })();
 </script>
