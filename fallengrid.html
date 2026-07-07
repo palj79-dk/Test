@@ -120,7 +120,16 @@
     danger: "#e0533f",
     hpGood: "#6fe04a", hpMid: "#f2b23a", hpLow: "#e0533f",
     range: "rgba(55,224,208,0.10)", rangeEdge: "rgba(55,224,208,0.55)",
+    light: "255,224,170", shade: "10,14,26", mote: "#c8c0b0", // baked light + dust colors (biome-overridable)
   };
+  // Per-map biomes tint the baked terrain, pools, and atmosphere so maps read as distinct places.
+  const BIOMES = {
+    rust:  {},
+    toxic: { skyTop: "#161f16", skyBot: "#0f160f", ash1: "#454f34", ash2: "#3d472e", ashEdge: "#28311f", road: "#2a2f26", roadLine: "#7a9a2a", toxic: "#8ce03a", light: "170,255,140", shade: "12,26,12", mote: "#9ade5a" },
+    ash:   { skyTop: "#1b1f26", skyBot: "#12151b", ash1: "#565761", ash2: "#4c4d56", ashEdge: "#34353d", road: "#30323a", roadLine: "#6a7690", toxic: "#5ad0c8", light: "180,205,255", shade: "18,24,40", mote: "#c0c8d6" },
+    ember: { skyTop: "#241210", skyBot: "#160b0a", ash1: "#4c3a33", ash2: "#43322c", ashEdge: "#2e2320", road: "#2f2622", roadLine: "#b06a2a", toxic: "#e0743a", light: "255,150,80", shade: "34,10,8", mote: "#ff8a4a", ember: true },
+  };
+  let BM = C; // active biome palette (set by loadMap)
 
   /* ---------------- TOWERS ---------------- */
   // dmgType drives the counterplay triangle: kinetic weak vs armor, explosive strong vs armor, energy strips shields.
@@ -208,15 +217,15 @@
   // (consecutive corners share a row or column); all routes end at the shared base (last point).
   // Multiple routes = multiple entrances; where two routes' tiles overlap, roads simply cross.
   const MAPS = [
-    { name: "Outpost", diff: 1, seed: 3, cols: 9, rows: 12,
+    { name: "Outpost", diff: 1, seed: 3, cols: 9, rows: 12, biome: "rust",
       routes: [[[0, 1], [7, 1], [7, 4], [1, 4], [1, 7], [7, 7], [7, 9], [4, 9], [4, 11]]] },
-    { name: "Serpentine", diff: 2, seed: 1, cols: 11, rows: 16,
+    { name: "Serpentine", diff: 2, seed: 1, cols: 11, rows: 16, biome: "rust",
       routes: [[[0, 1], [9, 1], [9, 4], [1, 4], [1, 7], [9, 7], [9, 10], [1, 10], [1, 13], [9, 13], [9, 15], [5, 15]]] },
-    { name: "Crossroads", diff: 3, seed: 5, cols: 11, rows: 16,
+    { name: "Crossroads", diff: 3, seed: 5, cols: 11, rows: 16, biome: "toxic",
       routes: [[[0, 4], [8, 4], [8, 15], [5, 15]], [[10, 7], [2, 7], [2, 15], [5, 15]]] },
-    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22,
+    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
       routes: [[[0, 1], [11, 1], [11, 4], [2, 4], [2, 7], [11, 7], [11, 10], [2, 10], [2, 13], [11, 13], [11, 16], [2, 16], [2, 19], [8, 19], [8, 21]]] },
-    { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20,
+    { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
       routes: [[[0, 2], [10, 2], [10, 9], [3, 9], [3, 16], [6, 16], [6, 19]], [[12, 5], [2, 5], [2, 12], [9, 12], [9, 16], [6, 16], [6, 19]]] },
   ];
   function buildPath(wp) {
@@ -252,6 +261,7 @@
   }
   function loadMap(i) {
     currentMap = i; const m = MAPS[i];
+    BM = Object.assign({}, C, BIOMES[m.biome] || {});
     COLS = m.cols; ROWS = m.rows; WORLD_W = COLS * TILE; WORLD_H = ROWS * TILE;
     MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98;
     PATH_SET = new Set();
@@ -616,7 +626,7 @@
     const g = cv.getContext("2d"); g.scale(TS, TS);
     // backdrop
     const sky = g.createLinearGradient(0, 0, 0, WORLD_H);
-    sky.addColorStop(0, C.skyTop); sky.addColorStop(1, C.skyBot);
+    sky.addColorStop(0, BM.skyTop); sky.addColorStop(1, BM.skyBot);
     g.fillStyle = sky; g.fillRect(0, 0, WORLD_W, WORLD_H);
     // tiles
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -634,7 +644,7 @@
     });
     // baked directional light: warm from upper-left, cool shadow lower-right (consistent light source)
     const lg = g.createLinearGradient(0, 0, WORLD_W, WORLD_H);
-    lg.addColorStop(0, "rgba(255,224,170,0.10)"); lg.addColorStop(0.4, "rgba(255,224,170,0)"); lg.addColorStop(1, "rgba(10,14,26,0.30)");
+    lg.addColorStop(0, "rgba(" + BM.light + ",0.12)"); lg.addColorStop(0.4, "rgba(" + BM.light + ",0)"); lg.addColorStop(1, "rgba(" + BM.shade + ",0.32)");
     g.fillStyle = lg; g.fillRect(0, 0, WORLD_W, WORLD_H);
     // grime vignette
     const vg = g.createRadialGradient(WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.2, WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.75);
@@ -645,17 +655,17 @@
   function groundTile(g, x, y, c, r) {
     // organic tone: hash-jittered around mid ash (no hard checkerboard)
     const h = hash2(c * 2 + 1, r * 2 + 3);
-    g.fillStyle = mix(C.ashEdge, C.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
+    g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
     // soft dirt patch bleeding across the tile edge to break the grid
     const hp = hash2(c * 5 + 2, r * 3 + 7);
     if (hp > 0.42) {
       const px = x + hash2(c * 11, r * 5) * TILE, py = y + hash2(c * 7, r * 13) * TILE, pr = 22 + hash2(c, r) * 34;
       const pg2 = g.createRadialGradient(px, py, 2, px, py, pr);
-      const dark = hp > 0.72; pg2.addColorStop(0, dark ? "rgba(20,18,15,0.28)" : "rgba(96,88,72,0.18)"); pg2.addColorStop(1, "rgba(0,0,0,0)");
+      const dark = hp > 0.72; pg2.addColorStop(0, dark ? "rgba(20,18,15,0.28)" : rgba(BM.ash1, 0.2)); pg2.addColorStop(1, "rgba(0,0,0,0)");
       g.fillStyle = pg2; g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill();
     }
     // cracks
-    g.strokeStyle = C.ashEdge; g.lineWidth = 1;
+    g.strokeStyle = BM.ashEdge; g.lineWidth = 1;
     for (let i = 0; i < 2; i++) {
       const h1 = hash2(c * 9 + i, r * 5 + i), h2 = hash2(c * 3 + i, r * 13 + i);
       const sx = x + 6 + h1 * (TILE - 12), sy = y + 6 + h2 * (TILE - 12);
@@ -668,26 +678,26 @@
   function roadNeighbors(c, r) { return { u: PATH_SET.has(c + "," + (r - 1)), d: PATH_SET.has(c + "," + (r + 1)), l: PATH_SET.has((c - 1) + "," + r), rt: PATH_SET.has((c + 1) + "," + r) }; }
   function roadTile(g, x, y, c, r) {
     const h = hash2(c * 2 + 1, r * 2 + 3);
-    g.fillStyle = mix(C.ashEdge, C.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
+    g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
     const n = roadNeighbors(c, r), cx = x + TILE / 2, cy = y + TILE / 2, half = TILE / 2, pad = 3;
     // raised curb (darker) just outside the asphalt for a channeled read
-    g.fillStyle = darken(C.road, 0.55);
+    g.fillStyle = darken(BM.road, 0.55);
     g.fillRect(cx - (half - pad + 2), cy - (half - pad + 2), (half - pad + 2) * 2, (half - pad + 2) * 2);
     if (n.u) g.fillRect(cx - (half - pad + 2), y, (half - pad + 2) * 2, half);
     if (n.d) g.fillRect(cx - (half - pad + 2), cy, (half - pad + 2) * 2, half);
     if (n.l) g.fillRect(x, cy - (half - pad + 2), half, (half - pad + 2) * 2);
     if (n.rt) g.fillRect(cx, cy - (half - pad + 2), half, (half - pad + 2) * 2);
-    g.fillStyle = C.road;
+    g.fillStyle = BM.road;
     g.fillRect(cx - (half - pad), cy - (half - pad), (half - pad) * 2, (half - pad) * 2);
     if (n.u) g.fillRect(cx - (half - pad), y, (half - pad) * 2, half);
     if (n.d) g.fillRect(cx - (half - pad), cy, (half - pad) * 2, half);
     if (n.l) g.fillRect(x, cy - (half - pad), half, (half - pad) * 2);
     if (n.rt) g.fillRect(cx, cy - (half - pad), half, (half - pad) * 2);
     // cracks in asphalt
-    g.strokeStyle = C.roadCrack; g.lineWidth = 1;
+    g.strokeStyle = lighten(BM.road, 0.12); g.lineWidth = 1;
     for (let i = 0; i < 2; i++) { const h1 = hash2(c * 5 + i, r * 9 + i), h2 = hash2(c * 11 + i, r * 3 + i); g.beginPath(); g.moveTo(x + 8 + h1 * (TILE - 16), y + 8 + h2 * (TILE - 16)); g.lineTo(x + 8 + h2 * (TILE - 16), y + 8 + h1 * (TILE - 16)); g.stroke(); }
     // faded center dashes along travel direction
-    g.fillStyle = C.roadLine; g.globalAlpha = 0.5;
+    g.fillStyle = BM.roadLine; g.globalAlpha = 0.5;
     const horiz = n.l || n.rt;
     if (horiz && !(n.u || n.d)) g.fillRect(cx - 8, cy - 1.5, 16, 3);
     else if ((n.u || n.d) && !(n.l || n.rt)) g.fillRect(cx - 1.5, cy - 8, 3, 16);
@@ -695,9 +705,9 @@
   }
   function drawPool(g, x, y) {
     const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = C.toxicDark; g.beginPath(); g.ellipse(cx, cy, 15, 11, 0, 0, 7); g.fill();
-    g.fillStyle = C.toxic; g.beginPath(); g.ellipse(cx, cy, 11, 8, 0, 0, 7); g.fill();
-    g.fillStyle = "rgba(200,255,150,0.5)"; g.beginPath(); g.ellipse(cx - 3, cy - 2, 4, 3, 0, 0, 7); g.fill();
+    g.fillStyle = darken(BM.toxic, 0.5); g.beginPath(); g.ellipse(cx, cy, 15, 11, 0, 0, 7); g.fill();
+    g.fillStyle = BM.toxic; g.beginPath(); g.ellipse(cx, cy, 11, 8, 0, 0, 7); g.fill();
+    g.fillStyle = rgba(lighten(BM.toxic, 0.4), 0.5); g.beginPath(); g.ellipse(cx - 3, cy - 2, 4, 3, 0, 0, 7); g.fill();
   }
   function drawBarrel(g, x, y, s) {
     const cx = x + TILE / 2, cy = y + TILE / 2;
@@ -777,7 +787,7 @@
   function drawPoolGlow() {
     for (const p of POOLS) {
       const a = 0.28 + 0.16 * Math.sin(S.time * 2.5 + p.x * 0.03);
-      ctx.globalAlpha = a; ctx.fillStyle = C.toxic;
+      ctx.globalAlpha = a; ctx.fillStyle = BM.toxic;
       ctx.beginPath(); ctx.ellipse(p.x, p.y, 13, 9, 0, 0, 7); ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -1048,8 +1058,8 @@
     for (const m of MOTES) {
       const x = m.fx * WORLD_W + Math.sin(t * 0.3 + m.ph) * 14, y = ((m.fy * WORLD_H - t * m.sp) % WORLD_H + WORLD_H) % WORLD_H;
       const a = 0.12 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.5 + m.ph));
-      if (m.ember) { ctx.fillStyle = rgba("#ff9a4a", a * 1.6); ctx.shadowColor = "#ff9a4a"; ctx.shadowBlur = 4; }
-      else { ctx.fillStyle = rgba("#c8c0b0", a); ctx.shadowBlur = 0; }
+      if (m.ember || (BM.ember && m.fx > 0.5)) { ctx.fillStyle = rgba("#ff9a4a", a * 1.6); ctx.shadowColor = "#ff9a4a"; ctx.shadowBlur = 4; }
+      else { ctx.fillStyle = rgba(BM.mote, a); ctx.shadowBlur = 0; }
       ctx.beginPath(); ctx.arc(x, y, m.s, 0, 7); ctx.fill();
     }
     ctx.shadowBlur = 0;
