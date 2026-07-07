@@ -285,9 +285,11 @@
     waveActive: false, queue: [], speed: 1, selTile: null, selTower: null,
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
-    strikeCd: 0, strikeArm: false,
+    strikeCd: 0, strikeArm: false, tut: -1,
   };
   const diffMul = () => (S.difficulty === "hard" ? 1.35 : 1);
+  // onboarding: a chosen build plot to spotlight (buildable, just below the opening straight)
+  const TUT_PLOT = { c: 3, r: 2 };
 
   function fitCamera() {
     cam.zoom = clamp(W / WORLD_W, MINZOOM, MAXZOOM);
@@ -301,6 +303,7 @@
     cam.y = vh >= WORLD_H ? (WORLD_H - vh) / 2 : clamp(cam.y, 0, WORLD_H - vh);
   }
   const screenToWorld = (sx, sy) => ({ x: sx / cam.zoom + cam.x, y: (sy - PLAY_TOP) / cam.zoom + cam.y });
+  const worldToScreen = (wx, wy) => ({ x: (wx - cam.x) * cam.zoom, y: (wy - cam.y) * cam.zoom + PLAY_TOP });
   function zoomAt(sx, sy, factor) {
     const w = screenToWorld(sx, sy);
     cam.zoom = clamp(cam.zoom * factor, MINZOOM, MAXZOOM);
@@ -315,6 +318,7 @@
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0;
     S.strikeCd = 0; S.strikeArm = false;
+    S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     fitCamera();
   }
   // active ability: orbital airstrike. explosive + armor-piercing, hits air and ground, brief stun.
@@ -1050,6 +1054,44 @@
     ctx.restore();
     abilityBtns.push({ id: "strike", x: cx - R, y: cy - R, w: R * 2, h: R * 2 });
   }
+  // ---- onboarding coach-marks (non-blocking; auto-advance by observed state) ----
+  let tutSkipBtn = null;
+  function tutFinish() { S.tut = -1; Store.set("tutDone", true); tutSkipBtn = null; }
+  function drawTutorial() {
+    tutSkipBtn = null;
+    if (S.tut < 0 || S.screen !== "playing") return;
+    if (S.wave >= 1) { tutFinish(); return; }              // deployed -> done
+    if (S.tut === 0 && towers.length >= 1) S.tut = 1;       // built -> upgrade nudge
+    if (S.tut === 1 && towers.some((t) => t.lvl >= 1)) S.tut = 2; // upgraded -> deploy nudge
+    const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
+    let msg = "", target = null, onHud = false;
+    if (S.tut === 0) { msg = "TAP THE GLOWING PLOT, THEN A TOWER"; const c = center(TUT_PLOT.c, TUT_PLOT.r); target = worldToScreen(c.x, c.y); }
+    else if (S.tut === 1) { msg = "TAP YOUR TOWER, THEN UPGRADE"; if (towers[0]) { const c = center(towers[0].c, towers[0].r); target = worldToScreen(c.x, c.y - 12); } }
+    else { msg = "TAP DEPLOY TO SEND WAVE 1"; const b = hudBtns.find((x) => x.id === "nextwave"); if (b) { target = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; onHud = true; } }
+    // spotlight
+    if (target && target.x > -30 && target.x < W + 30 && target.y > 20 && target.y < H) {
+      ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pulse * 0.4); ctx.lineWidth = 3; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8;
+      if (onHud) { const b = hudBtns.find((x) => x.id === "nextwave"); rr(b.x - 3, b.y - 3, b.w + 6, b.h + 6, 5); ctx.stroke(); }
+      else {
+        const rad = 26 + pulse * 5; ctx.beginPath(); ctx.arc(target.x, target.y, rad, 0, 7); ctx.stroke();
+        const ay = target.y - rad - 6 - pulse * 4; ctx.fillStyle = rgba("#37e0d0", 0.85); ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.moveTo(target.x - 7, ay - 9); ctx.lineTo(target.x + 7, ay - 9); ctx.lineTo(target.x, ay); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+    // instruction banner (below HUD so it never covers the deploy button)
+    ctx.save(); ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const bw = ctx.measureText(msg).width + 28, bx = W / 2 - bw / 2, byy = PLAY_TOP + 30;
+    ctx.fillStyle = "rgba(6,9,12,0.85)"; rr(bx, byy - 13, bw, 26, 6); ctx.fill();
+    ctx.strokeStyle = rgba("#37e0d0", 0.45); ctx.lineWidth = 1; rr(bx, byy - 13, bw, 26, 6); ctx.stroke();
+    ctx.fillStyle = C.neonC; ctx.fillText(msg, W / 2, byy);
+    // skip
+    const sw = 62, sx = W - sw - 8, sy = PLAY_TOP + 8;
+    ctx.fillStyle = "rgba(6,9,12,0.7)"; rr(sx, sy, sw, 18, 4); ctx.fill();
+    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("SKIP ✕", sx + sw / 2, sy + 9);
+    tutSkipBtn = { x: sx, y: sy, w: sw, h: 18 };
+    ctx.restore();
+  }
   function coin(x, y, s) { const g = ctx.createRadialGradient(x - s * 0.3, y - s * 0.3, 0.5, x, y, s); g.addColorStop(0, "#ffe3a0"); g.addColorStop(0.55, C.scrap); g.addColorStop(1, C.scrapDark); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.font = "800 " + (s * 1.1) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⚙", x, y + 0.5); }
   function coreIcon(x, y, s, col) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.stroke(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, s * 0.4, 0, 7); ctx.fill(); ctx.restore(); }
 
@@ -1349,6 +1391,7 @@
 
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   function tap(x, y) {
+    if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
     for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
@@ -1422,6 +1465,7 @@
     if (S.screen === "playing" || S.screen === "paused") drawAbility();
     drawHUD();
     drawTray(raw);
+    drawTutorial();
     requestAnimationFrame(frame);
   }
 
