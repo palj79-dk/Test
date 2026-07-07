@@ -200,36 +200,80 @@
   }
 
   /* ---------------- AUDIO ---------------- */
+  // Procedural synth: layered oscillators + filtered noise through a master compressor,
+  // plus a low ambient music bed. No asset files. All guarded for sandboxed WebViews.
   const Sound = (function () {
-    let ctx = null, on = Store.get("sfx", true);
-    const ac = () => { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } } return ctx; };
-    function tone(f, d, type, g, glide) {
-      if (!on) return; const a = ac(); if (!a) return;
-      try {
-        const o = a.createOscillator(), gain = a.createGain();
-        o.type = type || "sine"; o.frequency.setValueAtTime(f, a.currentTime);
-        if (glide) o.frequency.exponentialRampToValueAtTime(glide, a.currentTime + d);
-        gain.gain.setValueAtTime(g || 0.06, a.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d);
-        o.connect(gain); gain.connect(a.destination); o.start(); o.stop(a.currentTime + d);
+    let ctx = null, master = null, on = Store.get("sfx", true), noiseBuf = null, music = null;
+    function ac() {
+      if (!ctx) {
+        try {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          master = ctx.createGain(); master.gain.value = 0.85;
+          const comp = ctx.createDynamicsCompressor();
+          comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.25;
+          master.connect(comp); comp.connect(ctx.destination);
+        } catch (e) { ctx = null; }
+      }
+      if (ctx && ctx.state === "suspended") { try { ctx.resume(); } catch (e) {} }
+      return ctx;
+    }
+    function noiseSrc(a) {
+      if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+      const s = a.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s;
+    }
+    // one enveloped oscillator (optional pitch glide + lowpass)
+    function osc(f, d, type, g, glide, lp) {
+      if (!on) return; const a = ac(); if (!a) return; try {
+        const t0 = a.currentTime, o = a.createOscillator(), gain = a.createGain(); o.type = type || "sine";
+        o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t0 + d);
+        let node = o;
+        if (lp) { const f2 = a.createBiquadFilter(); f2.type = "lowpass"; f2.frequency.value = lp; o.connect(f2); node = f2; }
+        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.06, t0 + 0.006); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+        node.connect(gain); gain.connect(master); o.start(t0); o.stop(t0 + d + 0.02);
       } catch (e) {}
     }
-    return {
-      gun: () => tone(240, 0.05, "square", 0.035, 150),
-      tesla: () => { tone(880, 0.06, "sawtooth", 0.05, 200); tone(1200, 0.05, "square", 0.03, 400); },
-      cryo: () => tone(520, 0.14, "sine", 0.05, 260),
-      boom: () => tone(120, 0.2, "sawtooth", 0.07, 50),
-      hit: () => tone(160, 0.04, "square", 0.025),
-      place: () => tone(300, 0.1, "square", 0.06, 520),
-      up: () => tone(400, 0.13, "sawtooth", 0.06, 760),
-      sell: () => tone(360, 0.1, "sine", 0.05, 180),
-      err: () => tone(110, 0.14, "square", 0.05, 80),
-      leak: () => tone(180, 0.2, "sawtooth", 0.08, 50),
-      wave: () => { tone(180, 0.16, "sawtooth", 0.07, 320); setTimeout(() => tone(320, 0.14, "square", 0.05, 420), 120); },
-      win: () => [330, 440, 550, 740].forEach((f, i) => setTimeout(() => tone(f, 0.2, "sine", 0.08), i * 130)),
-      lose: () => [300, 220, 150, 90].forEach((f, i) => setTimeout(() => tone(f, 0.24, "sawtooth", 0.09), i * 150)),
-      toggle(v) { on = v; Store.set("sfx", v); }, isOn: () => on,
+    // enveloped filtered noise burst (percussion / texture)
+    function nz(d, g, type, ff, q) {
+      if (!on) return; const a = ac(); if (!a) return; try {
+        const t0 = a.currentTime, s = noiseSrc(a), filt = a.createBiquadFilter(), gain = a.createGain();
+        filt.type = type || "bandpass"; filt.frequency.value = ff || 1000; if (q) filt.Q.value = q;
+        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.05, t0 + 0.004); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+        s.connect(filt); filt.connect(gain); gain.connect(master); s.start(t0); s.stop(t0 + d + 0.02);
+      } catch (e) {}
+    }
+    const api = {
+      gun: () => { nz(0.05, 0.05, "bandpass", 1500, 1.2); osc(200, 0.05, "square", 0.03, 110); },
+      tesla: () => { osc(760, 0.09, "sawtooth", 0.05, 180); nz(0.12, 0.045, "bandpass", 3200, 3); osc(1500, 0.06, "square", 0.02, 500); },
+      cryo: () => { osc(680, 0.16, "sine", 0.045, 1180); nz(0.18, 0.02, "highpass", 4000); },
+      boom: () => { nz(0.32, 0.09, "lowpass", 460); osc(110, 0.34, "sine", 0.09, 42); osc(70, 0.3, "triangle", 0.06, 34); },
+      hit: () => nz(0.04, 0.03, "bandpass", 2200, 2),
+      place: () => { osc(360, 0.1, "sine", 0.05, 620); osc(540, 0.1, "sine", 0.03, 900); },
+      up: () => { osc(420, 0.1, "triangle", 0.05, 640); setTimeout(() => osc(660, 0.14, "triangle", 0.05, 900), 90); },
+      sell: () => osc(420, 0.12, "sine", 0.05, 180),
+      err: () => { osc(150, 0.14, "square", 0.05, 90); nz(0.08, 0.02, "lowpass", 600); },
+      leak: () => { osc(300, 0.22, "sawtooth", 0.07, 150); nz(0.2, 0.05, "lowpass", 800); },
+      shield: () => { osc(1400, 0.12, "sine", 0.04, 700); nz(0.1, 0.03, "bandpass", 5000, 4); },
+      strike: () => { osc(1200, 0.5, "sine", 0.05, 180); nz(0.5, 0.03, "highpass", 3000); },
+      wave: () => { osc(150, 0.5, "sawtooth", 0.06, 220, 700); osc(226, 0.5, "sawtooth", 0.05, 300, 700); setTimeout(() => osc(300, 0.3, "square", 0.04, 380), 150); },
+      win: () => [330, 440, 550, 740].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "triangle", 0.07); osc(f * 2, 0.3, "sine", 0.03); }, i * 140)),
+      lose: () => [300, 220, 150, 90].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "sawtooth", 0.08, f * 0.6); nz(0.3, 0.03, "lowpass", 500); }, i * 160)),
+      startMusic() {
+        if (!on || music) return; const a = ac(); if (!a) return; try {
+          const t = a.currentTime, g = a.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(0.05, t + 3);
+          const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
+          const lfo = a.createOscillator(), lfoG = a.createGain(); lfo.frequency.value = 0.05; lfoG.gain.value = 260; lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start();
+          const oscs = [55, 82.4, 110, 164.8].map((f, i) => { const o = a.createOscillator(); o.type = i < 2 ? "sawtooth" : "triangle"; o.frequency.value = f; o.detune.value = (i % 2 ? 6 : -6); o.connect(lp); o.start(); return o; });
+          const wind = noiseSrc(a), wf = a.createBiquadFilter(), wg = a.createGain(); wf.type = "highpass"; wf.frequency.value = 1800; wg.gain.value = 0.012; wind.connect(wf); wf.connect(wg); wg.connect(g); wind.start();
+          lp.connect(g); g.connect(master);
+          music = { g, oscs, lfo, wind, stop() { try { const tt = a.currentTime; g.gain.cancelScheduledValues(tt); g.gain.setValueAtTime(g.gain.value, tt); g.gain.linearRampToValueAtTime(0, tt + 1.2); oscs.forEach((o) => o.stop(tt + 1.3)); lfo.stop(tt + 1.3); wind.stop(tt + 1.3); } catch (e) {} } };
+        } catch (e) {}
+      },
+      stopMusic() { if (music) { music.stop(); music = null; } },
+      resume() { ac(); },
+      toggle(v) { on = v; Store.set("sfx", v); if (!v) api.stopMusic(); else if (S && S.screen === "playing") api.startMusic(); },
+      isOn: () => on,
     };
+    return api;
   })();
   const vibrate = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 
@@ -328,7 +372,7 @@
     explosion(wx, wy, STRIKE_R, "#ffe0a0");
     for (const e of enemies) { if (e.alive && Math.hypot(e.x - wx, e.y - wy) <= STRIKE_R) { hurt(e, dmg, "explosive", true); e.stunT = Math.max(e.stunT || 0, 1.1); } }
     scorch(wx, wy, STRIKE_R * 0.7); puff(wx, wy, STRIKE_R * 0.6, "rgba(40,36,32,", 14);
-    doShake(10, 0.5); screenFlash = 0.5; Sound.boom(); setTimeout(() => Sound.boom(), 90); vibrate([40, 30, 60, 30, 80]);
+    doShake(10, 0.5); screenFlash = 0.5; Sound.strike(); Sound.boom(); setTimeout(() => Sound.boom(), 110); vibrate([40, 30, 60, 30, 80]);
     S.strikeCd = STRIKE_CD; S.strikeArm = false;
   }
   function startWave() {
@@ -357,7 +401,7 @@
       e.flash = 0.12; e.shieldHit = 0.18;
       e.shield -= dmg * (type === "energy" ? 1.6 : type === "kinetic" ? 0.7 : 1);
       sparks(e.x, e.y - e.r * 0.2, "#9fe8ff", 3, null, 6);
-      if (e.shield <= 0) { e.shield = 0; burst(e.x, e.y, "#9fe8ff", 10, 1); Sound.hit(); }
+      if (e.shield <= 0) { e.shield = 0; burst(e.x, e.y, "#9fe8ff", 10, 1); Sound.shield(); }
       return;
     }
     e.hp -= dmg; e.flash = 0.12;
@@ -1309,6 +1353,7 @@
   const hide = () => { overlay.style.display = "none"; overlay.innerHTML = ""; };
   const byId = (id) => document.getElementById(id);
   function render() {
+    if (S.screen === "playing") Sound.startMusic(); else Sound.stopMusic();
     if (S.screen === "menu") {
       show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line across twenty waves.</p>
@@ -1388,6 +1433,8 @@
   }
   canvas.addEventListener("pointerup", (ev) => { if (S.screen === "playing") endPtr(ev); });
   canvas.addEventListener("pointercancel", (ev) => { if (S.screen === "playing") endPtr(ev); });
+  // unlock/resume the audio context on the first user gesture (mobile autoplay policy)
+  document.addEventListener("pointerdown", () => Sound.resume(), { passive: true });
 
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   function tap(x, y) {
