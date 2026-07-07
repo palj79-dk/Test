@@ -108,29 +108,52 @@
   };
 
   /* ---------------- TOWERS ---------------- */
+  // dmgType drives the counterplay triangle: kinetic weak vs armor, explosive strong vs armor, energy strips shields.
+  // Each tower shares L1/L2, then the L2->L3 upgrade branches into a/b specializations (a real choice).
   const TOWERS = {
-    turret: { name: "Auto-Gun", short: "AUTO-GUN", kind: "hit", metal: "#5a6068", metalLt: "#79808a", accent: "#f2b23a", desc: "kinetic",
-      levels: [ { cost: 50, dmg: 9, range: 152, rate: 500 }, { cost: 45, dmg: 15, range: 168, rate: 440 }, { cost: 70, dmg: 25, range: 188, rate: 380 } ] },
-    cryo:   { name: "Cryo Emitter", short: "CRYO", kind: "orb", metal: "#3a5460", metalLt: "#557886", accent: "#37e0d0", desc: "slows a cluster",
-      levels: [ { cost: 65, dmg: 4, range: 136, rate: 720, splash: 60, slow: 0.45 }, { cost: 55, dmg: 7, range: 150, rate: 660, splash: 68, slow: 0.55 }, { cost: 80, dmg: 10, range: 164, rate: 600, splash: 78, slow: 0.68 } ] },
-    mortar: { name: "Mortar", short: "MORTAR", kind: "lob", metal: "#6b4a34", metalLt: "#8a6446", accent: "#f28a3a", desc: "splash damage",
-      levels: [ { cost: 85, dmg: 26, range: 150, rate: 1150, splash: 78 }, { cost: 70, dmg: 42, range: 162, rate: 1040, splash: 88 }, { cost: 110, dmg: 64, range: 178, rate: 920, splash: 100 } ] },
-    tesla:  { name: "Rail-Tesla", short: "TESLA", kind: "beam", metal: "#4a3a5e", metalLt: "#6a557f", accent: "#e0479a", desc: "long-range nuke",
-      levels: [ { cost: 95, dmg: 46, range: 268, rate: 1180 }, { cost: 85, dmg: 74, range: 290, rate: 1080 }, { cost: 130, dmg: 112, range: 318, rate: 940 } ] },
+    turret: { name: "Auto-Gun", short: "AUTO-GUN", kind: "hit", dmgType: "kinetic", metal: "#5a6068", metalLt: "#79808a", accent: "#f2b23a", desc: "kinetic",
+      levels: [ { cost: 50, dmg: 9, range: 152, rate: 500 }, { cost: 45, dmg: 15, range: 168, rate: 440 }, { cost: 70, dmg: 25, range: 188, rate: 380 } ],
+      branches: {
+        a: { name: "Gatling", short: "GATLING", desc: "shreds swarms", cost: 75, dmg: 16, range: 190, rate: 175 },
+        b: { name: "Breacher", short: "BREACHER", desc: "armor-piercing", cost: 85, dmg: 44, range: 205, rate: 500, pierce: true },
+      } },
+    cryo:   { name: "Cryo Emitter", short: "CRYO", kind: "orb", dmgType: "energy", metal: "#3a5460", metalLt: "#557886", accent: "#37e0d0", desc: "slows a cluster",
+      levels: [ { cost: 65, dmg: 4, range: 136, rate: 720, splash: 60, slow: 0.45 }, { cost: 55, dmg: 7, range: 150, rate: 660, splash: 68, slow: 0.55 }, { cost: 80, dmg: 10, range: 164, rate: 600, splash: 78, slow: 0.68 } ],
+      branches: {
+        a: { name: "Glacier", short: "GLACIER", desc: "near-freeze AoE", cost: 80, dmg: 9, range: 172, rate: 560, splash: 96, slow: 0.84 },
+        b: { name: "Shatter", short: "SHATTER", desc: "crushes slowed foes", cost: 95, dmg: 26, range: 166, rate: 640, splash: 82, slow: 0.4, shatter: true },
+      } },
+    mortar: { name: "Mortar", short: "MORTAR", kind: "lob", dmgType: "explosive", metal: "#6b4a34", metalLt: "#8a6446", accent: "#f28a3a", desc: "splash damage",
+      levels: [ { cost: 85, dmg: 26, range: 150, rate: 1150, splash: 78 }, { cost: 70, dmg: 42, range: 162, rate: 1040, splash: 88 }, { cost: 110, dmg: 64, range: 178, rate: 920, splash: 100 } ],
+      branches: {
+        a: { name: "Carpet", short: "CARPET", desc: "wide barrage", cost: 105, dmg: 56, range: 188, rate: 820, splash: 126 },
+        b: { name: "Buster", short: "BUSTER", desc: "anti-armor shell", cost: 135, dmg: 158, range: 182, rate: 1250, splash: 70, pierce: true },
+      } },
+    tesla:  { name: "Rail-Tesla", short: "TESLA", kind: "beam", dmgType: "energy", metal: "#4a3a5e", metalLt: "#6a557f", accent: "#e0479a", desc: "long-range nuke",
+      levels: [ { cost: 95, dmg: 46, range: 268, rate: 1180 }, { cost: 85, dmg: 74, range: 290, rate: 1080 }, { cost: 130, dmg: 112, range: 318, rate: 940 } ],
+      branches: {
+        a: { name: "Arc-Coil", short: "ARC-COIL", desc: "chains + hits air", cost: 115, dmg: 66, range: 300, rate: 820, chain: 3 },
+        b: { name: "Railgun", short: "RAILGUN", desc: "sniper nuke", cost: 155, dmg: 230, range: 362, rate: 1300 },
+      } },
   };
   const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla"];
   const SELL_REFUND = 0.7;
   const TARGET_MODES = ["first", "strong", "close"];
   const TARGET_LABEL = { first: "FIRST", strong: "STRONGEST", close: "CLOSEST" };
+  const canHitAir = (kind) => kind === "hit" || kind === "beam"; // direct-fire towers can hit flyers; ground splash cannot
 
   /* ---------------- ENEMIES ---------------- */
+  // traits: armor (kinetic-resistant), flying (only direct-fire towers hit), shield (regenerating pool, stripped fast by energy)
   const ENEMIES = {
     stalker:    { hp: 16, speed: 148, reward: 4, r: 15, body: "#6f9a3a", dark: "#3f5f20", eye: "#e0533f", shape: "stalker" },
     raider:     { hp: 34, speed: 90, reward: 5, r: 18, body: "#9a7a4a", dark: "#5f4a2a", eye: "#37e0d0", shape: "raider" },
     brute:      { hp: 105, speed: 54, reward: 10, r: 24, body: "#b0503a", dark: "#6f2f20", eye: "#f2b23a", shape: "brute" },
-    juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut" },
+    sentinel:   { hp: 92, speed: 60, reward: 13, r: 23, body: "#697079", dark: "#33383f", eye: "#f2b23a", shape: "brute", armor: true },
+    wraith:     { hp: 38, speed: 122, reward: 8, r: 16, body: "#7d61a2", dark: "#3d2c5c", eye: "#cfa8ff", shape: "wraith", flying: true },
+    warden:     { hp: 66, speed: 72, reward: 12, r: 20, body: "#3a6a68", dark: "#1f3d3c", eye: "#37e0d0", shape: "raider", shield: 60 },
+    juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut", shield: 420 },
   };
-  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", juggernaut: "Juggernaut" };
+  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const NEXT_WAVE_COUNTDOWN = 6;
@@ -217,23 +240,32 @@
       const bosses = n === TOTAL_WAVES ? 2 : 1;
       for (let i = 0; i < bosses; i++) list.push({ type: "juggernaut", delay: i * 2600 });
       const extra = 4 + Math.floor(n / 3);
-      for (let i = 0; i < extra; i++) list.push({ type: i % 2 ? "stalker" : "raider", delay: 2800 + i * 420 });
+      for (let i = 0; i < extra; i++) { const t = i % 3 === 0 ? "wraith" : i % 3 === 1 ? "stalker" : "raider"; list.push({ type: t, delay: 2800 + i * 420 }); }
       return list;
     }
     const st = Math.max(2, 6 - Math.floor(n / 5)), rd = 3 + Math.floor(n / 2), br = n >= 4 ? Math.floor(n / 3) : 0;
+    const wr = n >= 3 ? 1 + Math.floor(n / 4) : 0;      // wraiths (flyers) force anti-air
+    const se = n >= 6 ? Math.floor((n - 3) / 3) : 0;     // sentinels (armored) force AP/explosive
+    const wd = n >= 8 ? Math.floor((n - 5) / 4) : 0;     // wardens (shielded) reward energy
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
     for (let i = 0; i < br; i++) seq.push("brute");
+    for (let i = 0; i < se; i++) seq.push("sentinel");
+    for (let i = 0; i < wr; i++) seq.push("wraith");
+    for (let i = 0; i < wd; i++) seq.push("warden");
     seq.sort(() => Math.random() - 0.4);
-    let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += type === "brute" ? 560 : 380; }
+    const slow = { brute: 560, sentinel: 560, warden: 460 };
+    let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += slow[type] || 380; }
     return list;
   }
   function waveCounts(n) { const c = {}; for (const e of waveComp(n)) c[e.type] = (c[e.type] || 0) + 1; return c; }
   function statsFor(type, wave) {
     const b = ENEMIES[type], hpMul = 1 + 0.13 * (wave - 1), rwMul = 1 + 0.045 * (wave - 1);
+    const sh = b.shield ? Math.round(b.shield * (1 + 0.1 * (wave - 1))) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
-      hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed, reward: Math.round(b.reward * rwMul) };
+      hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed, reward: Math.round(b.reward * rwMul),
+      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0 };
   }
 
   /* ---------------- ENTITIES / STATE ---------------- */
@@ -247,11 +279,13 @@
   const MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98;
   const MAXZOOM = 1.9;
 
+  const STRIKE_CD = 30, STRIKE_R = 92;
   const S = {
     screen: "menu", scrap: START_SCRAP, core: START_CORE, wave: 0, kills: 0,
     waveActive: false, queue: [], speed: 1, selTile: null, selTower: null,
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
+    strikeCd: 0, strikeArm: false,
   };
   const diffMul = () => (S.difficulty === "hard" ? 1.35 : 1);
 
@@ -280,7 +314,18 @@
     S.scrap = START_SCRAP; S.core = START_CORE; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0;
+    S.strikeCd = 0; S.strikeArm = false;
     fitCamera();
+  }
+  // active ability: orbital airstrike. explosive + armor-piercing, hits air and ground, brief stun.
+  function doStrike(wx, wy) {
+    const dmg = 130 * (1 + S.wave * 0.06);
+    for (let i = 0; i < 6; i++) { const a = Math.random() * 7, d = Math.random() * STRIKE_R * 0.8; explosion(wx + Math.cos(a) * d, wy + Math.sin(a) * d, 22 + Math.random() * 22, "#ffbf6a"); }
+    explosion(wx, wy, STRIKE_R, "#ffe0a0");
+    for (const e of enemies) { if (e.alive && Math.hypot(e.x - wx, e.y - wy) <= STRIKE_R) { hurt(e, dmg, "explosive", true); e.stunT = Math.max(e.stunT || 0, 1.1); } }
+    scorch(wx, wy, STRIKE_R * 0.7); puff(wx, wy, STRIKE_R * 0.6, "rgba(40,36,32,", 14);
+    doShake(10, 0.5); screenFlash = 0.5; Sound.boom(); setTimeout(() => Sound.boom(), 90); vibrate([40, 30, 60, 30, 80]);
+    S.strikeCd = STRIKE_CD; S.strikeArm = false;
   }
   function startWave() {
     if (S.waveActive || S.wave >= TOTAL_WAVES) return;
@@ -297,10 +342,23 @@
   function scorch(x, y, r) { scorches.push({ x, y, r, a: 0.5 }); if (scorches.length > 26) scorches.shift(); }
   function gibBurst(x, y, body, dark, n, force) { for (let i = 0; i < n; i++) { const a = Math.random() * 7, sp = (40 + Math.random() * 110) * (force || 1); gibs.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, life: 0.7 + Math.random() * 0.6, max: 1.3, r: 1.6 + Math.random() * 3.2, rot: Math.random() * 7, vr: (Math.random() - 0.5) * 12, col: Math.random() < 0.55 ? body : dark }); } }
   function explosion(x, y, r, color) { booms.push({ x, y, r, max: r, life: 0.34, mlife: 0.34, color, ring: true }); booms.push({ x, y, r: r * 0.62, max: r * 0.62, life: 0.22, mlife: 0.22, color: "#fff2cc", ring: false }); burst(x, y, color, 14, 1.2); puff(x, y, r * 0.7, "rgba(50,45,40,", 6); }
-  function hurt(e, dmg) {
+  // dmg application with the counterplay triangle. type: kinetic | energy | explosive. pierce ignores armor.
+  function hurt(e, dmg, type, pierce) {
+    if (!e.alive) return;
+    type = type || "kinetic";
+    if (e.armor && !pierce) dmg *= type === "explosive" ? 1.2 : type === "kinetic" ? 0.4 : 1;
+    if (e.shieldMax) e.shieldCd = 0;
+    // shield absorbs the hit; energy strips it fast, kinetic is inefficient against it
+    if (e.shield > 0) {
+      e.flash = 0.12; e.shieldHit = 0.18;
+      e.shield -= dmg * (type === "energy" ? 1.6 : type === "kinetic" ? 0.7 : 1);
+      sparks(e.x, e.y - e.r * 0.2, "#9fe8ff", 3, null, 6);
+      if (e.shield <= 0) { e.shield = 0; burst(e.x, e.y, "#9fe8ff", 10, 1); Sound.hit(); }
+      return;
+    }
     e.hp -= dmg; e.flash = 0.12;
-    const big = e.type === "juggernaut", heavy = e.type === "brute";
-    sparks(e.x, e.y - e.r * 0.2, "#ffd27a", big ? 5 : 2, null, 6);
+    const big = e.type === "juggernaut", heavy = e.type === "brute" || e.type === "sentinel";
+    sparks(e.x, e.y - e.r * 0.2, e.armor ? "#cfd6de" : "#ffd27a", big ? 5 : 2, null, 6);
     if (e.hp <= 0 && e.alive) {
       e.alive = false; S.scrap += e.reward; S.kills++;
       floats.push({ x: e.x, y: e.y - e.r, text: "+" + e.reward, life: 0.9, vy: -42, color: C.scrap, big });
@@ -333,8 +391,12 @@
     for (const e of enemies) {
       if (!e.alive) continue;
       if (e.flash > 0) e.flash -= dt;
+      if (e.shieldHit > 0) e.shieldHit -= dt;
       e.bob += dt * 10;
       if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowF = 1; }
+      // regenerating shield: recharges after a lull with no damage
+      if (e.shieldMax) { e.shieldCd += dt; if (e.shieldCd > 3 && e.shield < e.shieldMax) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.22 * dt); }
+      if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
       const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = PATH_PTS[e.pi + 1];
       if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 5 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
       const dx = tgt.x - e.x, dy = tgt.y - e.y, d = Math.hypot(dx, dy);
@@ -348,15 +410,17 @@
     enemies = enemies.filter((e) => e.alive);
     if (S.core <= 0) { S.core = 0; S.screen = "gameover"; Sound.lose(); vibrate([80, 60, 80]); doShake(11, 0.5); }
   }
-  const tStats = (t) => TOWERS[t.type].levels[t.lvl];
+  // L3 stats come from the chosen branch; levels[2] is a fallback if somehow unbranched
+  const tStats = (t) => (t.lvl === 2 && t.branch && TOWERS[t.type].branches[t.branch]) || TOWERS[t.type].levels[t.lvl];
   function findTarget(t, p) {
-    const st = tStats(t); let best = null, score = -Infinity;
+    const st = tStats(t), air = canHitAir(TOWERS[t.type].kind); let best = null, score = -Infinity;
     for (const e of enemies) {
       if (!e.alive) continue;
+      if (e.flying && !air) continue; // ground splash towers can't reach flyers
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > st.range) continue;
       let s;
-      if (t.mode === "strong") s = e.hp;
+      if (t.mode === "strong") s = e.hp + e.shield;
       else if (t.mode === "close") s = -d;
       else s = e.pi + (1 - d / (st.range + 1)) * 0.01;
       if (s > score) { score = s; best = e; }
@@ -375,22 +439,26 @@
     }
   }
   function fire(t, p, st) {
-    const spec = TOWERS[t.type], mx = p.x + Math.cos(t.angle) * 22, my = (p.y - 12) + Math.sin(t.angle) * 22, tg = t.target;
-    if (spec.kind === "hit") { hurt(tg, st.dmg); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.06, mlife: 0.06, color: spec.accent, w: 1.6 }); burst(tg.x, tg.y, spec.accent, 3); Sound.gun(); }
-    else if (spec.kind === "beam") { hurt(tg, st.dmg); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.13, mlife: 0.13, color: spec.accent, w: 3, bolt: true }); burst(tg.x, tg.y, spec.accent, 6); doShake(1.6, 0.1); screenFlash = 0.12; Sound.tesla(); }
-    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: st.dmg, splash: st.splash, slow: st.slow, speed: 320, color: spec.accent, kind: "orb", life: 1.4 }); Sound.cryo(); }
-    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: st.dmg, splash: st.splash, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); Sound.gun(); }
+    const spec = TOWERS[t.type], dtype = spec.dmgType, pierce = !!st.pierce, mx = p.x + Math.cos(t.angle) * 22, my = (p.y - 12) + Math.sin(t.angle) * 22, tg = t.target;
+    if (spec.kind === "hit") { hurt(tg, st.dmg, dtype, pierce); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.06, mlife: 0.06, color: spec.accent, w: 1.6 }); burst(tg.x, tg.y, spec.accent, 3); Sound.gun(); }
+    else if (spec.kind === "beam") {
+      hurt(tg, st.dmg, dtype, pierce); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.13, mlife: 0.13, color: spec.accent, w: 3, bolt: true }); burst(tg.x, tg.y, spec.accent, 6); doShake(1.6, 0.1); screenFlash = 0.12; Sound.tesla();
+      // Arc-Coil branch: lightning chains to nearby foes (flyers included)
+      if (st.chain) { let from = tg, hit = new Set([tg]); for (let i = 0; i < st.chain; i++) { let nx = null, nd = 120; for (const e of enemies) { if (!e.alive || hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < nd) { nd = d; nx = e; } } if (!nx) break; hurt(nx, st.dmg * 0.6, dtype, pierce); beams.push({ x1: from.x, y1: from.y, x2: nx.x, y2: nx.y, life: 0.12, mlife: 0.12, color: spec.accent, w: 2, bolt: true }); hit.add(nx); from = nx; } }
+    }
+    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: st.dmg, splash: st.splash, slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4 }); Sound.cryo(); }
+    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: st.dmg, splash: st.splash, dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); Sound.gun(); }
   }
   function updProjs(dt) {
     for (const p of projs) {
       if (p.kind === "orb") {
-        if (!p.tx || !p.tx.alive) { p.sx = p.sx; } else { p.sx = p.tx.x; p.sy = p.tx.y; }
+        if (p.tx && p.tx.alive) { p.sx = p.tx.x; p.sy = p.tx.y; }
         const dx = p.sx - p.x, dy = p.sy - p.y, d = Math.hypot(dx, dy), step = p.speed * dt;
-        if (step >= d || d < 4) { explosion(p.sx, p.sy, p.splash, p.color); for (const e of enemies) { if (e.alive && Math.hypot(e.x - p.sx, e.y - p.sy) <= p.splash) { hurt(e, p.dmg); e.slowT = 1.2; e.slowF = 1 - p.slow; } } p.life = 0; }
+        if (step >= d || d < 4) { explosion(p.sx, p.sy, p.splash, p.color); for (const e of enemies) { if (e.alive && !e.flying && Math.hypot(e.x - p.sx, e.y - p.sy) <= p.splash) { let dmg = p.dmg; if (p.shatter && (e.slowT > 0 || e.frost > 0.2)) dmg *= 1.9; hurt(e, dmg, p.dtype, p.pierce); e.slowT = 1.2; e.slowF = 1 - p.slow; } } p.life = 0; }
         else { p.x += (dx / d) * step; p.y += (dy / d) * step; }
       } else if (p.kind === "lob") {
         p.t += dt / p.dur;
-        if (p.t >= 1) { explosion(p.gx, p.gy, p.splash, p.color); doShake(3, 0.16); Sound.boom(); for (const e of enemies) { if (e.alive && Math.hypot(e.x - p.gx, e.y - p.gy) <= p.splash) hurt(e, p.dmg); } p.life = 0; }
+        if (p.t >= 1) { explosion(p.gx, p.gy, p.splash, p.color); doShake(3, 0.16); Sound.boom(); for (const e of enemies) { if (e.alive && !e.flying && Math.hypot(e.x - p.gx, e.y - p.gy) <= p.splash) hurt(e, p.dmg, p.dtype, p.pierce); } p.life = 0; }
         else { p.x = lerp(p.ox, p.gx, p.t); p.y = lerp(p.oy, p.gy, p.t); }
       }
     }
@@ -583,8 +651,9 @@
     ctx.globalAlpha = 1;
   }
   function hexPath(x, y, R, sq) { sq = sq == null ? 0.82 : sq; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.52; const px = x + Math.cos(a) * R, py = y + Math.sin(a) * R * sq; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); }
-  function drawTowerArt(x, y, type, lvl, angle, recoil, flash, active, scale) {
+  function drawTowerArt(x, y, type, lvl, angle, recoil, flash, active, scale, branch) {
     scale = scale || 1; const spec = TOWERS[type], s = scale, R = 20 * s, t = S.time;
+    const brSpec = lvl === 2 && branch ? spec.branches[branch] : null;
     const dk = darken(spec.metal, 0.4), edge = darken(spec.metal, 0.6);
     // ground shadow
     ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.6, R * 1.12, R * 0.44, 0, 0, 7); ctx.fill();
@@ -610,14 +679,16 @@
     // ---- rotating weapon head ----
     const pull = recoil ? (recoil / 0.12) * 4 * s : 0;
     ctx.save(); ctx.translate(x, y - 12 * s); ctx.rotate(angle || 0); ctx.translate(-pull, 0);
-    const barrelL = (18 + lvl * 4) * s, mflash = flash > 0 ? Math.min(1, flash / 0.09) : 0;
+    let barrelL = (18 + lvl * 4) * s; const mflash = flash > 0 ? Math.min(1, flash / 0.09) : 0;
+    if (brSpec) barrelL += (branch === "b" ? 6 : 2) * s;
     if (spec.kind === "hit") {
-      // turret: rotating housing + barrels growing per level
+      // turret: Gatling (a) = four short barrels, Breacher (b) = one heavy long barrel
       const bg = ctx.createLinearGradient(0, -7 * s, 0, 7 * s); bg.addColorStop(0, spec.metalLt); bg.addColorStop(1, dk);
-      const nb = lvl === 0 ? 2 : lvl === 1 ? 2 : 3, sp = 3.6 * s;
-      ctx.fillStyle = "#1d2024"; for (let i = 0; i < nb; i++) { const oy = (i - (nb - 1) / 2) * sp * 1.5; rr(2 * s, oy - 1.3 * s, barrelL, 2.6 * s, 1.2 * s); ctx.fill(); }
+      let nb = lvl === 0 ? 2 : lvl === 1 ? 2 : 3, bth = 2.6 * s; const sp = 3.6 * s;
+      if (brSpec) { if (branch === "a") { nb = 4; bth = 2.2 * s; } else { nb = 1; bth = 5.2 * s; } }
+      ctx.fillStyle = "#1d2024"; for (let i = 0; i < nb; i++) { const oy = (i - (nb - 1) / 2) * sp * 1.5; rr(2 * s, oy - bth / 2, barrelL, bth, 1.2 * s); ctx.fill(); }
       // muzzle brakes L2+
-      if (lvl >= 1) { ctx.fillStyle = edge; for (let i = 0; i < nb; i++) { const oy = (i - (nb - 1) / 2) * sp * 1.5; rr(barrelL - 3 * s, oy - 2 * s, 3.5 * s, 4 * s, 1 * s); ctx.fill(); } }
+      if (lvl >= 1) { ctx.fillStyle = edge; for (let i = 0; i < nb; i++) { const oy = (i - (nb - 1) / 2) * sp * 1.5; rr(barrelL - 3 * s, oy - bth * 0.75, 3.5 * s, bth * 1.5, 1 * s); ctx.fill(); } }
       ctx.fillStyle = bg; rr(-7 * s, -7 * s, 14 * s, 14 * s, 3.5 * s); ctx.fill();
       ctx.strokeStyle = edge; ctx.lineWidth = 1 * s; rr(-7 * s, -7 * s, 14 * s, 14 * s, 3.5 * s); ctx.stroke();
       ctx.fillStyle = spec.accent; ctx.beginPath(); ctx.arc(-1 * s, 0, 2 * s, 0, 7); ctx.fill();
@@ -625,15 +696,15 @@
       // cryo: emitter ring + coils + pulsing core
       ctx.fillStyle = spec.metal; ctx.beginPath(); ctx.arc(0, 0, 7.5 * s, 0, 7); ctx.fill();
       ctx.strokeStyle = edge; ctx.lineWidth = 1 * s; ctx.stroke();
-      const coils = 2 + lvl; ctx.strokeStyle = spec.metalLt; ctx.lineWidth = 1.6 * s;
-      for (let i = 0; i < coils; i++) { const a = t * 1.2 + i / coils * 6.283; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6 * s, Math.sin(a) * 6 * s); ctx.lineTo(Math.cos(a) * (11 + lvl) * s, Math.sin(a) * (11 + lvl) * s); ctx.stroke(); }
-      const pul = 0.6 + 0.4 * Math.sin(t * 4);
-      ctx.save(); ctx.globalAlpha = pul; ctx.shadowColor = spec.accent; ctx.shadowBlur = 10 * s; ctx.fillStyle = spec.accent; ctx.beginPath(); ctx.arc(0, 0, (3.5 + lvl * 0.6) * s, 0, 7); ctx.fill(); ctx.restore();
+      const coils = brSpec ? (branch === "a" ? 7 : 4) : 2 + lvl, reach = (11 + lvl) * s + (brSpec && branch === "a" ? 3 * s : 0); ctx.strokeStyle = spec.metalLt; ctx.lineWidth = 1.6 * s;
+      for (let i = 0; i < coils; i++) { const a = t * 1.2 + i / coils * 6.283; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6 * s, Math.sin(a) * 6 * s); ctx.lineTo(Math.cos(a) * reach, Math.sin(a) * reach); ctx.stroke(); if (brSpec && branch === "b") { ctx.fillStyle = spec.accent; ctx.beginPath(); ctx.arc(Math.cos(a) * reach, Math.sin(a) * reach, 1.8 * s, 0, 7); ctx.fill(); } }
+      const pul = 0.6 + 0.4 * Math.sin(t * 4), core = (3.5 + lvl * 0.6) * s + (brSpec && branch === "a" ? 2 * s : 0);
+      ctx.save(); ctx.globalAlpha = pul; ctx.shadowColor = spec.accent; ctx.shadowBlur = 10 * s; ctx.fillStyle = spec.accent; ctx.beginPath(); ctx.arc(0, 0, core, 0, 7); ctx.fill(); ctx.restore();
       ctx.fillStyle = "#eafffb"; ctx.beginPath(); ctx.arc(0, 0, 1.8 * s, 0, 7); ctx.fill();
     } else if (spec.kind === "lob") {
       // mortar: angled reinforced tube
       ctx.save(); ctx.rotate(-0.5);
-      const tl = (16 + lvl * 3) * s, tw = (11 + lvl * 1.5) * s;
+      const tl = (16 + lvl * 3) * s + (brSpec && branch === "b" ? 6 * s : 0), tw = (11 + lvl * 1.5) * s + (brSpec ? (branch === "a" ? 5 * s : 2 * s) : 0);
       const tg = ctx.createLinearGradient(0, -tw / 2, 0, tw / 2); tg.addColorStop(0, spec.metalLt); tg.addColorStop(1, dk);
       ctx.fillStyle = tg; rr(-4 * s, -tw / 2, tl, tw, 3 * s); ctx.fill();
       ctx.strokeStyle = edge; ctx.lineWidth = 1.2 * s; rr(-4 * s, -tw / 2, tl, tw, 3 * s); ctx.stroke();
@@ -646,9 +717,9 @@
     } else {
       // tesla: prongs with arcing energy
       ctx.fillStyle = spec.metal; ctx.beginPath(); ctx.arc(0, 0, 7 * s, 0, 7); ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = 1 * s; ctx.stroke();
-      const prongs = 2 + lvl; ctx.strokeStyle = spec.metalLt; ctx.lineWidth = 2.4 * s; ctx.lineCap = "round";
+      const prongs = brSpec ? (branch === "a" ? 4 : 1) : 2 + lvl, railL = barrelL + (brSpec && branch === "b" ? 8 * s : 0); ctx.strokeStyle = spec.metalLt; ctx.lineWidth = (brSpec && branch === "b" ? 4.4 : 2.4) * s; ctx.lineCap = "round";
       const tips = [];
-      for (let i = 0; i < prongs; i++) { const spread = 0.5, a = (i - (prongs - 1) / 2) * spread; const tx = Math.cos(a) * barrelL, ty = Math.sin(a) * barrelL; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6 * s, Math.sin(a) * 6 * s); ctx.lineTo(tx, ty); ctx.stroke(); tips.push([tx, ty]); }
+      for (let i = 0; i < prongs; i++) { const spread = 0.5, a = (i - (prongs - 1) / 2) * spread; const tx = Math.cos(a) * railL, ty = Math.sin(a) * railL; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6 * s, Math.sin(a) * 6 * s); ctx.lineTo(tx, ty); ctx.stroke(); tips.push([tx, ty]); }
       // node tips
       ctx.fillStyle = spec.accent; for (const [tx, ty] of tips) { ctx.beginPath(); ctx.arc(tx, ty, 2.2 * s, 0, 7); ctx.fill(); }
       // idle arcs between tips
@@ -665,7 +736,7 @@
     for (let i = 0; i <= lvl; i++) { ctx.fillStyle = spec.accent; ctx.save(); ctx.shadowColor = spec.accent; ctx.shadowBlur = 3 * s; ctx.beginPath(); ctx.arc(x - 8 * s + i * 8 * s, y + R * 0.78, 2.2 * s, 0, 7); ctx.fill(); ctx.restore(); }
   }
   function drawTowers() {
-    towers.slice().sort((a, b) => a.r - b.r).forEach((t) => { const p = center(t.c, t.r); drawTowerArt(p.x, p.y, t.type, t.lvl, t.angle, t.recoil, t.flash, !!t.target, 1); });
+    towers.slice().sort((a, b) => a.r - b.r).forEach((t) => { const p = center(t.c, t.r); drawTowerArt(p.x, p.y, t.type, t.lvl, t.angle, t.recoil, t.flash, !!t.target, 1, t.branch); });
   }
   // rounded-body sphere shading: highlight offset toward the light (upper-left in body-local space)
   function bodyFill(r, body, hiAmt, loAmt) {
@@ -767,6 +838,19 @@
       ctx.fillStyle = darken(e.body, 0.25); ctx.beginPath(); ctx.arc(r * 0.35, 0, r * 0.28, 0, 7); ctx.fill();
       glowDots(r * 0.45, r * 0.13, Math.max(1.6, r * 0.12), e.eye, t);
       ctx.restore();
+    } else if (e.shape === "wraith") {
+      // hover drone: spinning rotors, glowing pod, forward sensor
+      const spin = t * 34;
+      for (const [ax, ay] of [[0.82, -0.82], [0.82, 0.82], [-0.82, -0.82], [-0.82, 0.82]]) {
+        const hx = ax * r * 0.72, hy = ay * r * 0.72;
+        ctx.strokeStyle = darken(e.body, 0.45); ctx.lineWidth = r * 0.14; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.save(); ctx.globalAlpha = 0.35; ctx.strokeStyle = e.eye; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(hx, hy, r * 0.44, 0, 7); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.translate(hx, hy); ctx.rotate(spin + ax + ay); ctx.strokeStyle = lighten(e.body, 0.1); ctx.lineWidth = r * 0.1; ctx.beginPath(); ctx.moveTo(-r * 0.42, 0); ctx.lineTo(r * 0.42, 0); ctx.stroke(); ctx.restore();
+      }
+      ctx.fillStyle = bodyFill(r * 0.7, e.body, 0.5, 0.42); ctx.beginPath(); ctx.ellipse(0, 0, r * 0.62, r * 0.5, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = darken(e.body, 0.5); ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6); ctx.shadowColor = e.eye; ctx.shadowBlur = 8; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, 7); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(r * 0.46, 0, Math.max(1.8, r * 0.16), 0, 7); ctx.fill(); ctx.restore();
     } else {
       // juggernaut war-mech: scrolling tracks, chassis, rotating cannon, reactor core
       const tread = (ph * 6) % 8;
@@ -798,6 +882,13 @@
       ctx.fillStyle = "#24262b"; rr(r * 0.75, -r * 0.1, r * 0.35, r * 0.2, 2); ctx.fill();
       ctx.fillStyle = "#4a4e56"; ctx.beginPath(); ctx.arc(-r * 0.1, 0, r * 0.26, 0, 7); ctx.fill();
       ctx.restore();
+    }
+    // armor plating overlay (sentinel and any armored foe): riveted steel + hazard stripe
+    if (e.armor) {
+      ctx.strokeStyle = "rgba(214,222,230,0.4)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.3, px = Math.cos(a) * r * 0.88, py = Math.sin(a) * r * 0.82; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = "rgba(226,232,238,0.55)"; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.3; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.88, Math.sin(a) * r * 0.82, r * 0.06, 0, 7); ctx.fill(); }
+      ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * 0.55, -r * 0.32); ctx.lineTo(r * 0.55, -r * 0.32); ctx.stroke();
     }
   }
   function glowDots(x, dy, rad, col, t) {
@@ -832,11 +923,13 @@
   }
   function drawEnemies() {
     enemies.slice().sort((a, b) => a.y - b.y).forEach((e) => {
-      const hop = e.shape === "juggernaut" ? 0 : Math.abs(Math.sin(e.walk || 0)) * 1.5;
-      const lift = hop + Math.sin(e.bob) * 0.6;
-      // soft shadow (tighter when hopping)
-      ctx.save(); ctx.globalAlpha = 0.34 - hop * 0.06; ctx.fillStyle = "#000";
-      ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.72, e.r * (0.82 - hop * 0.03), e.r * 0.3, 0, 0, 7); ctx.fill(); ctx.restore();
+      const flying = e.flying;
+      const hop = (e.shape === "juggernaut" || flying) ? 0 : Math.abs(Math.sin(e.walk || 0)) * 1.5;
+      const hover = flying ? 9 + Math.sin(e.bob * 0.6) * 2.5 : 0;
+      const lift = hop + hover + Math.sin(e.bob) * 0.6;
+      // shadow: flyers cast a smaller, softer shadow far below (the gap reads as altitude)
+      ctx.save(); ctx.globalAlpha = (flying ? 0.2 : 0.34) - hop * 0.06; ctx.fillStyle = "#000";
+      ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.72, e.r * (flying ? 0.5 : 0.82 - hop * 0.03), e.r * (flying ? 0.2 : 0.3), 0, 0, 7); ctx.fill(); ctx.restore();
       ctx.save(); ctx.translate(e.x, e.y - lift); ctx.rotate(e.face || 0);
       if (e.bank) ctx.transform(1, 0, 0, 1 - Math.abs(e.bank) * 0.25, 0, 0);
       enemyBody(e);
@@ -851,11 +944,20 @@
         for (let i = 0; i < 3; i++) { const a = e.bob + i * 2.1; ctx.beginPath(); ctx.moveTo(e.x + Math.cos(a) * e.r, e.y - lift + Math.sin(a) * e.r); ctx.lineTo(e.x + Math.cos(a) * e.r * 1.35, e.y - lift + Math.sin(a) * e.r * 1.35); ctx.stroke(); }
         ctx.restore();
       }
+      // shield bubble (screen-aligned), brightens on hit
+      if (e.shield > 0) {
+        const sr = e.r * 1.3, frac = e.shield / (e.shieldMax || 1), a = 0.14 + 0.2 * frac + (e.shieldHit > 0 ? 0.45 : 0);
+        ctx.save(); ctx.globalAlpha = Math.min(0.85, a); ctx.strokeStyle = rgba("#9fe8ff", 0.9); ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(e.x, e.y - lift, sr, 0, 7); ctx.stroke();
+        ctx.globalAlpha = Math.min(0.4, a * 0.5); ctx.fillStyle = rgba("#9fe8ff", 0.5); ctx.beginPath(); ctx.arc(e.x, e.y - lift, sr, 0, 7); ctx.fill();
+        ctx.restore();
+      }
       // health bar (skip boss; it has the top banner)
       if (e.type !== "juggernaut") {
         const w = e.r * 2.2, ratio = Math.max(0, e.hp / e.maxHp), by0 = e.y - e.r - 11 - lift;
         ctx.fillStyle = "rgba(0,0,0,0.6)"; rr(e.x - w / 2 - 1, by0 - 1, w + 2, 5, 2.5); ctx.fill();
         ctx.fillStyle = ratio > 0.5 ? C.hpGood : ratio > 0.25 ? C.hpMid : C.hpLow; rr(e.x - w / 2, by0, w * ratio, 3, 1.5); ctx.fill();
+        if (e.shieldMax) { const sf = Math.max(0, e.shield / e.shieldMax); ctx.fillStyle = rgba("#9fe8ff", 0.9); rr(e.x - w / 2, by0 - 3.5, w * sf, 2, 1); ctx.fill(); }
       }
     });
   }
@@ -925,7 +1027,29 @@
   }
 
   /* ---------------- SCREEN-SPACE UI ---------------- */
-  let hudBtns = [], trayBtns = [], zoomBtns = [];
+  let hudBtns = [], trayBtns = [], zoomBtns = [], abilityBtns = [];
+  function drawAbility() {
+    abilityBtns = [];
+    const cx = 34, cy = PLAY_BOTTOM - 34, R = 24, ready = S.strikeCd <= 0, armed = S.strikeArm;
+    const pl = 0.5 + 0.5 * Math.sin(S.time * 6);
+    ctx.save();
+    // base
+    ctx.fillStyle = "rgba(16,22,26,0.85)"; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    if (ready || armed) { ctx.shadowColor = "#f2643a"; ctx.shadowBlur = 6 + (armed ? pl * 10 : 4); }
+    ctx.strokeStyle = ready || armed ? "#f2643a" : "rgba(255,255,255,0.15)"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // cooldown sweep
+    if (!ready) { ctx.strokeStyle = "rgba(242,100,58,0.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 1, -Math.PI / 2, -Math.PI / 2 + (1 - S.strikeCd / STRIKE_CD) * 6.283); ctx.stroke(); }
+    // icon: crosshair / burst
+    ctx.strokeStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();
+    ctx.beginPath(); for (const a of [0, 1.57, 3.14, 4.71]) { ctx.moveTo(cx + Math.cos(a) * 5, cy + Math.sin(a) * 5); ctx.lineTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11); } ctx.stroke();
+    ctx.fillStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.beginPath(); ctx.arc(cx, cy, 2, 0, 7); ctx.fill();
+    // label
+    ctx.fillStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.font = "800 7px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(armed ? "CANCEL" : ready ? "STRIKE" : Math.ceil(S.strikeCd) + "s", cx, cy + R + 7);
+    ctx.restore();
+    abilityBtns.push({ id: "strike", x: cx - R, y: cy - R, w: R * 2, h: R * 2 });
+  }
   function coin(x, y, s) { const g = ctx.createRadialGradient(x - s * 0.3, y - s * 0.3, 0.5, x, y, s); g.addColorStop(0, "#ffe3a0"); g.addColorStop(0.55, C.scrap); g.addColorStop(1, C.scrapDark); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.font = "800 " + (s * 1.1) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⚙", x, y + 0.5); }
   function coreIcon(x, y, s, col) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.stroke(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, s * 0.4, 0, 7); ctx.fill(); ctx.restore(); }
 
@@ -963,9 +1087,9 @@
     const nwW = 156, nwX = W - nwW - 10, nwY = rowY - 10, nwH = 20;
     if (canStart) {
       // incoming preview
-      const counts = waveCounts(S.wave + 1); let px = nwX - 8; ctx.textAlign = "right";
-      const order = ["juggernaut", "brute", "raider", "stalker"];
-      for (const tp of order) { if (!counts[tp]) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 34; }
+      const counts = waveCounts(S.wave + 1); let px = nwX - 8, shown = 0; ctx.textAlign = "right";
+      const order = ["juggernaut", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
+      for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
       ctx.save(); ctx.shadowColor = C.neonC; ctx.shadowBlur = 5 + pulse * 8; ctx.fillStyle = C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
       ctx.fillStyle = "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
@@ -995,9 +1119,10 @@
     const boss = enemies.find((e) => e.type === "juggernaut" && e.alive);
     if (!boss) return;
     const bw = W - 60, bx = 30, by = HUD_H + 6, ratio = Math.max(0, boss.hp / boss.maxHp);
-    ctx.fillStyle = "rgba(6,9,12,0.7)"; rr(bx - 2, by - 2, bw + 4, 12, 3); ctx.fill();
+    ctx.fillStyle = "rgba(6,9,12,0.7)"; rr(bx - 2, by - 2, bw + 4, 14, 3); ctx.fill();
     ctx.fillStyle = "#2a1416"; rr(bx, by, bw, 8, 2); ctx.fill();
     ctx.fillStyle = C.neonM; rr(bx, by, bw * ratio, 8, 2); ctx.fill();
+    if (boss.shieldMax) { const sf = Math.max(0, boss.shield / boss.shieldMax); ctx.fillStyle = rgba("#9fe8ff", 0.9); rr(bx, by + 8.5, bw * sf, 2.5, 1); ctx.fill(); }
     ctx.fillStyle = C.text; ctx.font = "800 8px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("JUGGERNAUT", W / 2, by + 4);
   }
 
@@ -1027,6 +1152,16 @@
     const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.72);
     g.addColorStop(0, "rgba(224,83,63,0)"); g.addColorStop(1, "rgba(224,83,63," + pulse + ")");
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  function drawStrikeArm() {
+    const pl = 0.5 + 0.5 * Math.sin(S.time * 6);
+    ctx.save();
+    ctx.strokeStyle = rgba("#f2643a", 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, W - 4, PLAY_H - 4);
+    ctx.fillStyle = rgba("#f2643a", 0.06 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, W, PLAY_H);
+    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(W / 2 - 92, PLAY_TOP + 10, 184, 22, 5); ctx.fill();
+    ctx.fillStyle = "#ff9a5a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("✷ TAP A TARGET ZONE", W / 2, PLAY_TOP + 21);
+    ctx.restore();
   }
 
   /* ---------- TRAY (bottom sheet) ---------- */
@@ -1075,31 +1210,55 @@
       trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford });
     });
   }
+  function towerSpent(t) { const spec = TOWERS[t.type]; return spec.levels[0].cost + (t.lvl >= 1 ? spec.levels[1].cost : 0) + (t.lvl >= 2 && t.branch ? spec.branches[t.branch].cost : 0); }
   function drawTowerMenu() {
     trayBtns = [];
-    const t = towers[S.selTower], spec = TOWERS[t.type], st = spec.levels[t.lvl];
+    const t = towers[S.selTower], spec = TOWERS[t.type], st = tStats(t), branched = t.lvl === 2 && t.branch;
+    const title = branched ? spec.branches[t.branch].name : spec.name;
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    drawTowerArt(30, PLAY_BOTTOM + 30, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.72);
-    ctx.fillStyle = C.text; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText(spec.name + "  L" + (t.lvl + 1), 56, PLAY_BOTTOM + 16);
-    ctx.fillStyle = C.textDim; ctx.font = "700 10px ui-monospace, monospace";
-    ctx.fillText("DMG " + st.dmg + "   RNG " + st.range + "   " + (st.rate / 1000).toFixed(1) + "s", 56, PLAY_BOTTOM + 32);
+    drawTowerArt(30, PLAY_BOTTOM + 28, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.66, t.branch);
+    ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1), 54, PLAY_BOTTOM + 14);
+    ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
+    ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, PLAY_BOTTOM + 28);
+    // damage-type tag (teaches the counterplay triangle)
+    const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("◆ " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, PLAY_BOTTOM + 40);
     // target mode toggle
-    const tmX = 56, tmY = PLAY_BOTTOM + 46, tmW = 128, tmH = 16;
+    const tmX = 168, tmY = PLAY_BOTTOM + 34, tmW = 128, tmH = 16;
     ctx.fillStyle = "rgba(55,224,208,0.12)"; rr(tmX, tmY - 8, tmW, tmH, 3); ctx.fill();
     ctx.fillStyle = C.neonC; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("TARGET ▸ " + TARGET_LABEL[t.mode], tmX + tmW / 2, tmY);
     trayBtns.push({ x: tmX, y: tmY - 9, w: tmW, h: tmH + 2, action: "target" });
 
-    const sell = Math.round(spec.levels.slice(0, t.lvl + 1).reduce((s, l) => s + l.cost, 0) * SELL_REFUND);
-    const canUp = t.lvl < 2, upCost = canUp ? spec.levels[t.lvl + 1].cost : 0, upAfford = canUp && S.scrap >= upCost;
-    const bw = 152, bh = 40, y = PLAY_BOTTOM + 66, ux = 12;
-    ctx.fillStyle = upAfford ? C.neonC : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
-    ctx.textAlign = "center"; ctx.fillStyle = canUp ? (upAfford ? "#06181a" : C.textDim) : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
-    ctx.fillText(canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL", ux + bw / 2, y + bh / 2);
-    trayBtns.push({ x: ux, y, w: bw, h: bh, action: "upgrade", afford: upAfford });
-    const sx2 = ux + bw + 8;
-    ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
-    ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
-    trayBtns.push({ x: sx2, y, w: bw, h: bh, action: "sell" });
+    const sell = Math.round(towerSpent(t) * SELL_REFUND);
+    const y = PLAY_BOTTOM + 66, bh = 40, ux = 12;
+    if (t.lvl === 1) {
+      // branch choice: two specialization buttons
+      const bw2 = 108, gap = 4;
+      ["a", "b"].forEach((key, i) => {
+        const br = spec.branches[key], x = ux + i * (bw2 + gap), afford = S.scrap >= br.cost;
+        ctx.fillStyle = afford ? "rgba(55,224,208,0.16)" : "#1c2228"; rr(x, y, bw2, bh, 4); ctx.fill();
+        ctx.strokeStyle = afford ? spec.accent : "rgba(255,255,255,0.06)"; ctx.lineWidth = 1; rr(x, y, bw2, bh, 4); ctx.stroke();
+        ctx.textAlign = "center"; ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(br.short, x + bw2 / 2, y + 12);
+        ctx.fillStyle = C.textDim; ctx.font = "600 7.5px system-ui"; ctx.fillText(br.desc, x + bw2 / 2, y + 24);
+        ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("⚙" + br.cost, x + bw2 / 2, y + 34);
+        trayBtns.push({ x, y, w: bw2, h: bh, action: "branch", branch: key, afford });
+      });
+      const sx2 = ux + 2 * bw2 + 2 * gap + 4, sw = W - sx2 - 12;
+      ctx.fillStyle = "#3a2020"; rr(sx2, y, sw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = "#f0a090"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("SELL ⚙" + sell, sx2 + sw / 2, y + bh / 2);
+      trayBtns.push({ x: sx2, y, w: sw, h: bh, action: "sell" });
+    } else {
+      const canUp = t.lvl < 1, upCost = canUp ? spec.levels[t.lvl + 1].cost : 0, upAfford = canUp && S.scrap >= upCost;
+      const bw = 152;
+      ctx.fillStyle = upAfford ? C.neonC : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = canUp ? (upAfford ? "#06181a" : C.textDim) : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
+      ctx.fillText(canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL", ux + bw / 2, y + bh / 2);
+      trayBtns.push({ x: ux, y, w: bw, h: bh, action: "upgrade", afford: upAfford });
+      const sx2 = ux + bw + 8;
+      ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
+      trayBtns.push({ x: sx2, y, w: bw, h: bh, action: "sell" });
+    }
   }
 
   /* ---------------- OVERLAYS ---------------- */
@@ -1123,11 +1282,11 @@
       byId("s").onclick = () => { Sound.toggle(!Sound.isOn()); render(); };
     } else if (S.screen === "howto") {
       show(`<div class="panel"><h2>Field Manual</h2><ul class="how">
-        <li><b>Build:</b> tap open ground, pick a tower.</li>
-        <li><b>Manage:</b> tap a tower to upgrade, sell, or change targeting.</li>
+        <li><b>Build</b> on open ground, then <b>upgrade</b> — level 3 splits into two <b>specializations</b>, so choose.</li>
+        <li><b>Counter their kind:</b> <b>armored</b> foes shrug off kinetic Auto-Gun (use Mortar or a Piercing branch); <b>shielded</b> foes melt to energy (Cryo, Tesla); <b>flyers</b> are hit only by Auto-Gun and Tesla.</li>
+        <li><b>Airstrike:</b> tap <b>✷</b>, then a target zone, for armor-piercing burst damage on a cooldown.</li>
         <li><b>Camera:</b> pinch to zoom, drag to pan, or use the on-screen controls.</li>
-        <li><b>Auto-Gun</b> fast kinetic · <b>Cryo</b> slows clusters · <b>Mortar</b> splash · <b>Tesla</b> long-range nuke.</li>
-        <li>Waves auto-deploy after a short countdown, or tap <b>Deploy</b> to send them early.</li>
+        <li>Waves auto-deploy after a countdown, or tap <b>Deploy</b> to send them early.</li>
         <li>Lose all <b>Core</b> integrity and the reactor falls.</li>
       </ul><button class="btn primary" id="b">Back</button></div>`);
       byId("b").onclick = () => { S.screen = "menu"; render(); };
@@ -1190,9 +1349,12 @@
 
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   function tap(x, y) {
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
+    for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); return; }
+    // armed airstrike: a tap in the play viewport calls it down
+    if (S.strikeArm) { if (y >= PLAY_TOP && y < PLAY_BOTTOM) { const w = screenToWorld(x, y); doStrike(w.x, w.y); } else S.strikeArm = false; return; }
     if (y >= PLAY_BOTTOM) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; }
     // world tap
     const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
@@ -1212,9 +1374,13 @@
       if (!b.afford) { Sound.err(); vibrate(40); return; }
       const t = towers[S.selTower], cost = TOWERS[t.type].levels[t.lvl + 1].cost; S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 9);
+    } else if (b.action === "branch") {
+      if (!b.afford) { Sound.err(); vibrate(40); return; }
+      const t = towers[S.selTower], br = TOWERS[t.type].branches[b.branch]; S.scrap -= br.cost; t.lvl = 2; t.branch = b.branch; Sound.up(); vibrate([12, 30]);
+      const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
     } else if (b.action === "sell") {
-      const t = towers[S.selTower], spec = TOWERS[t.type];
-      S.scrap += Math.round(spec.levels.slice(0, t.lvl + 1).reduce((s, l) => s + l.cost, 0) * SELL_REFUND);
+      const t = towers[S.selTower];
+      S.scrap += Math.round(towerSpent(t) * SELL_REFUND);
       towers.splice(S.selTower, 1); S.selTower = null; Sound.sell();
     } else if (b.action === "target") {
       const t = towers[S.selTower]; t.mode = TARGET_MODES[(TARGET_MODES.indexOf(t.mode) + 1) % TARGET_MODES.length]; Sound.place();
@@ -1232,6 +1398,7 @@
       const step = dtMs * S.speed, dt = step / 1000;
       updSpawns(step); updTowers(dt, step); updEnemies(dt); updProjs(dt); updParts(dt);
       if (shake.t > 0) shake.t -= raw;
+      if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
       if (!S.waveActive && S.wave < TOTAL_WAVES && S.countdown > 0) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
       if (S.screen !== "playing") render();
     }
@@ -1248,9 +1415,11 @@
 
     // screen layer
     drawScreenFlash(); drawLowCore();
+    if (S.screen === "playing" && S.strikeArm) drawStrikeArm();
     drawBossBar();
     drawBanner(raw);
     drawZoomButtons();
+    if (S.screen === "playing" || S.screen === "paused") drawAbility();
     drawHUD();
     drawTray(raw);
     requestAnimationFrame(frame);
