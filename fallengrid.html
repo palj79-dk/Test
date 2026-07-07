@@ -56,6 +56,9 @@
   .tal .pip.on { background: #37e0d0; box-shadow: 0 0 6px rgba(55,224,208,.5); }
   .tal .buy { display: inline-block; width: auto; flex: 0 0 auto; min-width: 60px; padding: 9px 8px; margin: 0; font-size: 11px; white-space: nowrap; }
   .tal .buy:disabled { opacity: .4; cursor: default; }
+  .btn.mapbtn { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; }
+  .btn.mapbtn .mi { font-size: 9px; letter-spacing: 1px; color: #8a969c; font-weight: 700; }
+  .btn.mapbtn.active .mi { color: #06181a; }
 </style>
 </head>
 <body>
@@ -95,9 +98,9 @@
   const PLAY_H = PLAY_BOTTOM - PLAY_TOP; // 466
 
   /* ---------------- WORLD (map space) ---------------- */
-  const TILE = 64, COLS = 11, ROWS = 16;
-  const WORLD_W = COLS * TILE; // 704
-  const WORLD_H = ROWS * TILE; // 1024
+  // Grid size is per-map (set by loadMap); TILE is fixed. Maps range from small to large-and-panned.
+  const TILE = 64;
+  let COLS = 11, ROWS = 16, WORLD_W = COLS * TILE, WORLD_H = ROWS * TILE;
 
   /* ---------------- PALETTE ---------------- */
   const C = {
@@ -200,12 +203,21 @@
   /* ---------------- HASH ---------------- */
   function hash2(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; h ^= h >>> 16; return ((h >>> 0) % 10000) / 10000; }
 
-  /* ---------------- MAPS + PATH ---------------- */
-  // Each map is a list of [col,row] corners (consecutive corners share a row or column).
-  // Spawn is the first point (an edge), base is the last. Decor is deterministic per map seed.
+  /* ---------------- MAPS + ROUTES ---------------- */
+  // Each map defines its own grid size and 1+ routes. A route is a list of [col,row] corners
+  // (consecutive corners share a row or column); all routes end at the shared base (last point).
+  // Multiple routes = multiple entrances; where two routes' tiles overlap, roads simply cross.
   const MAPS = [
-    { name: "Serpentine", seed: 1, wp: [[0, 1], [9, 1], [9, 4], [1, 4], [1, 7], [9, 7], [9, 10], [1, 10], [1, 13], [9, 13], [9, 15], [5, 15]] },
-    { name: "Switchback", seed: 2, wp: [[1, 0], [1, 2], [9, 2], [9, 5], [1, 5], [1, 8], [9, 8], [9, 11], [1, 11], [1, 14], [6, 14], [6, 15]] },
+    { name: "Outpost", diff: 1, seed: 3, cols: 9, rows: 12,
+      routes: [[[0, 1], [7, 1], [7, 4], [1, 4], [1, 7], [7, 7], [7, 9], [4, 9], [4, 11]]] },
+    { name: "Serpentine", diff: 2, seed: 1, cols: 11, rows: 16,
+      routes: [[[0, 1], [9, 1], [9, 4], [1, 4], [1, 7], [9, 7], [9, 10], [1, 10], [1, 13], [9, 13], [9, 15], [5, 15]]] },
+    { name: "Crossroads", diff: 3, seed: 5, cols: 11, rows: 16,
+      routes: [[[0, 4], [8, 4], [8, 15], [5, 15]], [[10, 7], [2, 7], [2, 15], [5, 15]]] },
+    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22,
+      routes: [[[0, 1], [11, 1], [11, 4], [2, 4], [2, 7], [11, 7], [11, 10], [2, 10], [2, 13], [11, 13], [11, 16], [2, 16], [2, 19], [8, 19], [8, 21]]] },
+    { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20,
+      routes: [[[0, 2], [10, 2], [10, 9], [3, 9], [3, 16], [6, 16], [6, 19]], [[12, 5], [2, 5], [2, 12], [9, 12], [9, 16], [6, 16], [6, 19]]] },
   ];
   function buildPath(wp) {
     const tiles = [], seen = new Set();
@@ -219,7 +231,7 @@
   }
   const center = (c, r) => ({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 });
   // per-map state (rebuilt by loadMap); referenced by name everywhere so reassignment is safe
-  let WAYPOINTS = MAPS[0].wp, PATH_TILES = [], PATH_SET = new Set(), PATH_PTS = [], DECOR = [], POOLS = [], currentMap = -1;
+  let ROUTES = [], PATH_SET = new Set(), PATH_PTS = [], DECOR = [], POOLS = [], currentMap = -1;
   const buildable = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS && !PATH_SET.has(c + "," + r);
   function buildDecor(seed) {
     DECOR = []; POOLS = []; const s1 = seed * 101, s2 = seed * 211;
@@ -240,10 +252,15 @@
   }
   function loadMap(i) {
     currentMap = i; const m = MAPS[i];
-    WAYPOINTS = m.wp;
-    PATH_TILES = buildPath(WAYPOINTS);
-    PATH_SET = new Set(PATH_TILES.map(([c, r]) => c + "," + r));
-    PATH_PTS = PATH_TILES.map(([c, r]) => center(c, r));
+    COLS = m.cols; ROWS = m.rows; WORLD_W = COLS * TILE; WORLD_H = ROWS * TILE;
+    MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98;
+    PATH_SET = new Set();
+    ROUTES = m.routes.map((wp) => {
+      const tiles = buildPath(wp);
+      for (const [c, r] of tiles) PATH_SET.add(c + "," + r);
+      return tiles.map(([c, r]) => center(c, r));
+    });
+    PATH_PTS = ROUTES[0];
     buildDecor(m.seed);
     buildTerrain();
   }
@@ -365,13 +382,14 @@
 
   /* ---------------- ENTITIES / STATE ---------------- */
   let enemies = [], towers = [], projs = [], parts = [], floats = [], beams = [], booms = [], gibs = [], scorches = [], smoke = [];
+  let spawnIdx = 0; // rotates spawns across a map's entrances
   const shake = { t: 0, dur: 0, mag: 0 };
   const doShake = (m, d) => { shake.mag = m; shake.dur = d; shake.t = d; };
   function shakeOff() { if (shake.t <= 0) return { x: 0, y: 0 }; const p = shake.t / shake.dur, m = shake.mag * p; return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m }; }
   let screenFlash = 0;
 
   const cam = { x: 0, y: 0, zoom: 1 };
-  const MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98;
+  let MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98; // recomputed per map in loadMap
   const MAXZOOM = 1.9;
 
   const STRIKE_CD = 30, STRIKE_R = 92;
@@ -438,7 +456,7 @@
   }
   function startWave() {
     if (S.waveActive || (!S.endless && S.wave >= TOTAL_WAVES)) return;
-    S.wave++; S.queue = waveComp(S.wave).map((e) => ({ ...e, t: e.delay }));
+    S.wave++; S.queue = waveComp(S.wave).map((e) => ({ ...e, t: e.delay })); spawnIdx = 0;
     S.waveActive = true; S.countdown = 0; S.selTile = null; S.selTower = null;
     const final = !S.endless && S.wave === TOTAL_WAVES;
     S.banner = { text: final ? "FINAL WAVE" : "WAVE " + S.wave + " INCOMING", t: 1.9 };
@@ -489,7 +507,8 @@
     while (S.queue.length && S.queue[0].t <= 0) {
       const s = S.queue.shift(), st = statsFor(s.type, S.wave);
       st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp;
-      enemies.push(Object.assign({ x: PATH_PTS[0].x, y: PATH_PTS[0].y, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6 }, st));
+      const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
+      enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6 }, st));
     }
     if (S.queue.length === 0 && enemies.length === 0 && S.waveActive) {
       S.waveActive = false; S.scrap += Math.round((20 + S.wave * 3) * waveBonusMul()); S.selTile = null; S.selTower = null;
@@ -507,7 +526,7 @@
       // regenerating shield: recharges after a lull with no damage
       if (e.shieldMax) { e.shieldCd += dt; if (e.shieldCd > 3 && e.shield < e.shieldMax) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.22 * dt); }
       if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
-      const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = PATH_PTS[e.pi + 1];
+      const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = ROUTES[e.route][e.pi + 1];
       if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 5 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
       const dx = tgt.x - e.x, dy = tgt.y - e.y, d = Math.hypot(dx, dy);
       if (d > 0.001) { const want = Math.atan2(dy, dx); let diff = want - e.face; while (diff > Math.PI) diff -= 6.283; while (diff < -Math.PI) diff += 6.283; e.face += diff * Math.min(1, dt * 9); e.bank = clamp((e.bank || 0) + (diff - (e.bank || 0)) * Math.min(1, dt * 6), -0.5, 0.5); }
@@ -726,16 +745,19 @@
 
   /* ---------------- WORLD DRAW ---------------- */
   function drawSpawnAndBase() {
-    const st = PATH_PTS[0], base = PATH_PTS[PATH_PTS.length - 1];
-    // breach: glowing red rift with embers
-    ctx.save();
+    const base = ROUTES[0][ROUTES[0].length - 1];
+    // breach at each entrance: glowing red rift with embers
     const pr = 20 + Math.sin(S.time * 3) * 3;
-    const gr = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, pr + 8);
-    gr.addColorStop(0, "rgba(255,180,90,0.9)"); gr.addColorStop(0.5, "rgba(224,83,63,0.5)"); gr.addColorStop(1, "rgba(224,83,63,0)");
-    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, pr + 8, 0, 7); ctx.fill();
-    ctx.strokeStyle = "#ff8a3a"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(st.x, st.y, pr, 0, 7); ctx.stroke();
-    ctx.strokeStyle = "rgba(255,120,60,0.5)"; ctx.beginPath(); ctx.arc(st.x, st.y, pr * 0.6, 0, 7); ctx.stroke();
-    ctx.restore();
+    for (const route of ROUTES) {
+      const st = route[0];
+      ctx.save();
+      const gr = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, pr + 8);
+      gr.addColorStop(0, "rgba(255,180,90,0.9)"); gr.addColorStop(0.5, "rgba(224,83,63,0.5)"); gr.addColorStop(1, "rgba(224,83,63,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, pr + 8, 0, 7); ctx.fill();
+      ctx.strokeStyle = "#ff8a3a"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(st.x, st.y, pr, 0, 7); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,120,60,0.5)"; ctx.beginPath(); ctx.arc(st.x, st.y, pr * 0.6, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
     // base: bunker with cyan reactor core
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.ellipse(base.x, base.y + 16, 26, 8, 0, 0, 7); ctx.fill();
@@ -1019,11 +1041,12 @@
     for (const s of smoke) { const a = Math.max(0, s.life / s.max) * 0.5; ctx.fillStyle = s.col + a + ")"; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); }
   }
   // ambient floating dust motes / embers for atmosphere (deterministic, no state)
-  const MOTES = []; for (let i = 0; i < 34; i++) MOTES.push({ x: hash2(i, 11) * WORLD_W, y: hash2(i, 29) * WORLD_H, s: 0.4 + hash2(i, 7) * 1.3, sp: 4 + hash2(i, 3) * 10, ph: hash2(i, 5) * 7, ember: hash2(i, 17) > 0.78 });
+  // motes stored as 0..1 fractions so they fill any map size
+  const MOTES = []; for (let i = 0; i < 34; i++) MOTES.push({ fx: hash2(i, 11), fy: hash2(i, 29), s: 0.4 + hash2(i, 7) * 1.3, sp: 4 + hash2(i, 3) * 10, ph: hash2(i, 5) * 7, ember: hash2(i, 17) > 0.78 });
   function drawAtmosphere() {
     const t = S.time;
     for (const m of MOTES) {
-      const x = m.x + Math.sin(t * 0.3 + m.ph) * 14, y = ((m.y - t * m.sp) % WORLD_H + WORLD_H) % WORLD_H;
+      const x = m.fx * WORLD_W + Math.sin(t * 0.3 + m.ph) * 14, y = ((m.fy * WORLD_H - t * m.sp) % WORLD_H + WORLD_H) % WORLD_H;
       const a = 0.12 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.5 + m.ph));
       if (m.ember) { ctx.fillStyle = rgba("#ff9a4a", a * 1.6); ctx.shadowColor = "#ff9a4a"; ctx.shadowBlur = 4; }
       else { ctx.fillStyle = rgba("#c8c0b0", a); ctx.shadowBlur = 0; }
@@ -1417,7 +1440,10 @@
   function render() {
     if (S.screen === "playing") Sound.startMusic(); else Sound.stopMusic();
     if (S.screen === "menu") {
-      const maps = MAPS.map((m, i) => `<button class="btn small ${S.mapIndex === i ? "active" : ""}" id="map${i}">${m.name}</button>`).join("");
+      const maps = MAPS.map((m, i) => {
+        const info = "★".repeat(m.diff) + "  ·  " + m.cols + "×" + m.rows + (m.routes.length > 1 ? "  ·  " + m.routes.length + " gates" : "");
+        return `<button class="btn small mapbtn ${S.mapIndex === i ? "active" : ""}" id="map${i}"><span>${m.name}</span><span class="mi">${info}</span></button>`;
+      }).join("");
       show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
@@ -1425,7 +1451,7 @@
         <button class="btn" id="e">∞ Endless</button>
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">Field Manual</button>
-        <div class="sub" style="margin:6px 0 4px">Map</div><div class="row">${maps}</div>
+        <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row"><button class="btn small ${S.difficulty === "normal" ? "active" : ""}" id="n">Normal</button><button class="btn small ${S.difficulty === "hard" ? "active" : ""}" id="hd">Hard</button></div>
         <button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio On" : "○ Audio Off"}</button>

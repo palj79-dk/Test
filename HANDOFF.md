@@ -63,11 +63,13 @@ TILE = 64  COLS = 11  ROWS = 16   WORLD_W = 704  WORLD_H = 1024
 
 Dynamic map elements drawn live over the terrain: toxic pool glow (`drawPoolGlow`), spawn breach + base reactor (`drawSpawnAndBase`), ground scorch decals (`drawScorches`), and ambient dust/embers (`drawAtmosphere`, ~34 deterministic motes).
 
-## 1.5 Maps and path
+## 1.5 Maps, grid size, and routes
 
-`MAPS[]` holds map definitions `{ name, seed, wp }`. Per-map state (`WAYPOINTS, PATH_TILES, PATH_SET, PATH_PTS, DECOR, POOLS`) is `let` and rebuilt by `loadMap(i)` (path from `wp`, decor/pools from `seed`, then a one-time `buildTerrain()` re-bake). `selectMap(i)` re-bakes only when the map changes. `buildable`, `center`, `drawSpawnAndBase`, and terrain all read these by name, so reassignment is safe. **`buildTerrain()` must never run inside the frame loop** — only on map load.
+Maps vary in **grid size** and can have **multiple entrances**. `COLS/ROWS/WORLD_W/WORLD_H/MINZOOM` are `let`, set per map by `loadMap(i)` from `MAPS[i].cols/rows`; the baked terrain canvas sizes to the map. Large maps exceed the viewport at readable zoom and are panned (the camera already supports this; `fitCamera` fits width, top-anchored).
 
-Two maps ship: `Serpentine` (`[0,1] [9,1] [9,4] [1,4] [1,7] [9,7] [9,10] [1,10] [1,13] [9,13] [9,15] [5,15]`) and `Switchback` (`[1,0] [1,2] [9,2] [9,5] [1,5] [1,8] [9,8] [9,11] [1,11] [1,14] [6,14] [6,15]`). Corners share a row/column; spawn is the first point (an edge), base the last. `S.mapIndex` (persisted `map`) selects; the menu has a map picker.
+Each map defines `routes: [[...corners], ...]` — one or more routes, each a `[col,row]` corner list (consecutive corners share a row/column). **All routes end at the shared base** (the last point); their starts are the entrances. `loadMap` builds `ROUTES` (array of world-point polylines) and `PATH_SET` = the union of all route tiles, so where two routes overlap the roads simply **cross** (baked as an intersection). Enemies carry a `route` index assigned round-robin at spawn (`spawnIdx`, reset each wave); they move along `ROUTES[e.route]` and leak at its end. `drawSpawnAndBase` draws a breach at every route start and one base. `buildable` = any in-bounds tile not in `PATH_SET`. **`buildTerrain()` must never run in the frame loop** — only on map load; `selectMap(i)` re-bakes only on change.
+
+Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11×16 ★★ · `Crossroads` 11×16 ★★★ 2-gate crossing · `Sprawl` 13×22 ★★★★ long single route (panned) · `Twin Gates` 13×20 ★★★★★ 2-gate crossing (panned). `S.mapIndex` (persisted `map`) selects; the menu shows name/★/size/gates.
 
 ## 1.6 Economy and progression
 
@@ -183,6 +185,7 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
 5. **Meta-progression** — persistent Alloy currency + six-talent Armory.
 6. **Content — endless + second map (Plan A)** — `MAPS[]` + `loadMap`/`selectMap` with a menu picker; a second `Switchback` layout; uncapped Endless mode with capped wave counts, `highEndless` best, and a post-victory "continue into endless".
 7. **Balance pass (Plan C)** — added a headless auto-battle harness (`__GAME.sim`; the frame update block is now `stepSim`). Equal-count and equal-budget sims showed Tesla was the dominant per-scrap option (solo-cleared at L1) while the other three sat in their intended niches (Mortar/Cryo are air-blind by design, so their low *solo* numbers are the flyer counterplay, not weakness — confirmed by mortar+turret clearing wave 20). Fix was a targeted Tesla nerf (range/dmg/rate down across L1–L3); Tesla is now on par per budget and remains the anti-air/anti-shield specialist. No dead branches; mixed play stays challenging (normal ~clears, hard ~wave 20).
+8. **Map variety** — generalized to per-map grid sizes and multi-route maps (see 1.5). Five maps from small to large-and-panned, single- to dual-entrance with crossing roads, rising ★1–★5. Enemies split across a map's entrances (two defensive fronts). Verified: all routes traverse to base, terrain re-bakes once per load, 60fps on the largest (13×22) map.
 
 ## 2.1 Where things are
 
