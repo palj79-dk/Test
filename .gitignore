@@ -1,0 +1,4 @@
+# local test harnesses / render outputs
+scratch_*.py
+_ex.js
+*.png
