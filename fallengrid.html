@@ -1093,10 +1093,10 @@
   }
   // rounded-body sphere shading: highlight offset toward the light (upper-left in body-local space)
   function bodyFill(r, body, hiAmt, loAmt) {
-    const g = ctx.createRadialGradient(-r * 0.32, -r * 0.4, r * 0.1, 0, 0, r * 1.25);
-    g.addColorStop(0, lighten(body, hiAmt == null ? 0.42 : hiAmt));
-    g.addColorStop(0.55, body);
-    g.addColorStop(1, darken(body, loAmt == null ? 0.42 : loAmt));
+    const g = ctx.createRadialGradient(-r * 0.34, -r * 0.42, r * 0.05, 0, r * 0.1, r * 1.35);
+    g.addColorStop(0, lighten(body, hiAmt == null ? 0.55 : hiAmt));
+    g.addColorStop(0.5, body);
+    g.addColorStop(1, darken(body, loAmt == null ? 0.55 : loAmt));
     return g;
   }
   function legPair(ph, hipX, hipY, len, spread, w, col) {
@@ -1290,6 +1290,14 @@
       // hit flash overlay clipped to body region
       if (e.flash > 0) { ctx.globalAlpha = Math.min(0.8, e.flash / 0.12); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, e.r * 1.05, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       ctx.restore();
+      // screen-aligned overhead sheen + underside shadow (consistent light, regardless of facing)
+      const cy = e.y - lift;
+      const sh = ctx.createRadialGradient(e.x - e.r * 0.3, cy - e.r * 0.45, 1, e.x - e.r * 0.3, cy - e.r * 0.45, e.r * 1.25);
+      sh.addColorStop(0, "rgba(255,255,255,0.16)"); sh.addColorStop(0.6, "rgba(255,255,255,0.03)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(e.x, cy, e.r * 1.05, 0, 7); ctx.fill();
+      const un = ctx.createRadialGradient(e.x, cy + e.r * 0.5, 1, e.x, cy + e.r * 0.5, e.r * 1.1);
+      un.addColorStop(0, "rgba(0,0,0,0.22)"); un.addColorStop(0.7, "rgba(0,0,0,0.05)"); un.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = un; ctx.beginPath(); ctx.arc(e.x, cy + e.r * 0.35, e.r, 0, 7); ctx.fill();
       // frost overlay (screen-aligned)
       if (e.frost > 0) {
         ctx.save(); ctx.globalAlpha = e.frost * 0.5; ctx.fillStyle = rgba("#bfefff", 0.6);
