@@ -76,7 +76,7 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
   /* color helpers: return rgb()/rgba() strings so the hex-scan stays clean */
-  function _hx(h) { h = h.replace("#", ""); if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+  function _hx(h) { if (h[0] === "r") { const m = h.match(/\d+/g); return [+m[0], +m[1], +m[2]]; } h = h.replace("#", ""); if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
   function mix(a, b, t) { const A = _hx(a), B = Array.isArray(b) ? b : _hx(b); return "rgb(" + Math.round(lerp(A[0], B[0], t)) + "," + Math.round(lerp(A[1], B[1], t)) + "," + Math.round(lerp(A[2], B[2], t)) + ")"; }
   const lighten = (c, t) => mix(c, [255, 255, 255], t);
   const darken = (c, t) => mix(c, [0, 0, 0], t);
@@ -264,17 +264,16 @@
     DECOR = []; POOLS = []; const s1 = seed * 101, s2 = seed * 211;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       if (PATH_SET.has(c + "," + r)) continue;
-      const h = hash2(c + s1, r + s2);
-      if (h > 0.80) {
-        let type;
-        if (h > 0.965) type = "wreck";
-        else if (h > 0.93) type = "pool";
-        else if (h > 0.89) type = "barrel";
-        else if (h > 0.855) type = "rubble";
-        else type = "crater";
-        DECOR.push({ c, r, type, seed: hash2(c * 3 + seed, r * 7 + seed) });
-        if (type === "pool") { const p = center(c, r); POOLS.push({ x: p.x, y: p.y }); }
-      }
+      const h = hash2(c + s1, r + s2), sd = hash2(c * 3 + seed, r * 7 + seed);
+      let type = null;
+      if (h > 0.986) type = sd > 0.5 ? "building" : "dropship"; // rare landmark set-pieces
+      else if (h > 0.95) type = "wreck";
+      else if (h > 0.915) type = "pool";
+      else if (h > 0.878) type = "sandbags";
+      else if (h > 0.84) type = "barrel";
+      else if (h > 0.78) type = "rubble";
+      else if (h > 0.73) type = sd > 0.62 ? "deadtree" : "crater";
+      if (type) { DECOR.push({ c, r, type, seed: sd }); if (type === "pool") { const p = center(c, r); POOLS.push({ x: p.x, y: p.y }); } }
     }
   }
   function loadMap(i) {
@@ -697,6 +696,16 @@
       const x = c * TILE, y = r * TILE;
       PATH_SET.has(c + "," + r) ? roadTile(g, x, y, c, r) : groundTile(g, x, y, c, r);
     }
+    // baked contact shadow where ground meets the sunken road (depth)
+    const dep = 15;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (PATH_SET.has(c + "," + r)) continue;
+      const x = c * TILE, y = r * TILE;
+      if (PATH_SET.has(c + "," + (r - 1))) { const gr = g.createLinearGradient(0, y, 0, y + dep); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y, TILE, dep); }
+      if (PATH_SET.has(c + "," + (r + 1))) { const gr = g.createLinearGradient(0, y + TILE, 0, y + TILE - dep); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y + TILE - dep, TILE, dep); }
+      if (PATH_SET.has((c - 1) + "," + r)) { const gr = g.createLinearGradient(x, 0, x + dep, 0); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y, dep, TILE); }
+      if (PATH_SET.has((c + 1) + "," + r)) { const gr = g.createLinearGradient(x + TILE, 0, x + TILE - dep, 0); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x + TILE - dep, y, dep, TILE); }
+    }
     // decor sorted by row for overlap
     DECOR.slice().sort((a, b) => a.r - b.r).forEach((d) => {
       const x = d.c * TILE, y = d.r * TILE;
@@ -704,6 +713,10 @@
       else if (d.type === "pool") drawPool(g, x, y);
       else if (d.type === "barrel") drawBarrel(g, x, y, d.seed);
       else if (d.type === "rubble") drawRubble(g, x, y, d.seed);
+      else if (d.type === "building") drawBuilding(g, x, y, d.seed);
+      else if (d.type === "dropship") drawDropship(g, x, y, d.seed);
+      else if (d.type === "sandbags") drawSandbags(g, x, y, d.seed);
+      else if (d.type === "deadtree") drawDeadtree(g, x, y, d.seed);
       else drawCrater(g, x, y);
     });
     // baked directional light: warm from upper-left, cool shadow lower-right (consistent light source)
@@ -760,6 +773,10 @@
     // cracks in asphalt
     g.strokeStyle = lighten(BM.road, 0.12); g.lineWidth = 1;
     for (let i = 0; i < 2; i++) { const h1 = hash2(c * 5 + i, r * 9 + i), h2 = hash2(c * 11 + i, r * 3 + i); g.beginPath(); g.moveTo(x + 8 + h1 * (TILE - 16), y + 8 + h2 * (TILE - 16)); g.lineTo(x + 8 + h2 * (TILE - 16), y + 8 + h1 * (TILE - 16)); g.stroke(); }
+    // worn tire tracks along travel direction
+    g.fillStyle = "rgba(0,0,0,0.16)";
+    if (n.l || n.rt) { g.fillRect(x, cy - 9, TILE, 3.5); g.fillRect(x, cy + 5, TILE, 3.5); }
+    if (n.u || n.d) { g.fillRect(cx - 9, y, 3.5, TILE); g.fillRect(cx + 5, y, 3.5, TILE); }
     // faded center dashes along travel direction
     g.fillStyle = BM.roadLine; g.globalAlpha = 0.5;
     const horiz = n.l || n.rt;
@@ -773,36 +790,126 @@
     g.fillStyle = BM.toxic; g.beginPath(); g.ellipse(cx, cy, 11, 8, 0, 0, 7); g.fill();
     g.fillStyle = rgba(lighten(BM.toxic, 0.4), 0.5); g.beginPath(); g.ellipse(cx - 3, cy - 2, 4, 3, 0, 0, 7); g.fill();
   }
+  function grr(g, x, y, w, h, rad) { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); }
   function drawBarrel(g, x, y, s) {
     const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.28)"; g.beginPath(); g.ellipse(cx, cy + 12, 11, 4, 0, 0, 7); g.fill();
-    g.fillStyle = s > 0.5 ? "#6a7a3a" : C.rust; g.fillRect(cx - 8, cy - 12, 16, 24);
-    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cx - 8, cy - 12, 4, 24);
-    g.fillStyle = "rgba(0,0,0,0.3)"; g.fillRect(cx - 8, cy - 4, 16, 3); g.fillRect(cx - 8, cy + 4, 16, 3);
-    g.fillStyle = C.neonG; g.globalAlpha = 0.9; g.beginPath(); g.arc(cx, cy, 3, 0, 7); g.fill(); g.globalAlpha = 1;
+    g.fillStyle = "rgba(0,0,0,0.34)"; g.beginPath(); g.ellipse(cx + 3, cy + 13, 12, 4.5, 0, 0, 7); g.fill();
+    const body = s > 0.5 ? "#6a7a3a" : C.rust;
+    const bg = g.createLinearGradient(cx - 9, 0, cx + 9, 0); bg.addColorStop(0, darken(body, 0.35)); bg.addColorStop(0.35, lighten(body, 0.18)); bg.addColorStop(1, darken(body, 0.45));
+    g.fillStyle = bg; grr(g, cx - 9, cy - 13, 18, 26, 3); g.fill();
+    g.fillStyle = "rgba(0,0,0,0.3)"; g.fillRect(cx - 9, cy - 5, 18, 2.5); g.fillRect(cx - 9, cy + 4, 18, 2.5);
+    g.fillStyle = darken(body, 0.55); g.beginPath(); g.ellipse(cx, cy - 13, 9, 3, 0, 0, 7); g.fill();
+    g.fillStyle = lighten(body, 0.3); g.beginPath(); g.ellipse(cx - 2, cy - 13, 5, 1.6, 0, 0, 7); g.fill();
+    g.fillStyle = "#f2b23a"; g.fillRect(cx - 9, cy - 2, 18, 4); // hazard band
+    g.fillStyle = "rgba(0,0,0,0.5)"; for (let i = 0; i < 3; i++) g.fillRect(cx - 8 + i * 6, cy - 2, 3, 4);
+    g.fillStyle = C.neonG; g.globalAlpha = 0.9; g.beginPath(); g.arc(cx, cy + 8, 2.2, 0, 7); g.fill(); g.globalAlpha = 1;
   }
   function drawRubble(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2 + 4;
-    g.fillStyle = "rgba(0,0,0,0.22)"; g.beginPath(); g.ellipse(cx, cy + 6, 13, 4, 0, 0, 7); g.fill();
-    g.fillStyle = C.concrete;
-    for (let i = 0; i < 3; i++) { const h = hash2(cx + i, cy + i * 3); g.fillRect(cx - 12 + i * 8 + h * 4, cy - 6 + h * 8, 8 + h * 4, 7 + h * 3); }
-    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cx - 10, cy - 4, 5, 3);
-    g.strokeStyle = C.rustDark; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 8, cy - 2); g.lineTo(cx + 6, cy + 2); g.stroke();
+    const cx = x + TILE / 2, cy = y + TILE / 2 + 3;
+    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(cx, cy + 7, 15, 5, 0, 0, 7); g.fill();
+    const con = mix(C.concrete, BM.ash1, 0.25);
+    for (let i = 0; i < 5; i++) {
+      const h = hash2(x + i * 5, y + i * 3), h2 = hash2(x * 2 + i, y + i * 7);
+      const bx = cx - 13 + h * 24, by = cy - 3 + h2 * 10, bw = 6 + h * 7, bh = 5 + h2 * 6;
+      g.fillStyle = darken(con, 0.3); grr(g, bx, by, bw, bh, 1.5); g.fill();
+      g.fillStyle = i % 2 ? con : lighten(con, 0.12); grr(g, bx, by - 1.5, bw, bh, 1.5); g.fill();
+      g.fillStyle = "rgba(255,255,255,0.14)"; g.fillRect(bx + 1, by - 1, bw - 3, 1.4);
+    }
+    // rebar
+    g.strokeStyle = C.rustDark; g.lineWidth = 1.2; g.beginPath(); g.moveTo(cx - 9, cy - 3); g.lineTo(cx - 3, cy - 8); g.moveTo(cx + 4, cy + 1); g.lineTo(cx + 11, cy - 4); g.stroke();
   }
   function drawCrater(g, x, y) {
     const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.28)"; g.beginPath(); g.ellipse(cx, cy, 14, 10, 0, 0, 7); g.fill();
-    g.fillStyle = C.ashEdge; g.beginPath(); g.ellipse(cx, cy, 10, 7, 0, 0, 7); g.fill();
+    g.fillStyle = darken(BM.ash1, 0.35); g.beginPath(); g.ellipse(cx, cy, 16, 11, 0, 0, 7); g.fill(); // scorched rim
+    const cg = g.createRadialGradient(cx, cy - 2, 2, cx, cy, 13); cg.addColorStop(0, "#0a0a0c"); cg.addColorStop(0.7, darken(BM.ashEdge, 0.3)); cg.addColorStop(1, BM.ashEdge);
+    g.fillStyle = cg; g.beginPath(); g.ellipse(cx, cy, 12, 8, 0, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.06)"; g.beginPath(); g.ellipse(cx, cy + 3, 9, 3, 0, 0, 7); g.fill();
+    g.fillStyle = "rgba(0,0,0,0.4)"; for (let i = 0; i < 4; i++) { const a = i * 1.7; g.fillRect(cx + Math.cos(a) * 14, cy + Math.sin(a) * 9, 2, 2); }
   }
   function drawWreck(g, x, y, s) {
     const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(cx, cy + 10, 18, 5, 0, 0, 7); g.fill();
+    g.fillStyle = "rgba(0,0,0,0.34)"; g.beginPath(); g.ellipse(cx, cy + 11, 20, 6, 0, 0, 7); g.fill();
     g.save(); g.translate(cx, cy); g.rotate((s - 0.5) * 0.5);
-    g.fillStyle = C.rust; g.fillRect(-18, -6, 36, 16);
-    g.fillStyle = C.rustDark; g.fillRect(-11, -16, 20, 12);
-    g.fillStyle = "#2a2a2e"; g.beginPath(); g.arc(-11, 10, 6, 0, 7); g.fill(); g.beginPath(); g.arc(12, 10, 6, 0, 7); g.fill();
-    g.fillStyle = "rgba(0,0,0,0.4)"; g.fillRect(-9, -14, 16, 8);
-    g.fillStyle = "rgba(255,255,255,0.08)"; g.fillRect(-18, -6, 36, 3);
+    g.fillStyle = "#1c1c20"; g.beginPath(); g.arc(-11, 11, 6.5, 0, 7); g.fill(); g.beginPath(); g.arc(12, 11, 6.5, 0, 7); g.fill(); // wheels
+    g.fillStyle = "#33343a"; g.beginPath(); g.arc(-11, 11, 3, 0, 7); g.fill(); g.beginPath(); g.arc(12, 11, 3, 0, 7); g.fill();
+    const bg = g.createLinearGradient(0, -8, 0, 12); bg.addColorStop(0, lighten(C.rust, 0.15)); bg.addColorStop(1, C.rustDark);
+    g.fillStyle = bg; grr(g, -19, -7, 38, 17, 3); g.fill();
+    g.fillStyle = C.rustDark; grr(g, -12, -17, 22, 13, 3); g.fill(); // cabin
+    g.fillStyle = "#14161a"; grr(g, -9, -15, 16, 8, 2); g.fill(); // broken windshield
+    g.fillStyle = "rgba(120,180,200,0.15)"; g.fillRect(-9, -15, 16, 3);
+    g.fillStyle = "rgba(0,0,0,0.4)"; g.fillRect(-19, 1, 38, 2);
+    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(-19, -7, 38, 2.5); // top rim light
+    g.fillStyle = "rgba(30,20,16,0.5)"; g.fillRect(-6, -5, 5, 14); g.fillRect(4, -6, 4, 15); // rust streaks
+    g.restore();
+  }
+  function drawSandbags(g, x, y, s) {
+    const cx = x + TILE / 2, cy = y + TILE / 2 + 6;
+    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(cx, cy + 5, 18, 5, 0, 0, 7); g.fill();
+    const sand = mix("#7a6a44", BM.ash1, 0.2);
+    for (let row = 0; row < 3; row++) {
+      const yy = cy + 2 - row * 7, n = 4 - row, off = row * 5;
+      for (let i = 0; i < n; i++) {
+        const bx = cx - 16 + off + i * 9 + (hash2(x + i, y + row) - 0.5) * 2;
+        g.fillStyle = darken(sand, 0.3); grr(g, bx, yy, 11, 8, 4); g.fill();
+        g.fillStyle = row % 2 ? sand : lighten(sand, 0.1); grr(g, bx, yy - 1, 11, 8, 4); g.fill();
+        g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 0.8; g.beginPath(); g.moveTo(bx + 5.5, yy); g.lineTo(bx + 5.5, yy + 7); g.stroke();
+      }
+    }
+  }
+  function drawDeadtree(g, x, y, s) {
+    const cx = x + TILE / 2, cy = y + TILE / 2 + 14;
+    g.fillStyle = "rgba(0,0,0,0.28)"; g.beginPath(); g.ellipse(cx, cy, 12, 4, 0, 0, 7); g.fill();
+    g.strokeStyle = "#2b2420"; g.lineCap = "round"; g.lineJoin = "round";
+    g.lineWidth = 4; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx - 1, cy - 26); g.stroke();
+    g.lineWidth = 2.4; g.beginPath();
+    g.moveTo(cx - 1, cy - 14); g.lineTo(cx - 11, cy - 20); g.moveTo(cx - 6, cy - 17.5); g.lineTo(cx - 8, cy - 25);
+    g.moveTo(cx - 1, cy - 20); g.lineTo(cx + 9, cy - 27); g.moveTo(cx + 4, cy - 23.5); g.lineTo(cx + 5, cy - 31);
+    g.moveTo(cx - 1, cy - 25); g.lineTo(cx - 3, cy - 33); g.stroke();
+    g.strokeStyle = "rgba(255,255,255,0.06)"; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 1.5, cy - 4); g.lineTo(cx - 2, cy - 24); g.stroke();
+  }
+  function drawBuilding(g, x, y, s) {
+    // ruined multi-story structure, extends upward from the tile
+    const cx = x + TILE / 2, baseY = y + TILE / 2 + 16, w = 40, tall = 52;
+    g.fillStyle = "rgba(0,0,0,0.4)"; g.beginPath(); g.ellipse(cx + 4, baseY + 3, 26, 7, 0, 0, 7); g.fill();
+    const con = mix(C.concrete, BM.ash2, 0.35), topY = baseY - tall;
+    // body with a broken jagged top
+    g.beginPath(); g.moveTo(cx - w / 2, baseY); g.lineTo(cx - w / 2, topY + 6);
+    g.lineTo(cx - w / 4, topY); g.lineTo(cx - 4, topY + 8); g.lineTo(cx + 6, topY - 2); g.lineTo(cx + w / 2 - 6, topY + 5); g.lineTo(cx + w / 2, topY + 1); g.lineTo(cx + w / 2, baseY); g.closePath();
+    const bg = g.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0); bg.addColorStop(0, darken(con, 0.4)); bg.addColorStop(0.5, con); bg.addColorStop(1, darken(con, 0.55));
+    g.fillStyle = bg; g.fill();
+    g.fillStyle = "rgba(255,255,255,0.07)"; g.fillRect(cx - w / 2, topY + 6, 3, tall - 6); // left rim light
+    // windows (dark, a few faintly lit)
+    for (let ry = 0; ry < 4; ry++) for (let cxi = 0; cxi < 3; cxi++) {
+      const wx = cx - 15 + cxi * 12, wy = baseY - 12 - ry * 11; if (wy < topY + 4) continue;
+      const lit = hash2(x + cxi * 3 + ry, y + ry * 5) > 0.82;
+      g.fillStyle = lit ? "rgba(242,178,58,0.5)" : "#111318"; g.fillRect(wx, wy, 7, 7);
+      g.fillStyle = "rgba(0,0,0,0.5)"; g.fillRect(wx, wy, 7, 1);
+    }
+    g.strokeStyle = "rgba(0,0,0,0.4)"; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 6, topY + 8); g.lineTo(cx - 9, baseY); g.stroke(); // crack
+    // rubble at base
+    g.fillStyle = darken(con, 0.25); for (let i = 0; i < 4; i++) { const h = hash2(x + i, y * 2 + i); grr(g, cx - 20 + i * 11 + h * 3, baseY - 4 + h * 3, 8, 6, 1.5); g.fill(); }
+  }
+  function drawDropship(g, x, y, s) {
+    // crashed dropship: fuselage + swept wings + cockpit, nose-down, scorched
+    const cx = x + TILE / 2, cy = y + TILE / 2;
+    g.fillStyle = "rgba(0,0,0,0.36)"; g.beginPath(); g.ellipse(cx, cy + 13, 26, 7, 0, 0, 7); g.fill();
+    // scorch under it
+    g.fillStyle = "rgba(10,8,8,0.4)"; g.beginPath(); g.ellipse(cx + 14, cy + 6, 16, 8, 0, 0, 7); g.fill();
+    g.save(); g.translate(cx, cy); g.rotate(-0.35 + (s - 0.5) * 0.2);
+    const met = "#5a616b";
+    // wings
+    g.fillStyle = darken(met, 0.35); g.beginPath(); g.moveTo(-4, -2); g.lineTo(-24, -12); g.lineTo(-20, -4); g.lineTo(-2, 4); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(-4, 2); g.lineTo(-22, 12); g.lineTo(-18, 5); g.lineTo(-2, 0); g.closePath(); g.fill();
+    // fuselage
+    const fg = g.createLinearGradient(0, -9, 0, 9); fg.addColorStop(0, lighten(met, 0.2)); fg.addColorStop(1, darken(met, 0.4));
+    g.fillStyle = fg; grr(g, -14, -9, 40, 18, 8); g.fill();
+    g.fillStyle = darken(met, 0.5); grr(g, 18, -6, 12, 12, 5); g.fill(); // nose (buried)
+    g.fillStyle = "#0e1a20"; grr(g, 14, -5, 9, 9, 3); g.fill(); // cockpit glass
+    g.fillStyle = "rgba(120,190,210,0.25)"; g.fillRect(15, -4, 8, 2.5);
+    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(-12, -9, 34, 2.5); // top rim
+    g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(-14, 4, 40, 2);
+    g.fillStyle = darken(met, 0.5); g.beginPath(); g.arc(-4, 0, 5, 0, 7); g.fill(); // engine
+    g.fillStyle = "#ff7a3a"; g.globalAlpha = 0.5; g.beginPath(); g.arc(-4, 0, 2.4, 0, 7); g.fill(); g.globalAlpha = 1;
     g.restore();
   }
 
