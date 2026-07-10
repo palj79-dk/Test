@@ -69,9 +69,9 @@ Maps vary in **grid size** and can have **multiple entrances**. `COLS/ROWS/WORLD
 
 Each map defines `routes: [[...corners], ...]` — one or more routes, each a `[col,row]` corner list (consecutive corners share a row/column). **All routes end at the shared base** (the last point); their starts are the entrances. `loadMap` builds `ROUTES` (array of world-point polylines) and `PATH_SET` = the union of all route tiles, so where two routes overlap the roads simply **cross** (baked as an intersection). Enemies carry a `route` index assigned round-robin at spawn (`spawnIdx`, reset each wave); they move along `ROUTES[e.route]` and leak at its end. `drawSpawnAndBase` draws a breach at every route start and one base. `buildable` = any in-bounds tile not in `PATH_SET`. **`buildTerrain()` must never run in the frame loop** — only on map load; `selectMap(i)` re-bakes only on change.
 
-Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11×16 ★★ · `Crossroads` 11×16 ★★★ 2-gate crossing · `Gauntlet` 9×18 ★★★ tall single-route switchback ladder (panned) · `Delta` 13×18 ★★★★ **3 entrances** whose routes T-merge (parallel overlap = merge, no bridge) into one final approach · `Sprawl` 13×22 ★★★★ long single route (panned) · `Twin Gates` 13×20 ★★★★★ 2-gate crossing (panned). `S.mapIndex` (persisted `map`) selects; the menu shows name/★/size/gates.
+Roster (rising difficulty, **10 maps** in v2.5 / 7 in the v2.4 file): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11×16 ★★ · `Spiral` 11×14 ★★ single route spiraling inward, base at the center (v2.5) · `Crossroads` 11×16 ★★★ 2-gate crossing · `Gauntlet` 9×18 ★★★ tall single-route switchback ladder (panned) · `Delta` 13×18 ★★★★ **3 entrances** whose routes T-merge (parallel overlap = merge, no bridge) into one final approach · `Sprawl` 13×22 ★★★★ long single route (panned) · `Fracture` 12×16 ★★★★ 2 gates with one perpendicular bridge crossing then a T-merge final (v2.5) · `Twin Gates` 13×20 ★★★★★ 2-gate crossing (panned) · `Terminus` 15×22 ★★★★★ finale: 3 entrances, two bridge crossings + merges, largest board (v2.5). `S.mapIndex` (persisted `map`) selects. In v2.5 the menu map picker is a styled native `<select>` dropdown (`id "mapsel"`, class `.mapsel`, options show name/★/size/gates) — free play only; the v2.4 file keeps the button grid.
 
-**Campaign mode**: the maps double as a mission sequence. Menu button `⚔ Campaign · Mission N/7` (`id "cp"`) starts at `Store("camp")` (clamped); `S.campaign = true`. On victory the screen becomes "Mission N Secured", persists `camp = mapIndex+1` (clamped to last), and offers `⚔ Next Mission · <name>` (`id "nm"` → next map, fresh run) — or a `⚔ CAMPAIGN COMPLETE` banner on the last map. Free-play Deploy and Endless set `S.campaign = false`; map picker stays independent for free play.
+**Campaign mode**: the maps double as a mission sequence. Menu button `⚔ Campaign · Mission N/${MAPS.length}` (`id "cp"`) starts at `Store("camp")` (clamped); `S.campaign = true`. On victory the screen becomes "Mission N Secured", persists `camp = mapIndex+1` (clamped to last), and offers `⚔ Next Mission · <name>` (`id "nm"` → next map, fresh run) — or a `⚔ CAMPAIGN COMPLETE` banner on the last map. Free-play Deploy and Endless set `S.campaign = false`; map picker stays independent for free play.
 
 ## 1.6 Economy and progression
 
@@ -206,14 +206,17 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
     Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **V2.3 sprite baking SHIPPED**: `bakeSprites()` renders static tower bases (`towerBaseArt`) and enemy bodies (`enemyStatic`, per type incl. armor plating) once at 3x into offscreen canvases (`SPRITES`, `bakeSprite`/`drawSprite`; `ctx` is `let` and retargeted during baking so all shared helpers bake). Frame keeps only animated parts vector: legs/boots/arms/treads/rotor blades, rotating heads/cannon, and glows. Per-enemy sheen/underside overlays are baked generic sprites (`fx_sheen`/`fx_under`) blitted scaled by r — the frame loop constructs no per-entity gradients. Baked sprites carry an extra wear+rim pass (`wearPass`). Verified: no errors, walk anim intact, 57-59fps at max stress on software rendering. **V2.4 bloom/post pass SHIPPED**: a half-res glow buffer (`glowCv`/`renderGlow`) collects pure-glow emitters as cheap sprite blits (pool glows, breach/base/tower/hero/orb glows via baked `gl_*` sprites, beam impacts, boom flashes) under the same camera transform, then composites additively (`compositeGlow`, `lighter`) — bilinear upscale doubles as the blur. Plus drifting cloud shadows (`fx_cloud` sprite, multiply) and a per-biome screen-space color grade (`drawGrade`) that covers entities. **Adaptive quality** (`FX`/`fxTick`): bloom and clouds default on and auto-degrade (bloom first, then clouds) when the rolling 90-frame average exceeds 19ms, so weak devices settle at full frame rate (measured: 58.8fps settled on software rendering; capable GPUs keep everything). Do not re-run shadowBlur-heavy passes inside the glow layer — blits only. **Remaining: V2.5 optional tilt (only if still needed).**
 13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
 14. **Behavior enemies + 2 maps + Campaign mode** — (a) `mender` (radius heal pulse with cross-glow/ring fx + `gl_heal` bloom hint, wave 9+) and `splitter` (bursts into 3 `spawnling` fragments on kill, wave 11+); trait flags flow through `statsFor`, heal logic in `updEnemies`, split in `hurt()` so leaks don't split. Baked statics + animated bodies for both (mender pods/cross plates, splitter sac with squirming inner blobs + stubby legs). (b) `Gauntlet` 9×18 ash switchback ladder and `Delta` 13×18 toxic **3-entrance** map whose routes T-merge — roster is now 7, all in the menu picker. (c) **Campaign**: `⚔ Campaign · Mission N/7` menu button resumes from persisted `camp`; victory becomes "Mission N Secured" with a Next Mission button (or CAMPAIGN COMPLETE on map 7); Deploy/Endless clear `S.campaign`. Verified: both new maps route-sim to gameover, Delta uses all 3 routes, heal + split observed in a wave-12 sim, campaign start→victory→next→resume→complete flow, 60fps in combat on both maps, zero pageerrors, guards intact.
+15. **V2.5 SHIPPED in a new file (`fallengrid-v25.html`; `fallengrid.html` frozen at V2.4)** — (a) the oblique tilt (see Part 3 V2.5 for the full implementation notes: `TILT = 0.85` ground foreshortening + `uprightAt` entity counter-scaling, all screen↔world conversions symmetric); (b) **3 more maps → 10**: `Spiral` ★★ ember (single route spiraling to a center base), `Fracture` ★★★★ rust (2 gates, one bridge crossing + T-merge final), `Terminus` ★★★★★ ash finale (15×22, 3 entrances, two bridge crossings + merges); campaign is Mission N/10; (c) the free-play map picker is now a **styled `<select>` dropdown** (`#mapsel`) replacing the button grid — campaign is unaffected (it always resumes from `camp`). Verified: 154-probe screen↔world round-trip exact under tilt, tap selects the intended tile, all 10 maps no-tower route-sim to gameover, Terminus spawns on all 3 routes, campaign flow to CAMPAIGN COMPLETE on map 10, 56–60fps in heavy combat, zero pageerrors, guards intact.
 
 ## 2.1 Where things are
 
 ```
-fallengrid.html   the game (single file, ship this)
-HANDOFF.md        this document (source of truth)
-README.md         repo readme
+fallengrid-v25.html  the current build (V2.5 tilt, 10 maps, dropdown picker) — ship this
+fallengrid.html      the V2.4 build (untilted, 7 maps, button-grid picker) — kept per user request
+HANDOFF.md           this document (source of truth)
+README.md            repo readme
 ```
+New work goes into `fallengrid-v25.html` unless the user asks otherwise; `fallengrid.html` is frozen at V2.4.
 Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed; verification scripts are ephemeral (see 2.7).
 
 ## 2.2 Edit and verify loop
@@ -230,7 +233,7 @@ Single IIFE, `"use strict"`. Terse helpers (`clamp`, `lerp`, `rr`, `hash2`, `mix
 
 ## 2.5 Quality assessment vs genre leaders (Kingdom Rush, Bloons TD 6, Arknights)
 
-Mechanically the game is at genre standard: depth (counterplay triangle, branches, hero, airstrike), retention (Alloy/Armory, endless, campaign), content (7 maps, 4 biomes), feedback, audio, onboarding, and a verified balance curve. The remaining distance to the flagships:
+Mechanically the game is at genre standard: depth (counterplay triangle, branches, hero, airstrike), retention (Alloy/Armory, endless, campaign), content (10 maps, 4 biomes), feedback, audio, onboarding, and a verified balance curve. The remaining distance to the flagships:
 - **Presentation** is now the #1 gap — see Part 3 for the full root-cause analysis and plan. Short version: the game is drawn in true top-down with no verticality, so nothing has fronts/sides; leaders render in a tilted 3D-ish view where everything is a volume.
 - **Enemy design**: 5 traits deep (armor/shield/flying/heal/split) — now comparable to mid-tier leaders; teleport/burrow-style movement tricks remain unexplored.
 - Content keeps scaling value (more maps/enemies) but is no longer structurally behind.
@@ -238,11 +241,10 @@ Mechanically the game is at genre standard: depth (counterplay triangle, branche
 
 ## 2.6 Backlog, prioritized (remaining)
 
-1. **V2.5 optional world tilt** — only if the board still reads flat after playtesting (see Part 3).
-2. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
-3. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
+1. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
+2. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
 
-Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1, Visual Direction V2.1–V2.4, difficulty tiers, behavior enemies + campaign (changelog 14).
+Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1, Visual Direction V2.1–V2.5 (V2.5 in `fallengrid-v25.html`), difficulty tiers, behavior enemies + campaign (changelog 14–15).
 
 ---
 
@@ -315,11 +317,11 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
 **Risk.** Medium — the only phase touching per-frame architecture; must profile on 2× DPR. **Estimate.** ~1 session.
 **DoD.** Bloom visibly unifies emissives; fps ≥ 58 on the largest map with heavy combat; toggling the glow layer off is a one-line fallback.
 
-### V2.5 — Optional tilt (projection C) — flagged
+### V2.5 — Optional tilt (projection C) — SHIPPED (in `fallengrid-v25.html` only)
 
-**Design.** Apply `scale(1, 0.85)` inside the camera transform and add `1/0.85` to the y term of `screenToWorld`; give entities a small y-offset factor so heights read taller. Everything drawn with the V2.1 idiom instantly gains apparent tilt.
-**Risk.** Medium — every screen↔world conversion and hit-test must be re-verified (tap accuracy harness exists: `__GAME.tap`).
-**Decision gate.** Only do this if V2.1–V2.4 still reads too flat. Ship behind a build-time constant so it can be reverted by flipping one number.
+**Shipped design (differs slightly from the sketch below).** Per user request V2.5 lives in a **separate file** — `fallengrid-v25.html` — and `fallengrid.html` stays the untilted V2.4 build. Implementation: `const TILT = 0.85` foreshortens world-y inside both camera transforms (main `ctx.scale(cam.zoom, cam.zoom * TILT)` and the glow layer); `screenToWorld`/`worldToScreen`/`zoomAt`/pinch/pan y-terms all carry the `* TILT` factor symmetrically; `clampCam`/`MINZOOM`/void-fill use `PLAY_H / (cam.zoom * TILT)`. **Entities counter-scale upright**: `uprightAt(y)` (translate→scale `1/TILT`→untranslate at the entity's anchor y) wraps each enemy (whole per-enemy block in `drawEnemies`), each tower (`drawTowers`), the hero, the base fortress, and damage floats — so the ground plane foreshortens while units/structures read ~18% taller (breach tunnel mouths stay on the ground plane; they are holes). Verified: 154-tile screen↔world round-trip exact, `__GAME.tap` selects the intended tile, all 10 maps route-sim to gameover, 56–60fps.
+**Original sketch.** Apply `scale(1, 0.85)` inside the camera transform and add `1/0.85` to the y term of `screenToWorld`; give entities a small y-offset factor so heights read taller.
+**Revert path.** Set `TILT = 1` in `fallengrid-v25.html` — every term degenerates to the untilted math (uprightAt becomes identity).
 
 ### Sequencing & constraints
 
