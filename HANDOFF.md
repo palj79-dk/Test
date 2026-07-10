@@ -1,10 +1,10 @@
-# Fallen Grid — Specification & Handoff (v2)
+# Fallen Grid — Specification & Handoff (v3)
 
-Single-file HTML5 canvas tower defense, post-apocalyptic sci-fi theme, portrait mobile-first, intended to ship on Google Play via a Capacitor WebView wrapper. This document is the source of truth for continuing the work. Part 0 is the operating contract. Part 1 is the technical spec (updated to current code). Part 2 is the continuation brief: quality assessment, backlog, and a concrete implementation plan for the remaining work.
+Single-file HTML5 canvas tower defense, post-apocalyptic sci-fi theme, portrait mobile-first, intended to ship on Google Play via a Capacitor WebView wrapper. This document is the source of truth for continuing the work. Part 0 is the operating contract. Part 1 is the technical spec (updated to current code). Part 2 is the continuation brief: quality assessment, backlog, changelog. Part 3 is the **Visual & Map Direction V2** — the re-evaluation of graphics ("how do we get a 3D-rendered look?") and map layout, with a phased implementation plan.
 
 The deliverable file is `fallengrid.html`. Everything (HTML, CSS, JS) lives in that one file inside a single IIFE. There is no build step and no framework. Vanilla Canvas2D + WebAudio.
 
-**Current state (v2).** The five highest-priority gaps from the original handoff have been closed: graphics fidelity, strategic depth, feedback/audio, onboarding, and meta-progression. What remains is scope (content volume, a hero unit) and tuning, not craft. See the changelog in Part 2.0 and the plan in Part 2.6.
+**Current state (v3).** All original backlog items are closed: graphics pass 1, strategic depth, audio, onboarding, meta-progression, endless + 5-map roster with biomes, balance pass, and the Hero/Commander. The game is mechanically a genre-standard TD with retention. The open front is **presentation ceiling and map composition** — the subject of Part 3.
 
 ---
 
@@ -77,7 +77,7 @@ Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11
 START_SCRAP = 150   START_CORE = 20   TOTAL_WAVES = 20   NEXT_WAVE_COUNTDOWN = 6s
 SELL_REFUND = 0.7 (of cumulative cost through current level incl. branch)
 Wave clear bonus = round((20 + wave*3) * waveBonusMul())
-Difficulty: normal = 1.0, hard = 1.35 enemy-HP multiplier (diffMul)
+Difficulty (three tiers in `DIFFS`, chosen on the menu, persisted): Normal hp1.0/spd1.0/core20/alloy1.0 · Hard hp1.7/spd1.1/core18/count1.25/reward0.92/alloy1.5 · Brutal hp2.6/spd1.2/core15/count1.6/reward0.85/alloy2.0. `count` pads each wave's spawn list; `reward` scales scrap per kill. Leaks cost 1 core (brute/sentinel/warden 2, juggernaut 6).
 ```
 
 Meta (persistent, via `Store`): **Alloy** earned per run = `round((kills + wave*4 + (victory?120:0)) * (hard?1.4:1))`, awarded once (`awardAlloy`, guarded by `S.alloyAwarded`). Spent in the **Armory** on six talents (see 1.15).
@@ -99,7 +99,7 @@ Targeting: per-tower `mode` in `[first, strong, close]`. `findTarget` skips flye
 
 ## 1.8 Enemies
 
-Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.13*(wave-1)`, reward mul `1 + 0.045*(wave-1)`, shield mul `1 + 0.1*(wave-1)`, and copies trait flags.
+Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.013*w²` (quadratic so late waves outpace maxed towers), speed mul `1 + min(0.25, 0.011*w)`, reward mul `1 + 0.035*w`, shield mul `1 + 0.12*w`, and copies trait flags. Non-boss wave counts grow faster (`rd = 3 + 0.7n` capped 22, etc.) and are padded by the difficulty `count` multiplier.
 
 | id | label | base hp | speed | reward | r | shape | trait |
 |----|-------|--------:|------:|-------:|--:|-------|-------|
@@ -188,6 +188,16 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
 8. **Map variety** — generalized to per-map grid sizes and multi-route maps (see 1.5). Five maps from small to large-and-panned, single- to dual-entrance with crossing roads, rising ★1–★5. Enemies split across a map's entrances (two defensive fronts). Verified: all routes traverse to base, terrain re-bakes once per load, 60fps on the largest (13×22) map.
 9. **Per-map biomes** — `BIOMES` table (rust/toxic/ash/ember) tints baked terrain, pools, directional light, and dust motes so maps read as distinct places. `BM = C + biome overrides`, set in `loadMap`.
 10. **Hero / Commander (Plan B)** — one deployable, in-run-leveling unit (`hero`): energy auto-fire that hits air, XP from kills near it (5 levels), and an Overload Pulse ability (energy AoE + stun) on a 16s cooldown. Deployed via a second FAB (arm → tap a plot). `HERO` config; the `Command Core` Armory talent (`heroDmgMul`) boosts its damage. The frame update block is `stepSim` (also used by `__GAME.sim`), now including `updHero`.
+11. **Graphics uplift (3 commits)** — (a) maps: baked path-edge ambient occlusion, denser+varied decor, new landmark set-pieces (ruined buildings, crashed dropships, sandbag walls, dead trees), richer barrels/rubble/craters/wrecks, road tire tracks; (b) towers: two-layer grounding shadow, glossy specular sheen, brighter emissive trim; (c) enemies: higher-contrast `bodyFill` + a screen-aligned overhead sheen and underside shadow for consistent form lighting. `_hx()` now parses `rgb()` strings so tint chaining is safe. All baked/per-frame-cheap; 60fps held.
+12. **V2.1 + V2.2 SHIPPED (game is now branded V2.0)** — the Part 3 projection/composition phases:
+    - **Island board**: terrain bakes with a `TMARGIN` ring — void backdrop with distant silhouettes, jagged island rim, extruded cliff faces (2 depth layers + strata + lit rim). Frame blits terrain at `(-TMARGIN,-TMARGIN)` over a `VOID_COL` fill.
+    - **Curved roads**: corner tiles render as quarter-annulus asphalt (curb, trench shading, curved tire tracks, arc dashes) via a neighbor-pattern branch in `roadTile`; waypoint pathing unchanged.
+    - **Trench walls**: straight/junction road edges get NW shadow gradients + lit SE inner walls, so paths read as sunken channels under the global light.
+    - **Bridges**: `loadMap` classifies route overlaps — perpendicular = crossing (`CROSS_MAP`/`BRIDGES`), parallel = merge. Crossings render as live steel decks (`drawBridges`) with correct layering: under-route enemies → deck → over-route enemies (`bridgeUnder` predicate splits `drawEnemies`).
+    - **Structures**: breach = ruined tunnel mouth (rock collar, teeth, dark throat, molten glow); base = walled fortress (wall ring, corner bastions with beacons, court) around the bunker.
+    - **Authored set-pieces**: optional `MAPS[i].props` hand-place landmarks (reserved before hash decor); Outpost + Twin Gates composed.
+    Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **V2.3 sprite baking SHIPPED**: `bakeSprites()` renders static tower bases (`towerBaseArt`) and enemy bodies (`enemyStatic`, per type incl. armor plating) once at 3x into offscreen canvases (`SPRITES`, `bakeSprite`/`drawSprite`; `ctx` is `let` and retargeted during baking so all shared helpers bake). Frame keeps only animated parts vector: legs/boots/arms/treads/rotor blades, rotating heads/cannon, and glows. Per-enemy sheen/underside overlays are baked generic sprites (`fx_sheen`/`fx_under`) blitted scaled by r — the frame loop constructs no per-entity gradients. Baked sprites carry an extra wear+rim pass (`wearPass`). Verified: no errors, walk anim intact, 57-59fps at max stress on software rendering. **Remaining: V2.4 bloom/post pass, V2.5 optional tilt.**
+13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
 
 ## 2.1 Where things are
 
@@ -212,81 +222,103 @@ Single IIFE, `"use strict"`. Terse helpers (`clamp`, `lerp`, `rr`, `hash2`, `mix
 
 ## 2.5 Quality assessment vs genre leaders (Kingdom Rush, Bloons TD 6, Arknights)
 
-The four craft gaps from v1 (graphics, depth, feedback/audio, retention) are closed; moment-to-moment play and one strategic loop are at genre standard. Remaining distance is **scope, not craft**:
-- **Content volume** is the biggest gap: one map, 20 waves, exhausted in a sitting. Leaders ship dozens of maps + endless/challenge modes.
-- **No hero/commander** — the last big *mechanical* gap; leaders anchor on a leveling unit with its own kit.
+Mechanically the game is at genre standard: depth (counterplay triangle, branches, hero, airstrike), retention (Alloy/Armory, endless), content (5 maps, 4 biomes), feedback, audio, onboarding, and a verified balance curve. The remaining distance to the flagships:
+- **Presentation** is now the #1 gap — see Part 3 for the full root-cause analysis and plan. Short version: the game is drawn in true top-down with no verticality, so nothing has fronts/sides; leaders render in a tilted 3D-ish view where everything is a volume.
 - **Enemy design** is 3 traits deep vs healing/splitting/spawning/teleporting in leaders.
-- **Presentation** competes with early-2010s TDs, not 2020s flagships (procedural Canvas2D vs authored sprite/3D art).
+- Content keeps scaling value (more maps/enemies) but is no longer structurally behind.
 - No liveops/social/monetization (not a craft gap).
 
 ## 2.6 Backlog, prioritized (remaining)
 
-1. ~~**Content volume — endless + second map**~~ — DONE (Plan A). Further content (more maps, more enemy variants) still adds value.
-2. **Hero / Commander** — one deployable, leveling unit with an active kit. Biggest remaining mechanical gap with the leaders. Now the top priority (Plan B).
-3. ~~**Playtest tuning pass**~~ — DONE (Plan C): Tesla dominance fixed via `__GAME.sim` auto-battles; branches/economy verified. Re-run the harness after any future data change.
-4. **More enemy behaviors** — healing, splitting, or shielded-aura for real puzzles.
-5. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
-6. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
+1. **Visual & Map Direction V2** — the pseudo-3D uplift and map-composition overhaul. Full plan in Part 3. Top priority.
+2. **More enemy behaviors** — healing, splitting, or shielded-aura for real puzzles.
+3. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
+4. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
+
+Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1 (terrain landmarks/AO, tower sheen, enemy form-shading).
 
 ---
 
-## Implementation plan (next work)
+# Part 3 — Visual & Map Direction V2
 
-Ordered to maximize play-time and retention per unit of risk. Each item lists goal, design, code touch-points, data, risk, and its own definition of done. All items must keep the 1.10 guards intact and pass 2.7.
+The re-evaluation asked two questions: **how do we make the game read like a 3D-rendered title**, and **how do we make map layouts feel composed rather than simple**. This part is the answer and the plan. Plans A/B/C from the previous handoff revision are complete and archived in the changelog (2.0).
 
-### Plan A — Endless mode + second map (backlog 1)
+## 3.1 Re-evaluation: why the game still reads "flat 2D"
 
-**Goal.** Give the deep loop somewhere to go: an uncapped survival mode with a leaderboard-style best, plus a second serpentine layout for variety.
+Judged against Kingdom Rush (painted 3D-ish perspective) and Bloons TD 6 (real 3D renders), the current build's gap is not detail — pass 1 added plenty — it is **projection and volume**. Root causes, in order of impact:
+
+1. **True top-down projection.** Everything is drawn from directly overhead, so no object can show a front or a side. The leaders render from a tilted ~50–65° camera: every tower, tree, and wall shows a **top AND a front face**. Verticality is the single strongest "3D" cue and we have none of it.
+2. **No extrusion.** Objects are silhouettes filled with gradients. There are no side walls on the sunken roads, no plinths under towers, no wall faces on buildings' lower halves. Volume = top face + side face + cast shadow; we only have tops.
+3. **No directional cast shadows.** We have contact blobs under entities, but a real scene has one global light with **elongated shadows falling one consistent direction** from everything — that is what visually welds objects to the ground plane.
+4. **Per-frame vector redraw caps the detail budget.** Every tower/enemy is rebuilt from primitives 60×/s, so each can only afford a handful of gradient layers. The leaders' sprites are *renders* — hundreds of lighting passes baked offline. We can get most of that headroom by **baking our procedural art into sprites at load** and blitting.
+5. **The board is a wall-to-wall rectangle.** Leaders float an irregular "island" board over a backdrop with visible cliff edges — the world reads as a diorama on a table. Ours runs edge-to-edge with hard clipping, killing the diorama depth cue.
+6. **Map composition is uniform.** Decor is hash-scattered, corners are hard 90° squares, spawn/base are small glows rather than structures, and there is no elevation. Nothing anchors the eye; layouts feel generated, not designed.
+
+**Projection decision.** Four options were weighed:
+
+| Option | Look | Cost | Risk | Verdict |
+|---|---|---|---|---|
+| A. Stay top-down, more detail | incremental | low | low | insufficient — detail was pass 1; projection is the gap |
+| B. **Faux-3D extrusion** (keep top-down math, draw every object with height: top + front face + directional shadow) | "tilted board" illusion, à la many premium 2D TDs | medium | low — gameplay/input math untouched | **chosen core** |
+| C. World y-foreshortening (scale world y ~0.85 in the camera, full oblique view) | strongest tilt illusion | medium | medium — `screenToWorld`/tap must be updated symmetrically | optional layer on top of B, behind a flag |
+| D. WebGL/three.js real 3D | true 3D | very high (renderer rewrite, breaks single-file/no-framework constraint) | high | rejected for now; documented exit if the game outgrows Canvas2D |
+
+## 3.2 The plan — phases V2.1 → V2.5
+
+Each phase is a separate verified commit. All must keep the 1.10 guards, the "terrain bakes once per load" rule, and 60fps on the largest map (13×22, 2× DPR).
+
+### V2.1 — Extrusion & global light (the projection change)
+
+**Design.** Introduce a global light constant (`LIGHT = upper-left`, matching the baked gradient) and a world-standard **elevation rendering idiom**: any object with height `h` draws (bottom→top) directional cast shadow (offset SE, length ∝ h, soft) → front/side face (darkened body color, height `h`) → top face (existing art, offset up by `h`). Apply it to the **baked terrain first** — the highest coverage per effort:
+- Sunken roads: visible **inner north wall** (light catches it) and shadowed south lip, so paths become real trenches.
+- Buildable ground gets subtle raised-pad edges every few tiles (broken slabs), giving the plane texture without noise.
+- Props re-rendered with the idiom: buildings get full front faces with doors/windows; sandbags, barrels, rubble, wrecks get fronts + directional shadows; dead trees get long ground shadows.
+- Spawn/base become **structures**: breach = ruined tunnel arch with dark interior; base = walled fortress compound around the reactor.
+**Touch-points.** `buildTerrain`, `roadTile`, all `draw*` decor functions, `drawSpawnAndBase`. All baked; zero frame cost.
+**Risk.** Low (visual-only, baked). **Estimate.** ~1 session.
+**DoD.** Roads read as trenches with lit/shadow walls; every prop casts a consistent SE shadow; spawn/base are structures; screenshots on 3 biomes; 60fps.
+
+### V2.2 — Map Layout 2.0 (composition)
 
 **Design.**
-- **Endless**: a run mode where waves continue past `TOTAL_WAVES` with `waveComp` extrapolated (scale HP/counts by a smooth curve, boss every 5, mix trait enemies). Track `S.endless` and a persisted `Store.get("highEndless")`. Alloy scales with waves survived, so endless is the primary Alloy farm. Victory screen becomes "continue into endless?" instead of a hard end.
-- **Second map**: promote map data into a `MAPS[]` array — each entry is `{ name, waypoints, seed }`. `WAYPOINTS`, terrain decor placement (`hash2` seeded), and `POOLS` all derive from the selected map. A map picker on the menu (or unlocked via Alloy). Camera/path/terrain already read from these, so the change is mostly parameterizing globals that are currently module constants.
+- **Island board.** Bake an irregular edge mask: the outermost ring of tiles crumbles into cliff edges with visible dark rock faces (extrusion idiom) over a deep backdrop (biome-tinted void + faint distant silhouettes). The map becomes a floating diorama. Board edge never cuts a route.
+- **Curved corners.** Road corner tiles render as quarter-arc asphalt (with curb + tracks following the curve) instead of squared blocks. Pure `roadTile` change keyed on the neighbor pattern; enemy waypoints unchanged (the visual arc covers the same tile).
+- **Bridges at crossings.** Where two routes' tiles overlap (Crossroads, Twin Gates), render route 2's crossing tile as a **bridge deck** (planks/steel + railings + shadow cast onto the road below). Data already knows the overlap; flyers/ground logic unchanged — it is a pure render upgrade that makes crossings a landmark.
+- **Authored set-pieces.** Add optional `props: [{c,r,type}]` to `MAPS[i]` for hand-placed landmarks (e.g., the dropship crash framing Outpost's first corner) so each map has a composed focal point; hash decor fills around them.
+- **Elevation tier (stretch).** A per-map `plateau` region: tiles one tier up with cliff-wall faces; purely visual first (towers on it just look elevated), optional +range gameplay later.
+**Touch-points.** `MAPS` data, `buildDecor`, `buildTerrain`, `roadTile`, new `drawCliffEdge`/`drawBridge` bakes.
+**Risk.** Low-medium (baked; bridge draw order needs care at crossings). **Estimate.** ~1 session.
+**DoD.** Every map reads as a floating island; corners curve; both crossing maps show bridges; at least 2 maps have authored set-pieces; routes/gameplay unchanged (no-tower sim still reaches gameover on all maps); 60fps.
 
-**Code touch-points.** `waveComp` (extrapolation branch), `startWave`/`updSpawns` (endless never sets victory; awards per-wave Alloy), `MAPS` + a `loadMap(i)` that rebuilds `PATH_*`, `DECOR`, `POOLS`, and re-runs `buildTerrain()`, menu render (mode + map select), `reset(mapIndex, mode)`.
+### V2.3 — Procedural sprite baking (the detail unlock)
 
-**Data.** `MAPS` array (2 entries to start); endless scaling constants.
+**Design.** A `bakeSprites()` step at load (and on map/biome change if tinted): render each **tower base** (per type × level × branch) and each **enemy body** (per type) once into offscreen canvases at 2–3× resolution with a far richer pass stack than the frame budget allows — base coat, noise/wear texture, AO pass, bevel highlights, rim light, decals. Frame loop blits sprites (`drawImage`) and keeps only the dynamic parts vector: rotating heads/cannons, legs/treads (animated), glows, muzzle flashes, shields. This is the original handoff's sprite-pipeline item, self-sourced: same architecture as dropping in a Kenney atlas later (the blit sites become the atlas API).
+**Touch-points.** New `bakeSprites()`; `drawTowerArt` split into `bakeTowerBase` + dynamic head; `enemyBody` split into baked body + dynamic limbs; cache keyed by type/level/branch.
+**Risk.** Medium — draw-order and rotation seams; memory for sprite canvases (bounded: ~20 towers + 7 enemies × small sizes). **Estimate.** ~1–1.5 sessions.
+**DoD.** Frame loop contains no per-frame gradient construction for bodies/bases; visual quality strictly better in side-by-side screenshots; 60fps with 30 towers + 40 enemies; walk/turret animation intact.
 
-**Risk.** Medium. Terrain and path are currently top-level `const`s computed once; making them per-map means converting them to `let` and rebuilding on map load. Must re-bake terrain off the frame path (keep the perf rule). Endless must not overflow numbers at very high waves (cap multipliers).
-
-**DoD.** Endless runs past wave 20 without NaN/soft-lock, boss cadence holds, Alloy accrues; map 2 loads, renders, and is playable; switching maps rebuilds terrain once (not per frame); 60fps; a Playwright run to wave 25+ in endless and a full clear on map 2.
-
-**Estimate.** ~1 focused session.
-
-### Plan B — Hero / Commander unit (backlog 2)
-
-**Goal.** A single player-controlled unit that adds agency and identity, the leaders' core hook.
+### V2.4 — Lighting & post pass (the "render" feel)
 
 **Design.**
-- One deployable "Commander" placed on any buildable plot (or free-move on a leash). It auto-attacks in range with a signature shot, has a manual **active ability** on cooldown (e.g., a shield pulse that grants nearby enemies-in-range a slow, or a focus-fire beam), and **levels within a run** from kills, gaining damage/range/ability potency. Optionally revive on a cooldown instead of permanent death.
-- Persisted meta: unlock/level the Commander via Alloy in the Armory (new talent group), tying it into the existing meta loop.
+- **Bloom compositing:** all emissives (accents, cores, beams, pools, breach) draw to a half-res offscreen glow layer each frame, blurred once, composited additively — real bloom instead of per-shape `shadowBlur` (also a perf win: removes many shadowBlur calls).
+- **Cloud shadows:** two huge soft dark blobs drifting slowly over the terrain (screen-space multiply), selling the sun.
+- **Biome color grade:** a final translucent gradient overlay per biome (already partial via baked light; extend to entities by applying it after the world layer).
+- Muzzle light: firing towers briefly tint nearby ground (radial gradient, cheap, capped count).
+**Touch-points.** Frame compositor (one offscreen canvas), `drawBeams`/`drawBooms`/glow call sites, `drawAtmosphere`.
+**Risk.** Medium — the only phase touching per-frame architecture; must profile on 2× DPR. **Estimate.** ~1 session.
+**DoD.** Bloom visibly unifies emissives; fps ≥ 58 on the largest map with heavy combat; toggling the glow layer off is a one-line fallback.
 
-**Code touch-points.** New entity + `updHero`/`drawHero`; a second ability button next to the airstrike FAB; targeting reuse of `findTarget`; XP/level state on `S.hero`; Armory rows for hero unlock/level; `reset` init.
+### V2.5 — Optional tilt (projection C) — flagged
 
-**Data.** `HERO` config (base stats, per-level curve, ability spec).
+**Design.** Apply `scale(1, 0.85)` inside the camera transform and add `1/0.85` to the y term of `screenToWorld`; give entities a small y-offset factor so heights read taller. Everything drawn with the V2.1 idiom instantly gains apparent tilt.
+**Risk.** Medium — every screen↔world conversion and hit-test must be re-verified (tap accuracy harness exists: `__GAME.tap`).
+**Decision gate.** Only do this if V2.1–V2.4 still reads too flat. Ship behind a build-time constant so it can be reverted by flipping one number.
 
-**Risk.** Medium-high — new entity type, movement/placement input, a second active ability, and balance. Keep it one unit with one ability to bound scope.
+### Sequencing & constraints
 
-**DoD.** Hero deploys, attacks, levels, and its ability fires on cooldown without errors; interacts correctly with traits (respects armor/shield/flying rules via `hurt`); 60fps; screenshots of deploy + ability; guards intact.
+**V2.1 → V2.2 → V2.3 → V2.4 → (V2.5 if needed).** The first two are baked-only (zero frame cost, low risk) and deliver the biggest projection change; sprite baking then raises the entity ceiling; the post pass unifies it. Constraints throughout: single file, no frameworks, no external assets, `buildTerrain` never in the frame loop, 1.10 guards intact, verify per 2.7 (syntax, hex, headless run incl. a no-tower route sim per map, screenshots per biome, fps sample).
 
-**Estimate.** ~1–1.5 sessions.
-
-### Plan C — Balance & tuning pass (backlog 3)
-
-**Goal.** Make the now-deep loop worth repeating; ensure no dominant/dead option.
-
-**Design.** Data-only sweeps of `TOWERS` (branch parity), `ENEMIES` (HP/speed/shield curves), `waveComp` (introduction pacing), economy (`START_SCRAP`, wave bonus, Alloy rate), and `TALENTS` (cost vs power). Add a lightweight in-code balance harness: run headless auto-battles with scripted builds and log waves survived / scrap curves to spot outliers.
-
-**Code touch-points.** Tables only; optional a `__GAME.simWave()` helper for headless balancing.
-
-**Risk.** Low. Numbers only, no logic.
-
-**DoD.** Each tower branch clears a comparable wave range in headless sims; no talent is strictly dominant; difficulty curve is monotonic; economy never stalls or trivializes. Document the chosen values.
-
-**Estimate.** ~half a session.
-
-### Sequencing
-
-Do **A (content)** first — it multiplies the value of everything already built and feeds the Alloy economy. Then **C (tuning)** because A changes the curve. Then **B (hero)** as the next depth lever. D/E/F (more enemy behaviors, camera/accessibility, Android port) follow.
+**Out of scope / exits.** Real 3D (WebGL) remains the documented exit if the game outgrows Canvas2D — it would be a renderer rewrite behind the same game state, and nothing in V2.1–V2.4 is wasted (the baked art becomes texture sources). External art packs remain compatible: V2.3's blit sites are exactly where a downloaded atlas would plug in.
 
 ## 2.7 Definition of done for any change
 

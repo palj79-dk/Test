@@ -236,6 +236,7 @@
   // Multiple routes = multiple entrances; where two routes' tiles overlap, roads simply cross.
   const MAPS = [
     { name: "Outpost", diff: 1, seed: 3, cols: 9, rows: 12, biome: "rust",
+      props: [{ c: 5, r: 5, type: "dropship" }, { c: 8, r: 10, type: "building" }],
       routes: [[[0, 1], [7, 1], [7, 4], [1, 4], [1, 7], [7, 7], [7, 9], [4, 9], [4, 11]]] },
     { name: "Serpentine", diff: 2, seed: 1, cols: 11, rows: 16, biome: "rust",
       routes: [[[0, 1], [9, 1], [9, 4], [1, 4], [1, 7], [9, 7], [9, 10], [1, 10], [1, 13], [9, 13], [9, 15], [5, 15]]] },
@@ -244,6 +245,7 @@
     { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
       routes: [[[0, 1], [11, 1], [11, 4], [2, 4], [2, 7], [11, 7], [11, 10], [2, 10], [2, 13], [11, 13], [11, 16], [2, 16], [2, 19], [8, 19], [8, 21]]] },
     { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
+      props: [{ c: 6, r: 7, type: "building" }, { c: 11, r: 14, type: "dropship" }, { c: 5, r: 3, type: "building" }],
       routes: [[[0, 2], [10, 2], [10, 9], [3, 9], [3, 16], [6, 16], [6, 19]], [[12, 5], [2, 5], [2, 12], [9, 12], [9, 16], [6, 16], [6, 19]]] },
   ];
   function buildPath(wp) {
@@ -259,11 +261,19 @@
   const center = (c, r) => ({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 });
   // per-map state (rebuilt by loadMap); referenced by name everywhere so reassignment is safe
   let ROUTES = [], PATH_SET = new Set(), PATH_PTS = [], DECOR = [], POOLS = [], currentMap = -1;
+  let CROSS_MAP = new Map(), BRIDGES = []; // true route crossings (perpendicular overlap) render as bridges
   const buildable = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS && !PATH_SET.has(c + "," + r);
   function buildDecor(seed) {
     DECOR = []; POOLS = []; const s1 = seed * 101, s2 = seed * 211;
+    // authored set-pieces first (composed landmarks); hash decor fills around them
+    const reserved = new Set(), mp = MAPS[currentMap];
+    if (mp && mp.props) for (const p of mp.props) {
+      const k = p.c + "," + p.r; if (PATH_SET.has(k)) continue;
+      reserved.add(k); DECOR.push({ c: p.c, r: p.r, type: p.type, seed: hash2(p.c * 3 + seed, p.r * 7 + seed) });
+      if (p.type === "pool") { const pt = center(p.c, p.r); POOLS.push({ x: pt.x, y: pt.y }); }
+    }
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      if (PATH_SET.has(c + "," + r)) continue;
+      if (PATH_SET.has(c + "," + r) || reserved.has(c + "," + r)) continue;
       const h = hash2(c + s1, r + s2), sd = hash2(c * 3 + seed, r * 7 + seed);
       let type = null;
       if (h > 0.986) type = sd > 0.5 ? "building" : "dropship"; // rare landmark set-pieces
@@ -281,12 +291,22 @@
     BM = Object.assign({}, C, BIOMES[m.biome] || {});
     COLS = m.cols; ROWS = m.rows; WORLD_W = COLS * TILE; WORLD_H = ROWS * TILE;
     MINZOOM = Math.min(W / WORLD_W, PLAY_H / WORLD_H) * 0.98;
-    PATH_SET = new Set();
-    ROUTES = m.routes.map((wp) => {
-      const tiles = buildPath(wp);
-      for (const [c, r] of tiles) PATH_SET.add(c + "," + r);
-      return tiles.map(([c, r]) => center(c, r));
-    });
+    PATH_SET = new Set(); CROSS_MAP = new Map(); BRIDGES = [];
+    const tileLists = m.routes.map((wp) => buildPath(wp));
+    const owner = new Map(), shared = [];
+    tileLists.forEach((tl, ri) => tl.forEach(([c, r]) => {
+      const k = c + "," + r; PATH_SET.add(k);
+      const o = owner.get(k);
+      if (o === undefined) owner.set(k, ri); else if (o !== ri) shared.push([c, r, o, ri, k]);
+    }));
+    // perpendicular overlaps are crossings (bridge for the later route); parallel overlaps are merges (plain road)
+    const axisAt = (tl, c, r) => { const i = tl.findIndex((t) => t[0] === c && t[1] === r); const nb = tl[i + 1] || tl[i - 1]; return nb ? nb[1] === r : true; };
+    for (const [c, r, under, over, k] of shared) {
+      if (CROSS_MAP.has(k)) continue;
+      const hU = axisAt(tileLists[under], c, r), hO = axisAt(tileLists[over], c, r);
+      if (hU !== hO) { CROSS_MAP.set(k, { over }); BRIDGES.push({ c, r, horiz: hO }); }
+    }
+    ROUTES = tileLists.map((tl) => tl.map(([c, r]) => center(c, r)));
     PATH_PTS = ROUTES[0];
     buildDecor(m.seed);
     buildTerrain();
@@ -378,14 +398,14 @@
     if (n % 5 === 0) {
       const bosses = n % 20 === 0 ? 2 : 1;
       for (let i = 0; i < bosses; i++) list.push({ type: "juggernaut", delay: i * 2600 });
-      const extra = Math.min(4 + Math.floor(n / 3), 16);
+      const extra = Math.round(Math.min(4 + Math.floor(n / 3), 16) * (diffCfg().count || 1));
       for (let i = 0; i < extra; i++) { const t = i % 3 === 0 ? "wraith" : i % 3 === 1 ? "stalker" : "raider"; list.push({ type: t, delay: 2800 + i * 420 }); }
       return list;
     }
-    const st = Math.max(2, 6 - Math.floor(n / 5)), rd = Math.min(3 + Math.floor(n / 2), 20), br = n >= 4 ? Math.min(Math.floor(n / 3), 12) : 0;
-    const wr = n >= 3 ? Math.min(1 + Math.floor(n / 4), 10) : 0;   // wraiths (flyers) force anti-air
-    const se = n >= 6 ? Math.min(Math.floor((n - 3) / 3), 10) : 0;  // sentinels (armored) force AP/explosive
-    const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 4), 8) : 0;   // wardens (shielded) reward energy
+    const st = Math.max(2, 6 - Math.floor(n / 5)), rd = Math.min(3 + Math.floor(n * 0.7), 22), br = n >= 4 ? Math.min(Math.floor(n / 2.2), 13) : 0;
+    const wr = n >= 3 ? Math.min(1 + Math.floor(n / 3), 11) : 0;      // wraiths (flyers) force anti-air
+    const se = n >= 6 ? Math.min(Math.floor((n - 3) / 2.5), 11) : 0;  // sentinels (armored) force AP/explosive
+    const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0;     // wardens (shielded) reward energy
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
@@ -393,6 +413,8 @@
     for (let i = 0; i < se; i++) seq.push("sentinel");
     for (let i = 0; i < wr; i++) seq.push("wraith");
     for (let i = 0; i < wd; i++) seq.push("warden");
+    const cm = diffCfg().count || 1, extraN = Math.round(seq.length * (cm - 1));
+    for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
     seq.sort(() => Math.random() - 0.4);
     const slow = { brute: 560, sentinel: 560, warden: 460 };
     let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += slow[type] || 380; }
@@ -400,10 +422,13 @@
   }
   function waveCounts(n) { const c = {}; for (const e of waveComp(n)) c[e.type] = (c[e.type] || 0) + 1; return c; }
   function statsFor(type, wave) {
-    const b = ENEMIES[type], hpMul = 1 + 0.13 * (wave - 1), rwMul = 1 + 0.045 * (wave - 1);
-    const sh = b.shield ? Math.round(b.shield * (1 + 0.1 * (wave - 1))) : 0;
+    // HP grows with a quadratic term so late waves outpace fully-upgraded towers; speed creeps up to +25%
+    const w = wave - 1, b = ENEMIES[type];
+    const hpMul = 1 + 0.14 * w + 0.013 * w * w, rwMul = 1 + 0.035 * w;
+    const spMul = 1 + Math.min(0.25, 0.011 * w);
+    const sh = b.shield ? Math.round(b.shield * (1 + 0.12 * w)) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
-      hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed, reward: Math.round(b.reward * rwMul),
+      hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed * spMul, reward: Math.round(b.reward * rwMul),
       armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0 };
   }
 
@@ -430,12 +455,20 @@
     mapIndex: Store.get("map", 0), endless: false,
     highEndless: Store.get("highEndless", 0),
   };
-  const diffMul = () => (S.difficulty === "hard" ? 1.35 : 1);
+  // three difficulty tiers: hp/speed multipliers, starting core, and the Alloy payout scale
+  const DIFFS = {
+    normal: { label: "Normal", hp: 1.0, spd: 1.0, core: 20, alloy: 1.0, count: 1.0, reward: 1.0 },
+    hard:   { label: "Hard",   hp: 1.7, spd: 1.1,  core: 18, alloy: 1.5, count: 1.25, reward: 0.92 },
+    brutal: { label: "Brutal", hp: 2.6, spd: 1.2,  core: 15, alloy: 2.0, count: 1.6, reward: 0.85 },
+  };
+  const DIFF_ORDER = ["normal", "hard", "brutal"];
+  const diffCfg = () => DIFFS[S.difficulty] || DIFFS.normal;
+  const diffMul = () => diffCfg().hp;
   // convert a finished run into persistent Alloy (once per run)
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * (S.difficulty === "hard" ? 1.4 : 1)));
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy));
     Meta.add(S.lastAlloy);
   }
   // onboarding: a chosen build plot to spotlight (buildable, just below the opening straight)
@@ -465,7 +498,7 @@
   function reset() {
     selectMap(S.mapIndex); // rebuilds path/decor/terrain only if the map changed
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
-    S.scrap = START_SCRAP + Meta.val("scrap"); S.core = START_CORE + Meta.val("core"); S.wave = 0; S.kills = 0;
+    S.scrap = START_SCRAP + Meta.val("scrap"); S.core = diffCfg().core + Meta.val("core"); S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0;
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
@@ -561,7 +594,7 @@
     const big = e.type === "juggernaut", heavy = e.type === "brute" || e.type === "sentinel";
     sparks(e.x, e.y - e.r * 0.2, e.armor ? "#cfd6de" : "#ffd27a", big ? 5 : 2, null, 6);
     if (e.hp <= 0 && e.alive) {
-      e.alive = false; const rw = Math.round(e.reward * rewardMul()); S.scrap += rw; S.kills++; heroXp(e);
+      e.alive = false; const rw = Math.max(1, Math.round(e.reward * rewardMul() * (diffCfg().reward || 1))); S.scrap += rw; S.kills++; heroXp(e);
       floats.push({ x: e.x, y: e.y - e.r, text: "+" + rw, life: 0.9, vy: -42, color: C.scrap, big });
       scorch(e.x, e.y + e.r * 0.4, e.r * (big ? 1.3 : 0.85));
       gibBurst(e.x, e.y, e.body, e.dark, big ? 22 : heavy ? 14 : 9, big ? 1.5 : 1);
@@ -579,7 +612,7 @@
     for (const s of S.queue) s.t -= dtMs;
     while (S.queue.length && S.queue[0].t <= 0) {
       const s = S.queue.shift(), st = statsFor(s.type, S.wave);
-      st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp;
+      st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd; if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
       const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
       enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6 }, st));
     }
@@ -600,7 +633,7 @@
       if (e.shieldMax) { e.shieldCd += dt; if (e.shieldCd > 3 && e.shield < e.shieldMax) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.22 * dt); }
       if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
       const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = ROUTES[e.route][e.pi + 1];
-      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 5 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
+      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
       const dx = tgt.x - e.x, dy = tgt.y - e.y, d = Math.hypot(dx, dy);
       if (d > 0.001) { const want = Math.atan2(dy, dx); let diff = want - e.face; while (diff > Math.PI) diff -= 6.283; while (diff < -Math.PI) diff += 6.283; e.face += diff * Math.min(1, dt * 9); e.bank = clamp((e.bank || 0) + (diff - (e.bank || 0)) * Math.min(1, dt * 6), -0.5, 0.5); }
       const step = spd * dt;
@@ -681,13 +714,36 @@
   }
 
   /* ---------------- TERRAIN PRE-RENDER ---------------- */
-  const TS = 1.5;
-  let terrain = null;
+  const TS = 1.5, TMARGIN = 44, CLIFF_H = 20; // baked margin around the island + cliff face height
+  let terrain = null, VOID_COL = "#05070a";
   function buildTerrain() {
     const cv = document.createElement("canvas");
-    cv.width = Math.round(WORLD_W * TS); cv.height = Math.round(WORLD_H * TS);
-    const g = cv.getContext("2d"); g.scale(TS, TS);
-    // backdrop
+    cv.width = Math.round((WORLD_W + 2 * TMARGIN) * TS); cv.height = Math.round((WORLD_H + 2 * TMARGIN) * TS);
+    const g = cv.getContext("2d"); g.scale(TS, TS); g.translate(TMARGIN, TMARGIN);
+    // void backdrop across the whole canvas (the island floats over this)
+    VOID_COL = darken(BM.skyBot, 0.5);
+    g.fillStyle = VOID_COL; g.fillRect(-TMARGIN, -TMARGIN, WORLD_W + 2 * TMARGIN, WORLD_H + 2 * TMARGIN);
+    // faint distant silhouettes in the void
+    g.fillStyle = rgba(BM.skyTop, 0.5);
+    for (let i = 0; i < 10; i++) { const hx = hash2(i * 3, 91), hy = hash2(i * 7, 47); const bx = -TMARGIN + hx * (WORLD_W + 2 * TMARGIN), by = -TMARGIN + hy * (WORLD_H + 2 * TMARGIN); if (bx > -6 && bx < WORLD_W + 6 && by > -6 && by < WORLD_H + 6) continue; g.fillRect(bx, by, 14 + hx * 22, 5 + hy * 9); }
+    // jagged island rim: build perimeter polygon (used for base fill now, faces after tiles)
+    const RIM = [], stepE = 32, jag = (v, a) => 3 + hash2(Math.round(v) * 7 + a * 5, a * 13 + Math.round(v)) * 9;
+    for (let x = 0; x <= WORLD_W; x += stepE) RIM.push([x, -jag(x, 1)]);
+    for (let y = 0; y <= WORLD_H; y += stepE) RIM.push([WORLD_W + jag(y, 2), y]);
+    for (let x = WORLD_W; x >= 0; x -= stepE) RIM.push([x, WORLD_H + jag(x, 3)]);
+    for (let y = WORLD_H; y >= 0; y -= stepE) RIM.push([-jag(y, 4), y]);
+    const rimPath = () => { g.beginPath(); RIM.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); };
+    // cliff SIDE faces first (extruded downward: visible below the island)
+    const CLIFF = 20, rock = darken(BM.ashEdge, 0.25);
+    g.save(); g.translate(0, CLIFF);
+    rimPath(); g.fillStyle = darken(rock, 0.35); g.fill();
+    g.restore();
+    g.save(); g.translate(0, CLIFF * 0.55);
+    rimPath(); g.fillStyle = rock; g.fill();
+    g.restore();
+    // island top base fill (jagged edge ground)
+    rimPath(); g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.4); g.fill();
+    // backdrop tone across the island top
     const sky = g.createLinearGradient(0, 0, 0, WORLD_H);
     sky.addColorStop(0, BM.skyTop); sky.addColorStop(1, BM.skyBot);
     g.fillStyle = sky; g.fillRect(0, 0, WORLD_W, WORLD_H);
@@ -719,6 +775,15 @@
       else if (d.type === "deadtree") drawDeadtree(g, x, y, d.seed);
       else drawCrater(g, x, y);
     });
+    // cliff strata on the visible (south) face + lit rim along the island edge
+    g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = 1.4;
+    for (let x = 8; x < WORLD_W; x += 26) {
+      const h0 = hash2(x, 77), yTop = WORLD_H + jag(x, 3);
+      g.beginPath(); g.moveTo(x, yTop + 4 + h0 * 5); g.lineTo(x + 14 + h0 * 8, yTop + 5 + h0 * 6); g.stroke();
+      if (h0 > 0.55) { g.beginPath(); g.moveTo(x + 4, yTop + 11 + h0 * 5); g.lineTo(x + 12, yTop + 12 + h0 * 5); g.stroke(); }
+    }
+    rimPath(); g.strokeStyle = "rgba(" + BM.light + ",0.28)"; g.lineWidth = 2; g.stroke();
+    rimPath(); g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 0.8; g.stroke();
     // baked directional light: warm from upper-left, cool shadow lower-right (consistent light source)
     const lg = g.createLinearGradient(0, 0, WORLD_W, WORLD_H);
     lg.addColorStop(0, "rgba(" + BM.light + ",0.12)"); lg.addColorStop(0.4, "rgba(" + BM.light + ",0)"); lg.addColorStop(1, "rgba(" + BM.shade + ",0.32)");
@@ -757,6 +822,30 @@
     const h = hash2(c * 2 + 1, r * 2 + 3);
     g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
     const n = roadNeighbors(c, r), cx = x + TILE / 2, cy = y + TILE / 2, half = TILE / 2, pad = 3;
+    const ring = (px, py, ri, ro, a0, a1, style) => { g.beginPath(); g.arc(px, py, ro, a0, a1); g.arc(px, py, Math.max(0.1, ri), a1, a0, true); g.closePath(); g.fillStyle = style; g.fill(); };
+    const cnt = (n.u ? 1 : 0) + (n.d ? 1 : 0) + (n.l ? 1 : 0) + (n.rt ? 1 : 0);
+    // curved corner: exactly one vertical + one horizontal neighbor -> quarter-annulus road
+    if (cnt === 2 && (n.u || n.d) && (n.l || n.rt)) {
+      let px, py, a0, a1;
+      if (n.u && n.rt) { px = x + TILE; py = y; a0 = Math.PI / 2; a1 = Math.PI; }
+      else if (n.u && n.l) { px = x; py = y; a0 = 0; a1 = Math.PI / 2; }
+      else if (n.d && n.rt) { px = x + TILE; py = y + TILE; a0 = Math.PI; a1 = Math.PI * 1.5; }
+      else { px = x; py = y + TILE; a0 = Math.PI * 1.5; a1 = Math.PI * 2; }
+      const Ri = pad, Ro = TILE - pad, mid = (Ri + Ro) / 2;
+      ring(px, py, Ri - 2, Ro + 2, a0, a1, darken(BM.road, 0.55)); // curb
+      ring(px, py, Ri, Ro, a0, a1, BM.road);                        // asphalt
+      // trench walls: shadow near the north-most wall, light on the sun-facing one
+      if (py === y) { ring(px, py, Ri, Ri + 9, a0, a1, "rgba(0,0,0,0.3)"); ring(px, py, Ro - 7, Ro, a0, a1, "rgba(" + BM.light + ",0.1)"); }
+      else { ring(px, py, Ro - 9, Ro, a0, a1, "rgba(0,0,0,0.3)"); ring(px, py, Ri, Ri + 7, a0, a1, "rgba(" + BM.light + ",0.1)"); }
+      // curved tire tracks + center dashes
+      g.strokeStyle = "rgba(0,0,0,0.16)"; g.lineWidth = 3.5;
+      g.beginPath(); g.arc(px, py, mid - 7, a0, a1); g.stroke();
+      g.beginPath(); g.arc(px, py, mid + 7, a0, a1); g.stroke();
+      g.strokeStyle = BM.roadLine; g.globalAlpha = 0.5; g.lineWidth = 3; g.setLineDash([9, 12]);
+      g.beginPath(); g.arc(px, py, mid, a0, a1); g.stroke();
+      g.setLineDash([]); g.globalAlpha = 1;
+      return;
+    }
     // raised curb (darker) just outside the asphalt for a channeled read
     g.fillStyle = darken(BM.road, 0.55);
     g.fillRect(cx - (half - pad + 2), cy - (half - pad + 2), (half - pad + 2) * 2, (half - pad + 2) * 2);
@@ -770,13 +859,21 @@
     if (n.d) g.fillRect(cx - (half - pad), cy, (half - pad) * 2, half);
     if (n.l) g.fillRect(x, cy - (half - pad), half, (half - pad) * 2);
     if (n.rt) g.fillRect(cx, cy - (half - pad), half, (half - pad) * 2);
+    // trench walls: shadow cast from the NW walls onto the asphalt, lit SE inner walls
+    const inn = half - pad;
+    const x0 = n.l ? x : cx - inn, x1 = n.rt ? x + TILE : cx + inn;
+    const y0 = n.u ? y : cy - inn, y1 = n.d ? y + TILE : cy + inn;
+    if (!n.u) { const sh = g.createLinearGradient(0, cy - inn, 0, cy - inn + 9); sh.addColorStop(0, "rgba(0,0,0,0.42)"); sh.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = sh; g.fillRect(x0, cy - inn, x1 - x0, 9); }
+    if (!n.l) { const sh = g.createLinearGradient(cx - inn, 0, cx - inn + 9, 0); sh.addColorStop(0, "rgba(0,0,0,0.42)"); sh.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = sh; g.fillRect(cx - inn, y0, 9, y1 - y0); }
+    if (!n.d) { const lt = g.createLinearGradient(0, cy + inn, 0, cy + inn - 7); lt.addColorStop(0, "rgba(" + BM.light + ",0.16)"); lt.addColorStop(1, "rgba(" + BM.light + ",0)"); g.fillStyle = lt; g.fillRect(x0, cy + inn - 7, x1 - x0, 7); }
+    if (!n.rt) { const lt = g.createLinearGradient(cx + inn, 0, cx + inn - 7, 0); lt.addColorStop(0, "rgba(" + BM.light + ",0.16)"); lt.addColorStop(1, "rgba(" + BM.light + ",0)"); g.fillStyle = lt; g.fillRect(cx + inn - 7, y0, 7, y1 - y0); }
     // cracks in asphalt
     g.strokeStyle = lighten(BM.road, 0.12); g.lineWidth = 1;
     for (let i = 0; i < 2; i++) { const h1 = hash2(c * 5 + i, r * 9 + i), h2 = hash2(c * 11 + i, r * 3 + i); g.beginPath(); g.moveTo(x + 8 + h1 * (TILE - 16), y + 8 + h2 * (TILE - 16)); g.lineTo(x + 8 + h2 * (TILE - 16), y + 8 + h1 * (TILE - 16)); g.stroke(); }
     // worn tire tracks along travel direction
     g.fillStyle = "rgba(0,0,0,0.16)";
-    if (n.l || n.rt) { g.fillRect(x, cy - 9, TILE, 3.5); g.fillRect(x, cy + 5, TILE, 3.5); }
-    if (n.u || n.d) { g.fillRect(cx - 9, y, 3.5, TILE); g.fillRect(cx + 5, y, 3.5, TILE); }
+    if (n.l || n.rt) { g.fillRect(x0, cy - 9, x1 - x0, 3.5); g.fillRect(x0, cy + 5, x1 - x0, 3.5); }
+    if (n.u || n.d) { g.fillRect(cx - 9, y0, 3.5, y1 - y0); g.fillRect(cx + 5, y0, 3.5, y1 - y0); }
     // faded center dashes along travel direction
     g.fillStyle = BM.roadLine; g.globalAlpha = 0.5;
     const horiz = n.l || n.rt;
@@ -915,7 +1012,47 @@
 
   /* ---------------- CANVAS ---------------- */
   const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d");
+  let ctx = canvas.getContext("2d"); // `let` so bakeSprites can temporarily retarget the shared draw helpers
+
+  /* ---------------- SPRITE BAKING (V2.3) ----------------
+     Static tower bases and enemy bodies are rendered once at 3x into offscreen
+     canvases and blitted per frame; only animated parts (heads, legs, glows)
+     stay vector. Raises the detail ceiling at zero per-frame gradient cost. */
+  const SPRITES = new Map(), SBS = 3;
+  function bakeSprite(key, size, fn) {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = Math.ceil(size * SBS);
+    const g = cv.getContext("2d"); g.scale(SBS, SBS); g.translate(size / 2, size / 2);
+    const old = ctx; ctx = g; try { fn(); } finally { ctx = old; }
+    SPRITES.set(key, { cv, size, half: size / 2 });
+  }
+  function drawSprite(key, x, y, scale) {
+    const sp = SPRITES.get(key); if (!sp) return;
+    const s = (scale || 1) * sp.size;
+    ctx.drawImage(sp.cv, x - s / 2, y - s / 2, s, s);
+  }
+  // baked wear + rim-light pass shared by all sprites
+  function wearPass(r, seed) {
+    ctx.fillStyle = "rgba(0,0,0,0.16)";
+    for (let i = 0; i < 9; i++) { const a = hash2(i * 3 + seed, seed + i) * 7, d = hash2(i * 7, seed * 2 + i) * r * 0.75; ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, 0.6 + hash2(i, seed) * 1.4, 0, 7); ctx.fill(); }
+    ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.92, Math.PI * 1.05, Math.PI * 1.55); ctx.stroke();
+  }
+  function bakeSprites() {
+    for (const type of TOWER_ORDER) bakeSprite("tw_" + type, 72, () => { towerBaseArt(TOWERS[type]); });
+    for (const type in ENEMIES) { const b = ENEMIES[type]; bakeSprite("en_" + type, Math.ceil(b.r * 3.2) + 8, () => { enemyStatic(Object.assign({ armor: !!b.armor }, b)); wearPass(b.r * 0.8, b.r); }); }
+    // generic per-enemy light overlays (blitted scaled by r; nominal r = 24)
+    bakeSprite("fx_sheen", 56, () => {
+      const R = 24, sh = ctx.createRadialGradient(-R * 0.3, -R * 0.45, 1, -R * 0.3, -R * 0.45, R * 1.25);
+      sh.addColorStop(0, "rgba(255,255,255,0.16)"); sh.addColorStop(0.6, "rgba(255,255,255,0.03)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, R * 1.05, 0, 7); ctx.fill();
+    });
+    bakeSprite("fx_under", 56, () => {
+      const R = 24, un = ctx.createRadialGradient(0, R * 0.15, 1, 0, R * 0.15, R * 1.1);
+      un.addColorStop(0, "rgba(0,0,0,0.22)"); un.addColorStop(0.7, "rgba(0,0,0,0.05)"); un.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = un; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
+    });
+  }
   function resize() {
     const sc = Math.min(window.innerWidth / W, window.innerHeight / H), dpr = window.devicePixelRatio || 1;
     canvas.style.width = W * sc + "px"; canvas.style.height = H * sc + "px";
@@ -927,21 +1064,47 @@
   /* ---------------- WORLD DRAW ---------------- */
   function drawSpawnAndBase() {
     const base = ROUTES[0][ROUTES[0].length - 1];
-    // breach at each entrance: glowing red rift with embers
+    // breach at each entrance: ruined tunnel mouth with a molten glow inside
     const pr = 20 + Math.sin(S.time * 3) * 3;
     for (const route of ROUTES) {
       const st = route[0];
       ctx.save();
-      const gr = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, pr + 8);
-      gr.addColorStop(0, "rgba(255,180,90,0.9)"); gr.addColorStop(0.5, "rgba(224,83,63,0.5)"); gr.addColorStop(1, "rgba(224,83,63,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, pr + 8, 0, 7); ctx.fill();
-      ctx.strokeStyle = "#ff8a3a"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(st.x, st.y, pr, 0, 7); ctx.stroke();
-      ctx.strokeStyle = "rgba(255,120,60,0.5)"; ctx.beginPath(); ctx.arc(st.x, st.y, pr * 0.6, 0, 7); ctx.stroke();
+      // rock collar (extruded ring, lit NW)
+      ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.ellipse(st.x + 3, st.y + 8, 27, 12, 0, 0, 7); ctx.fill();
+      const rockG = ctx.createLinearGradient(st.x - 24, st.y - 24, st.x + 24, st.y + 24);
+      rockG.addColorStop(0, lighten(BM.ashEdge, 0.25)); rockG.addColorStop(1, darken(BM.ashEdge, 0.4));
+      ctx.fillStyle = rockG; ctx.beginPath(); ctx.arc(st.x, st.y, 25, 0, 7); ctx.fill();
+      // broken teeth around the collar
+      ctx.fillStyle = darken(BM.ashEdge, 0.2);
+      for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283 + 0.4, hz = hash2(i * 3, st.x); ctx.save(); ctx.translate(st.x + Math.cos(a) * 24, st.y + Math.sin(a) * 24); ctx.rotate(a); ctx.fillRect(-3, -4 - hz * 5, 6, 8 + hz * 6); ctx.restore(); }
+      // dark tunnel throat
+      const th = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, 20);
+      th.addColorStop(0, "#000"); th.addColorStop(0.75, "#0c0806"); th.addColorStop(1, "rgba(12,8,6,0)");
+      ctx.fillStyle = th; ctx.beginPath(); ctx.arc(st.x, st.y, 20, 0, 7); ctx.fill();
+      // molten glow breathing inside
+      const gr = ctx.createRadialGradient(st.x, st.y, 1, st.x, st.y, pr);
+      gr.addColorStop(0, "rgba(255,180,90,0.85)"); gr.addColorStop(0.5, "rgba(224,83,63,0.4)"); gr.addColorStop(1, "rgba(224,83,63,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, pr, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(255,138,58,0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(st.x, st.y, pr * 0.55, 0, 7); ctx.stroke();
       ctx.restore();
     }
-    // base: bunker with cyan reactor core
+    // base: walled fortress compound around the reactor bunker
     ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.ellipse(base.x, base.y + 16, 26, 8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.ellipse(base.x + 3, base.y + 20, 38, 12, 0, 0, 7); ctx.fill();
+    // perimeter wall (outer fill, inner court) + corner bastions
+    const wg = ctx.createLinearGradient(base.x, base.y - 30, base.x, base.y + 30);
+    wg.addColorStop(0, "#565e68"); wg.addColorStop(1, "#272c33");
+    ctx.fillStyle = wg; rr(base.x - 33, base.y - 27, 66, 54, 7); ctx.fill();
+    ctx.strokeStyle = "#15181d"; ctx.lineWidth = 1.5; rr(base.x - 33, base.y - 27, 66, 54, 7); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.12)"; rr(base.x - 33, base.y - 27, 66, 3, 3); ctx.fill(); // wall top rim light
+    ctx.fillStyle = mix(BM.ashEdge, "#20242a", 0.5); rr(base.x - 26, base.y - 20, 52, 40, 4); ctx.fill(); // court
+    for (const [bx, by] of [[-33, -27], [33, -27], [-33, 27], [33, 27]]) {
+      const bg2 = ctx.createRadialGradient(base.x + bx - 2, base.y + by - 2, 1, base.x + bx, base.y + by, 9);
+      bg2.addColorStop(0, "#6a737e"); bg2.addColorStop(1, "#2a2f36");
+      ctx.fillStyle = bg2; ctx.beginPath(); ctx.arc(base.x + bx, base.y + by, 8, 0, 7); ctx.fill();
+      ctx.strokeStyle = "#15181d"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(base.x + bx, base.y + by, 2, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = "#3a4048"; rr(base.x - 24, base.y - 14, 48, 34, 4); ctx.fill();
     ctx.fillStyle = "#4c535c"; for (let i = 0; i < 4; i++) rr(base.x - 24 + i * 12 + 1, base.y - 22, 9, 9, 2), ctx.fill();
     ctx.strokeStyle = "#22262c"; ctx.lineWidth = 1; rr(base.x - 24, base.y - 14, 48, 34, 4); ctx.stroke();
@@ -964,27 +1127,35 @@
     ctx.globalAlpha = 1;
   }
   function hexPath(x, y, R, sq) { sq = sq == null ? 0.82 : sq; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.52; const px = x + Math.cos(a) * R, py = y + Math.sin(a) * R * sq; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); }
+  // static tower base at origin (baked once per type by bakeSprites)
+  function towerBaseArt(spec) {
+    const R = 20, dk = darken(spec.metal, 0.4), edge = darken(spec.metal, 0.6);
+    ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.beginPath(); ctx.ellipse(R * 0.12, R * 0.66, R * 1.3, R * 0.52, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.36)"; ctx.beginPath(); ctx.ellipse(0, R * 0.6, R * 1.02, R * 0.4, 0, 0, 7); ctx.fill();
+    hexPath(0, 0, R, 0.82);
+    const pg = ctx.createLinearGradient(-R * 0.4, -R, R * 0.4, R); pg.addColorStop(0, lighten(spec.metalLt, 0.28)); pg.addColorStop(0.45, spec.metal); pg.addColorStop(1, darken(spec.metal, 0.5));
+    ctx.fillStyle = pg; ctx.fill();
+    hexPath(0, 0, R, 0.82); ctx.save(); ctx.clip();
+    const sheen = ctx.createRadialGradient(-R * 0.45, -R * 0.6, 1, -R * 0.45, -R * 0.6, R * 1.3);
+    sheen.addColorStop(0, "rgba(255,255,255,0.22)"); sheen.addColorStop(0.5, "rgba(255,255,255,0.05)"); sheen.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = sheen; ctx.fillRect(-R, -R, R * 2, R * 2); ctx.restore();
+    ctx.strokeStyle = edge; ctx.lineWidth = 1.5; hexPath(0, 0, R, 0.82); ctx.stroke();
+    hexPath(0, -1, R * 0.72, 0.82);
+    const ig = ctx.createLinearGradient(0, -R * 0.7, 0, R * 0.7); ig.addColorStop(0, dk); ig.addColorStop(1, darken(spec.metal, 0.25));
+    ctx.fillStyle = ig; ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1; ctx.stroke();
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.52, rx = Math.cos(a) * R * 0.86, ry = Math.sin(a) * R * 0.7; ctx.fillStyle = edge; ctx.beginPath(); ctx.arc(rx, ry, 1.5, 0, 7); ctx.fill(); ctx.fillStyle = lighten(spec.metalLt, 0.2); ctx.beginPath(); ctx.arc(rx - 0.4, ry - 0.5, 0.7, 0, 7); ctx.fill(); }
+    wearPass(R * 0.7, R + spec.metal.length);
+  }
   function drawTowerArt(x, y, type, lvl, angle, recoil, flash, active, scale, branch) {
     scale = scale || 1; const spec = TOWERS[type], s = scale, R = 20 * s, t = S.time;
     const brSpec = lvl === 2 && branch ? spec.branches[branch] : null;
     const dk = darken(spec.metal, 0.4), edge = darken(spec.metal, 0.6);
-    // ground shadow
-    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(x, y + R * 0.6, R * 1.12, R * 0.44, 0, 0, 7); ctx.fill();
-    // outer hex plate (beveled)
-    hexPath(x, y, R, 0.82);
-    const pg = ctx.createLinearGradient(x, y - R, x, y + R); pg.addColorStop(0, lighten(spec.metalLt, 0.15)); pg.addColorStop(0.5, spec.metal); pg.addColorStop(1, dk);
-    ctx.fillStyle = pg; ctx.fill();
-    ctx.strokeStyle = edge; ctx.lineWidth = 1.5 * s; ctx.stroke();
-    // inner recessed hex
-    hexPath(x, y - 1 * s, R * 0.72, 0.82);
-    const ig = ctx.createLinearGradient(x, y - R * 0.7, x, y + R * 0.7); ig.addColorStop(0, dk); ig.addColorStop(1, darken(spec.metal, 0.25));
-    ctx.fillStyle = ig; ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1 * s; ctx.stroke();
-    // corner rivets + accent trim
-    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.52, rx = x + Math.cos(a) * R * 0.86, ry = y + Math.sin(a) * R * 0.7; ctx.fillStyle = edge; ctx.beginPath(); ctx.arc(rx, ry, 1.5 * s, 0, 7); ctx.fill(); ctx.fillStyle = lighten(spec.metalLt, 0.2); ctx.beginPath(); ctx.arc(rx - 0.4 * s, ry - 0.5 * s, 0.7 * s, 0, 7); ctx.fill(); }
+    // baked base sprite (shadow, beveled hex, sheen, recess, rivets, wear)
+    drawSprite("tw_" + type, x, y, s);
     // emissive base ring (brightens when active)
-    ctx.save(); ctx.globalAlpha = active ? 0.85 : 0.4; ctx.strokeStyle = spec.accent; ctx.lineWidth = 1.6 * s;
-    if (active) { ctx.shadowColor = spec.accent; ctx.shadowBlur = 8 * s; }
+    ctx.save(); ctx.globalAlpha = active ? 1 : 0.5; ctx.strokeStyle = spec.accent; ctx.lineWidth = 1.8 * s;
+    ctx.shadowColor = spec.accent; ctx.shadowBlur = (active ? 11 : 5) * s;
     hexPath(x, y - 1 * s, R * 0.72, 0.82); ctx.stroke(); ctx.restore();
     // under-head glow when active
     if (active) { ctx.save(); ctx.globalAlpha = 0.4; ctx.fillStyle = spec.accent; ctx.beginPath(); ctx.arc(x, y - 11 * s, R * 0.5, 0, 7); ctx.fill(); ctx.restore(); }
@@ -1087,10 +1258,10 @@
   }
   // rounded-body sphere shading: highlight offset toward the light (upper-left in body-local space)
   function bodyFill(r, body, hiAmt, loAmt) {
-    const g = ctx.createRadialGradient(-r * 0.32, -r * 0.4, r * 0.1, 0, 0, r * 1.25);
-    g.addColorStop(0, lighten(body, hiAmt == null ? 0.42 : hiAmt));
-    g.addColorStop(0.55, body);
-    g.addColorStop(1, darken(body, loAmt == null ? 0.42 : loAmt));
+    const g = ctx.createRadialGradient(-r * 0.34, -r * 0.42, r * 0.05, 0, r * 0.1, r * 1.35);
+    g.addColorStop(0, lighten(body, hiAmt == null ? 0.55 : hiAmt));
+    g.addColorStop(0.5, body);
+    g.addColorStop(1, darken(body, loAmt == null ? 0.55 : loAmt));
     return g;
   }
   function legPair(ph, hipX, hipY, len, spread, w, col) {
@@ -1104,21 +1275,12 @@
       ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
     }
   }
-  function enemyBody(e) {
-    const r = e.r, ph = e.walk || 0, t = S.time;
+  // static enemy body parts at origin (baked once per type by bakeSprites)
+  function enemyStatic(e) {
+    const r = e.r;
     ctx.lineJoin = "round";
     if (e.shape === "stalker") {
-      // sleek six-legged sprinter, body along +x
       const dk = darken(e.body, 0.35);
-      // scuttling legs (3 per side)
-      ctx.strokeStyle = dk; ctx.lineWidth = 2.1; ctx.lineCap = "round";
-      for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
-        const s = Math.sin(ph * 1.6 + i * 1.1 + (side < 0 ? Math.PI : 0));
-        const hx = r * 0.5 - i * r * 0.45, hy = side * r * 0.35;
-        const fx = hx + s * r * 0.4, fy = side * (r * 1.05 + Math.abs(s) * r * 0.15);
-        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo((hx + fx) / 2, hy + side * r * 0.6); ctx.lineTo(fx, fy); ctx.stroke();
-      }
-      // carapace: pointed front, tapered rear
       ctx.beginPath();
       ctx.moveTo(r * 1.15, 0); ctx.quadraticCurveTo(r * 0.4, -r * 0.72, -r * 0.5, -r * 0.5);
       ctx.quadraticCurveTo(-r * 1.05, -r * 0.18, -r * 1.05, 0);
@@ -1126,109 +1288,56 @@
       ctx.quadraticCurveTo(r * 0.4, r * 0.72, r * 1.15, 0); ctx.closePath();
       ctx.fillStyle = bodyFill(r * 1.15, e.body, 0.5, 0.45); ctx.fill();
       ctx.strokeStyle = dk; ctx.lineWidth = 1.4; ctx.stroke();
-      // spine ridge
       ctx.strokeStyle = darken(e.body, 0.25); ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(-r * 0.7, 0); ctx.lineTo(r * 0.5, 0); ctx.stroke();
-      // twin forward eyes
-      glowDots(r * 0.7, r * 0.22, Math.max(1.5, r * 0.15), e.eye, t);
+      // baked plate segments for extra read
+      ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 1;
+      for (const fx of [0.55, 0.1, -0.35]) { ctx.beginPath(); ctx.moveTo(r * fx, -r * 0.5); ctx.quadraticCurveTo(r * (fx - 0.12), 0, r * fx, r * 0.5); ctx.stroke(); }
     } else if (e.shape === "raider") {
-      // armored trooper, top-down: pauldrons, helmet, rifle forward, stepping boots
-      const step = Math.sin(ph);
-      // boots (rear, alternating)
-      ctx.fillStyle = darken(e.body, 0.5);
-      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? Math.PI : 0)); rr(-r * 0.5 + s * r * 0.5, side * r * 0.42 - r * 0.16, r * 0.5, r * 0.32, r * 0.12); ctx.fill(); }
-      // rifle
       ctx.fillStyle = "#26282c"; rr(r * 0.2, -r * 0.12, r * 1.1, r * 0.24, r * 0.08); ctx.fill();
       ctx.fillStyle = "#3a3d42"; rr(r * 0.1, -r * 0.2, r * 0.4, r * 0.4, r * 0.1); ctx.fill();
-      // torso / shoulders
       ctx.fillStyle = bodyFill(r, e.body, 0.4, 0.4);
       rr(-r * 0.7, -r * 0.7, r * 1.35, r * 1.4, r * 0.4); ctx.fill();
       ctx.strokeStyle = darken(e.body, 0.4); ctx.lineWidth = 1.3; rr(-r * 0.7, -r * 0.7, r * 1.35, r * 1.4, r * 0.4); ctx.stroke();
-      // chest plate seam
       ctx.strokeStyle = darken(e.body, 0.25); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-r * 0.1, -r * 0.6); ctx.lineTo(-r * 0.1, r * 0.6); ctx.stroke();
-      // backpack
       ctx.fillStyle = darken(e.body, 0.35); rr(-r * 0.85, -r * 0.35, r * 0.35, r * 0.7, r * 0.12); ctx.fill();
-      // helmet
+      // pauldron edge highlights
+      ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-r * 0.62, -r * 0.62); ctx.lineTo(r * 0.5, -r * 0.62); ctx.stroke();
       ctx.fillStyle = bodyFill(r * 0.55, e.body, 0.6, 0.3);
       ctx.beginPath(); ctx.arc(r * 0.05, 0, r * 0.5, 0, 7); ctx.fill();
       ctx.strokeStyle = darken(e.body, 0.45); ctx.lineWidth = 1; ctx.stroke();
-      // visor
-      ctx.fillStyle = rgba("#37e0d0", 0.9); rr(r * 0.28, -r * 0.22, r * 0.22, r * 0.44, r * 0.08);
-      ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; rr(r * 0.28, -r * 0.22, r * 0.2, r * 0.44, r * 0.08); ctx.fill(); ctx.restore();
     } else if (e.shape === "brute") {
-      // heavy hulk: broad armored plate, swinging arms, back vents
-      const sway = Math.sin(ph) * r * 0.12;
-      // stompy legs
-      ctx.fillStyle = darken(e.body, 0.55);
-      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? Math.PI : 0)); rr(-r * 0.35 + s * r * 0.35, side * r * 0.45 - r * 0.24, r * 0.7, r * 0.48, r * 0.14); ctx.fill(); }
-      // arms (swing opposite legs)
-      ctx.strokeStyle = darken(e.body, 0.3); ctx.lineWidth = r * 0.42; ctx.lineCap = "round";
-      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? 0 : Math.PI)); ctx.beginPath(); ctx.moveTo(-r * 0.1, side * r * 0.7); ctx.lineTo(r * 0.5 + s * r * 0.35, side * r * 1.1); ctx.stroke(); }
-      // fists
-      ctx.fillStyle = darken(e.body, 0.15);
-      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? 0 : Math.PI)); ctx.beginPath(); ctx.arc(r * 0.5 + s * r * 0.35, side * r * 1.1, r * 0.26, 0, 7); ctx.fill(); }
-      // torso: hexish heavy plate
-      ctx.save(); ctx.translate(sway, 0);
       ctx.beginPath();
       ctx.moveTo(r * 0.95, 0); ctx.lineTo(r * 0.4, -r * 0.95); ctx.lineTo(-r * 0.6, -r * 0.85);
       ctx.lineTo(-r * 0.95, 0); ctx.lineTo(-r * 0.6, r * 0.85); ctx.lineTo(r * 0.4, r * 0.95); ctx.closePath();
       ctx.fillStyle = bodyFill(r, e.body, 0.38, 0.45); ctx.fill();
       ctx.strokeStyle = darken(e.body, 0.5); ctx.lineWidth = 1.6; ctx.stroke();
-      // shoulder spikes
       ctx.fillStyle = darken(e.body, 0.2);
       for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 0.2, side * r * 0.6); ctx.lineTo(-r * 0.55, side * r * 1.0); ctx.lineTo(r * 0.05, side * r * 0.85); ctx.closePath(); ctx.fill(); }
-      // glowing back vents
-      const vg = 0.5 + 0.5 * Math.sin(t * 5);
-      ctx.fillStyle = rgba("#f2b23a", 0.55 + vg * 0.4);
-      for (const oy of [-0.4, 0, 0.4]) { rr(-r * 0.8, oy * r - r * 0.06, r * 0.22, r * 0.12, 2); ctx.fill(); }
-      // small head
+      // vent slots (dark base; glow drawn live)
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      for (const oy of [-0.4, 0, 0.4]) { rr(-r * 0.82, oy * r - r * 0.08, r * 0.26, r * 0.16, 2); ctx.fill(); }
       ctx.fillStyle = darken(e.body, 0.25); ctx.beginPath(); ctx.arc(r * 0.35, 0, r * 0.28, 0, 7); ctx.fill();
-      glowDots(r * 0.45, r * 0.13, Math.max(1.6, r * 0.12), e.eye, t);
-      ctx.restore();
+      ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-r * 0.5, -r * 0.72); ctx.lineTo(r * 0.32, -r * 0.8); ctx.stroke();
     } else if (e.shape === "wraith") {
-      // hover drone: spinning rotors, glowing pod, forward sensor
-      const spin = t * 34;
       for (const [ax, ay] of [[0.82, -0.82], [0.82, 0.82], [-0.82, -0.82], [-0.82, 0.82]]) {
-        const hx = ax * r * 0.72, hy = ay * r * 0.72;
-        ctx.strokeStyle = darken(e.body, 0.45); ctx.lineWidth = r * 0.14; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hx, hy); ctx.stroke();
-        ctx.save(); ctx.globalAlpha = 0.35; ctx.strokeStyle = e.eye; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(hx, hy, r * 0.44, 0, 7); ctx.stroke(); ctx.restore();
-        ctx.save(); ctx.translate(hx, hy); ctx.rotate(spin + ax + ay); ctx.strokeStyle = lighten(e.body, 0.1); ctx.lineWidth = r * 0.1; ctx.beginPath(); ctx.moveTo(-r * 0.42, 0); ctx.lineTo(r * 0.42, 0); ctx.stroke(); ctx.restore();
+        const hx = ax * e.r * 0.72, hy = ay * e.r * 0.72;
+        ctx.strokeStyle = darken(e.body, 0.45); ctx.lineWidth = e.r * 0.14; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.save(); ctx.globalAlpha = 0.35; ctx.strokeStyle = e.eye; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(hx, hy, e.r * 0.44, 0, 7); ctx.stroke(); ctx.restore();
       }
       ctx.fillStyle = bodyFill(r * 0.7, e.body, 0.5, 0.42); ctx.beginPath(); ctx.ellipse(0, 0, r * 0.62, r * 0.5, 0, 0, 7); ctx.fill();
       ctx.strokeStyle = darken(e.body, 0.5); ctx.lineWidth = 1.2; ctx.stroke();
-      ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6); ctx.shadowColor = e.eye; ctx.shadowBlur = 8; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, 7); ctx.fill(); ctx.restore();
-      ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(r * 0.46, 0, Math.max(1.8, r * 0.16), 0, 7); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(-r * 0.12, -r * 0.12, r * 0.34, r * 0.22, -0.5, 0, 7); ctx.stroke();
     } else {
-      // juggernaut war-mech: scrolling tracks, chassis, rotating cannon, reactor core
-      const tread = (ph * 6) % 8;
-      for (const side of [-1, 1]) {
-        ctx.fillStyle = "#1c1e22"; rr(-r * 0.95, side * r * 0.62 - r * 0.28, r * 1.9, r * 0.56, 4); ctx.fill();
-        ctx.strokeStyle = "#0d0e10"; ctx.lineWidth = 1;
-        for (let i = -3; i <= 3; i++) { const tx = i * (r * 0.28) + tread; if (tx < -r * 0.9 || tx > r * 0.9) continue; ctx.beginPath(); ctx.moveTo(tx, side * r * 0.62 - r * 0.28); ctx.lineTo(tx, side * r * 0.62 + r * 0.28); ctx.stroke(); }
-      }
-      // chassis
       ctx.fillStyle = bodyFill(r, e.body, 0.32, 0.4);
       rr(-r * 0.85, -r * 0.72, r * 1.7, r * 1.44, 6); ctx.fill();
       ctx.strokeStyle = "#15171a"; ctx.lineWidth = 1.8; rr(-r * 0.85, -r * 0.72, r * 1.7, r * 1.44, 6); ctx.stroke();
-      // armor panels
       ctx.strokeStyle = darken(e.body, 0.4); ctx.lineWidth = 1;
       ctx.strokeRect(-r * 0.55, -r * 0.45, r * 1.1, r * 0.9);
-      // warning lights
-      const wl = Math.sin(t * 8) > 0;
-      ctx.fillStyle = wl ? "#ff5a3a" : "#5a2018"; ctx.beginPath(); ctx.arc(-r * 0.65, -r * 0.52, r * 0.1, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(-r * 0.65, r * 0.52, r * 0.1, 0, 7); ctx.fill();
-      // reactor core
-      const pulse = 0.5 + 0.5 * Math.sin(t * 6);
-      const cg = ctx.createRadialGradient(0, 0, 1, 0, 0, r * 0.5);
-      cg.addColorStop(0, "#fff"); cg.addColorStop(0.4, e.eye); cg.addColorStop(1, rgba("#e0479a", 0));
-      ctx.save(); ctx.globalAlpha = 0.7 + pulse * 0.3; ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, 7); ctx.fill(); ctx.restore();
-      ctx.fillStyle = "#1a1c20"; ctx.beginPath(); ctx.arc(0, 0, r * 0.24, 0, 7); ctx.fill();
-      ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.15, 0, 7); ctx.fill();
-      // rotating cannon on top, aimed forward
-      ctx.save(); ctx.rotate(Math.sin(t * 0.7) * 0.15);
-      ctx.fillStyle = "#3a3d44"; rr(-r * 0.2, -r * 0.18, r * 1.15, r * 0.36, r * 0.1); ctx.fill();
-      ctx.fillStyle = "#24262b"; rr(r * 0.75, -r * 0.1, r * 0.35, r * 0.2, 2); ctx.fill();
-      ctx.fillStyle = "#4a4e56"; ctx.beginPath(); ctx.arc(-r * 0.1, 0, r * 0.26, 0, 7); ctx.fill();
-      ctx.restore();
+      // hull greebles
+      ctx.fillStyle = darken(e.body, 0.3);
+      for (const [gx, gy] of [[-0.7, -0.3], [-0.7, 0.14], [0.62, -0.36], [0.62, 0.2]]) rr(r * gx, r * gy, r * 0.14, r * 0.16, 1.5), ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-r * 0.8, -r * 0.68); ctx.lineTo(r * 0.8, -r * 0.68); ctx.stroke();
     }
     // armor plating overlay (sentinel and any armored foe): riveted steel + hazard stripe
     if (e.armor) {
@@ -1236,6 +1345,73 @@
       ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.3, px = Math.cos(a) * r * 0.88, py = Math.sin(a) * r * 0.82; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); ctx.stroke();
       ctx.fillStyle = "rgba(226,232,238,0.55)"; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.3; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.88, Math.sin(a) * r * 0.82, r * 0.06, 0, 7); ctx.fill(); }
       ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * 0.55, -r * 0.32); ctx.lineTo(r * 0.55, -r * 0.32); ctx.stroke();
+    }
+  }
+  // per-frame enemy: animated limbs (vector) + baked body sprite + live glows
+  function enemyBody(e) {
+    const r = e.r, ph = e.walk || 0, t = S.time;
+    ctx.lineJoin = "round";
+    const sp = SPRITES.get("en_" + e.type);
+    const blit = (ox) => { if (sp) ctx.drawImage(sp.cv, (ox || 0) - sp.half, -sp.half, sp.size, sp.size); else enemyStatic(e); };
+    if (e.shape === "stalker") {
+      const dk = darken(e.body, 0.35);
+      ctx.strokeStyle = dk; ctx.lineWidth = 2.1; ctx.lineCap = "round";
+      for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
+        const s = Math.sin(ph * 1.6 + i * 1.1 + (side < 0 ? Math.PI : 0));
+        const hx = r * 0.5 - i * r * 0.45, hy = side * r * 0.35;
+        const fx = hx + s * r * 0.4, fy = side * (r * 1.05 + Math.abs(s) * r * 0.15);
+        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo((hx + fx) / 2, hy + side * r * 0.6); ctx.lineTo(fx, fy); ctx.stroke();
+      }
+      blit();
+      glowDots(r * 0.7, r * 0.22, Math.max(1.5, r * 0.15), e.eye, t);
+    } else if (e.shape === "raider") {
+      ctx.fillStyle = darken(e.body, 0.5);
+      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? Math.PI : 0)); rr(-r * 0.5 + s * r * 0.5, side * r * 0.42 - r * 0.16, r * 0.5, r * 0.32, r * 0.12); ctx.fill(); }
+      blit();
+      ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; rr(r * 0.28, -r * 0.22, r * 0.2, r * 0.44, r * 0.08); ctx.fill(); ctx.restore();
+    } else if (e.shape === "brute") {
+      const sway = Math.sin(ph) * r * 0.12;
+      ctx.fillStyle = darken(e.body, 0.55);
+      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? Math.PI : 0)); rr(-r * 0.35 + s * r * 0.35, side * r * 0.45 - r * 0.24, r * 0.7, r * 0.48, r * 0.14); ctx.fill(); }
+      ctx.strokeStyle = darken(e.body, 0.3); ctx.lineWidth = r * 0.42; ctx.lineCap = "round";
+      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? 0 : Math.PI)); ctx.beginPath(); ctx.moveTo(-r * 0.1, side * r * 0.7); ctx.lineTo(r * 0.5 + s * r * 0.35, side * r * 1.1); ctx.stroke(); }
+      ctx.fillStyle = darken(e.body, 0.15);
+      for (const side of [-1, 1]) { const s = Math.sin(ph + (side < 0 ? 0 : Math.PI)); ctx.beginPath(); ctx.arc(r * 0.5 + s * r * 0.35, side * r * 1.1, r * 0.26, 0, 7); ctx.fill(); }
+      blit(sway);
+      const vg = 0.5 + 0.5 * Math.sin(t * 5);
+      ctx.fillStyle = rgba("#f2b23a", 0.55 + vg * 0.4);
+      for (const oy of [-0.4, 0, 0.4]) { rr(sway - r * 0.8, oy * r - r * 0.06, r * 0.22, r * 0.12, 2); ctx.fill(); }
+      ctx.save(); ctx.translate(sway, 0); glowDots(r * 0.45, r * 0.13, Math.max(1.6, r * 0.12), e.eye, t); ctx.restore();
+    } else if (e.shape === "wraith") {
+      const spin = t * 34;
+      blit();
+      for (const [ax, ay] of [[0.82, -0.82], [0.82, 0.82], [-0.82, -0.82], [-0.82, 0.82]]) {
+        const hx = ax * r * 0.72, hy = ay * r * 0.72;
+        ctx.save(); ctx.translate(hx, hy); ctx.rotate(spin + ax + ay); ctx.strokeStyle = lighten(e.body, 0.1); ctx.lineWidth = r * 0.1; ctx.beginPath(); ctx.moveTo(-r * 0.42, 0); ctx.lineTo(r * 0.42, 0); ctx.stroke(); ctx.restore();
+      }
+      ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6); ctx.shadowColor = e.eye; ctx.shadowBlur = 8; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, 7); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(r * 0.46, 0, Math.max(1.8, r * 0.16), 0, 7); ctx.fill(); ctx.restore();
+    } else {
+      const tread = (ph * 6) % 8;
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = "#1c1e22"; rr(-r * 0.95, side * r * 0.62 - r * 0.28, r * 1.9, r * 0.56, 4); ctx.fill();
+        ctx.strokeStyle = "#0d0e10"; ctx.lineWidth = 1;
+        for (let i = -3; i <= 3; i++) { const tx = i * (r * 0.28) + tread; if (tx < -r * 0.9 || tx > r * 0.9) continue; ctx.beginPath(); ctx.moveTo(tx, side * r * 0.62 - r * 0.28); ctx.lineTo(tx, side * r * 0.62 + r * 0.28); ctx.stroke(); }
+      }
+      blit();
+      const wl = Math.sin(t * 8) > 0;
+      ctx.fillStyle = wl ? "#ff5a3a" : "#5a2018"; ctx.beginPath(); ctx.arc(-r * 0.65, -r * 0.52, r * 0.1, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(-r * 0.65, r * 0.52, r * 0.1, 0, 7); ctx.fill();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+      const cg = ctx.createRadialGradient(0, 0, 1, 0, 0, r * 0.5);
+      cg.addColorStop(0, "#fff"); cg.addColorStop(0.4, e.eye); cg.addColorStop(1, rgba("#e0479a", 0));
+      ctx.save(); ctx.globalAlpha = 0.7 + pulse * 0.3; ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, 7); ctx.fill(); ctx.restore();
+      ctx.fillStyle = "#1a1c20"; ctx.beginPath(); ctx.arc(0, 0, r * 0.24, 0, 7); ctx.fill();
+      ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.15, 0, 7); ctx.fill();
+      ctx.save(); ctx.rotate(Math.sin(t * 0.7) * 0.15);
+      ctx.fillStyle = "#3a3d44"; rr(-r * 0.2, -r * 0.18, r * 1.15, r * 0.36, r * 0.1); ctx.fill();
+      ctx.fillStyle = "#24262b"; rr(r * 0.75, -r * 0.1, r * 0.35, r * 0.2, 2); ctx.fill();
+      ctx.fillStyle = "#4a4e56"; ctx.beginPath(); ctx.arc(-r * 0.1, 0, r * 0.26, 0, 7); ctx.fill();
+      ctx.restore();
     }
   }
   function glowDots(x, dy, rad, col, t) {
@@ -1269,8 +1445,30 @@
     }
     ctx.shadowBlur = 0;
   }
-  function drawEnemies() {
+  function drawBridges() {
+    for (const b of BRIDGES) {
+      const cx = b.c * TILE + TILE / 2, cy = b.r * TILE + TILE / 2, wHalf = 21, L = TILE / 2 + 4;
+      ctx.save(); ctx.translate(cx, cy); if (!b.horiz) ctx.rotate(Math.PI / 2);
+      // shadow cast onto the road below
+      ctx.fillStyle = "rgba(0,0,0,0.38)"; ctx.fillRect(-L, -wHalf + 7, L * 2, wHalf * 2);
+      // steel deck
+      const dg = ctx.createLinearGradient(0, -wHalf, 0, wHalf); dg.addColorStop(0, "#5a616b"); dg.addColorStop(0.5, "#474d56"); dg.addColorStop(1, "#30353c");
+      ctx.fillStyle = dg; ctx.fillRect(-L, -wHalf, L * 2, wHalf * 2);
+      // deck plating seams
+      ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 1;
+      for (let i = -L + 7; i < L; i += 9) { ctx.beginPath(); ctx.moveTo(i, -wHalf + 3); ctx.lineTo(i, wHalf - 3); ctx.stroke(); }
+      // rails + top rim light + hazard tips
+      ctx.fillStyle = "#1e2228"; ctx.fillRect(-L, -wHalf, L * 2, 4.5); ctx.fillRect(-L, wHalf - 4.5, L * 2, 4.5);
+      ctx.fillStyle = "rgba(255,255,255,0.16)"; ctx.fillRect(-L, -wHalf, L * 2, 1.5);
+      ctx.fillStyle = "#f2b23a";
+      for (const sx of [-L, L - 7]) { ctx.fillRect(sx, -wHalf, 7, 4.5); ctx.fillRect(sx, wHalf - 4.5, 7, 4.5); }
+      ctx.restore();
+    }
+  }
+  const bridgeUnder = (e) => { if (!CROSS_MAP.size) return true; const ci = CROSS_MAP.get(Math.floor(e.x / TILE) + "," + Math.floor(e.y / TILE)); return !ci || e.route !== ci.over; };
+  function drawEnemies(pred) {
     enemies.slice().sort((a, b) => a.y - b.y).forEach((e) => {
+      if (pred && !pred(e)) return;
       const flying = e.flying;
       const hop = (e.shape === "juggernaut" || flying) ? 0 : Math.abs(Math.sin(e.walk || 0)) * 1.5;
       const hover = flying ? 9 + Math.sin(e.bob * 0.6) * 2.5 : 0;
@@ -1284,6 +1482,10 @@
       // hit flash overlay clipped to body region
       if (e.flash > 0) { ctx.globalAlpha = Math.min(0.8, e.flash / 0.12); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, e.r * 1.05, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       ctx.restore();
+      // screen-aligned overhead sheen + underside shadow (baked generic sprites, scaled by r)
+      const cy = e.y - lift;
+      drawSprite("fx_sheen", e.x, cy, e.r / 24);
+      drawSprite("fx_under", e.x, cy + e.r * 0.35, e.r / 24);
       // frost overlay (screen-aligned)
       if (e.frost > 0) {
         ctx.save(); ctx.globalAlpha = e.frost * 0.5; ctx.fillStyle = rgba("#bfefff", 0.6);
@@ -1690,7 +1892,7 @@
         const info = "★".repeat(m.diff) + "  ·  " + m.cols + "×" + m.rows + (m.routes.length > 1 ? "  ·  " + m.routes.length + " gates" : "");
         return `<button class="btn small mapbtn ${S.mapIndex === i ? "active" : ""}" id="map${i}"><span>${m.name}</span><span class="mi">${info}</span></button>`;
       }).join("");
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V2.0</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -1699,7 +1901,7 @@
         <button class="btn" id="h">Field Manual</button>
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
-        <div class="row"><button class="btn small ${S.difficulty === "normal" ? "active" : ""}" id="n">Normal</button><button class="btn small ${S.difficulty === "hard" ? "active" : ""}" id="hd">Hard</button></div>
+        <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}">${DIFFS[d].label}</button>`).join("")}</div>
         <button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio On" : "○ Audio Off"}</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
       byId("p").onclick = () => { S.endless = false; reset(); S.screen = "playing"; render(); };
@@ -1707,8 +1909,7 @@
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       MAPS.forEach((m, i) => { const el = byId("map" + i); if (el) el.onclick = () => { S.mapIndex = i; Store.set("map", i); selectMap(i); render(); }; });
-      byId("n").onclick = () => { S.difficulty = "normal"; Store.set("difficulty", "normal"); render(); };
-      byId("hd").onclick = () => { S.difficulty = "hard"; Store.set("difficulty", "hard"); render(); };
+      DIFF_ORDER.forEach((d) => { byId("df_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
       byId("s").onclick = () => { Sound.toggle(!Sound.isOn()); render(); };
     } else if (S.screen === "armory") {
       const rows = TALENT_ORDER.map((id) => {
@@ -1879,8 +2080,11 @@
     ctx.beginPath(); ctx.rect(0, PLAY_TOP, W, PLAY_H); ctx.clip();
     ctx.translate(so.x, so.y);
     ctx.translate(0, PLAY_TOP); ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
-    if (terrain) ctx.drawImage(terrain, 0, 0, WORLD_W, WORLD_H);
-    drawPoolGlow(); drawScorches(); drawSpawnAndBase(); drawSelRange(); drawTowers(); drawHero(); drawEnemies(); drawGibs(); drawBeams(); drawProjs(); drawBooms(); drawSmoke(); drawParts(); drawAtmosphere();
+    ctx.fillStyle = VOID_COL; ctx.fillRect(cam.x, cam.y, W / cam.zoom + 1, PLAY_H / cam.zoom + 1);
+    if (terrain) ctx.drawImage(terrain, -TMARGIN, -TMARGIN, WORLD_W + 2 * TMARGIN, WORLD_H + 2 * TMARGIN);
+    drawPoolGlow(); drawScorches(); drawSpawnAndBase(); drawSelRange(); drawTowers(); drawHero();
+    drawEnemies(bridgeUnder); drawBridges(); drawEnemies((e) => !bridgeUnder(e));
+    drawGibs(); drawBeams(); drawProjs(); drawBooms(); drawSmoke(); drawParts(); drawAtmosphere();
     ctx.restore();
 
     // screen layer
@@ -1897,6 +2101,7 @@
     requestAnimationFrame(frame);
   }
 
+  bakeSprites();
   selectMap(S.mapIndex);
   fitCamera();
   render();
