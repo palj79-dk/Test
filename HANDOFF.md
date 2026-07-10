@@ -189,6 +189,14 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
 9. **Per-map biomes** — `BIOMES` table (rust/toxic/ash/ember) tints baked terrain, pools, directional light, and dust motes so maps read as distinct places. `BM = C + biome overrides`, set in `loadMap`.
 10. **Hero / Commander (Plan B)** — one deployable, in-run-leveling unit (`hero`): energy auto-fire that hits air, XP from kills near it (5 levels), and an Overload Pulse ability (energy AoE + stun) on a 16s cooldown. Deployed via a second FAB (arm → tap a plot). `HERO` config; the `Command Core` Armory talent (`heroDmgMul`) boosts its damage. The frame update block is `stepSim` (also used by `__GAME.sim`), now including `updHero`.
 11. **Graphics uplift (3 commits)** — (a) maps: baked path-edge ambient occlusion, denser+varied decor, new landmark set-pieces (ruined buildings, crashed dropships, sandbag walls, dead trees), richer barrels/rubble/craters/wrecks, road tire tracks; (b) towers: two-layer grounding shadow, glossy specular sheen, brighter emissive trim; (c) enemies: higher-contrast `bodyFill` + a screen-aligned overhead sheen and underside shadow for consistent form lighting. `_hx()` now parses `rgb()` strings so tint chaining is safe. All baked/per-frame-cheap; 60fps held.
+12. **V2.1 + V2.2 SHIPPED (game is now branded V2.0)** — the Part 3 projection/composition phases:
+    - **Island board**: terrain bakes with a `TMARGIN` ring — void backdrop with distant silhouettes, jagged island rim, extruded cliff faces (2 depth layers + strata + lit rim). Frame blits terrain at `(-TMARGIN,-TMARGIN)` over a `VOID_COL` fill.
+    - **Curved roads**: corner tiles render as quarter-annulus asphalt (curb, trench shading, curved tire tracks, arc dashes) via a neighbor-pattern branch in `roadTile`; waypoint pathing unchanged.
+    - **Trench walls**: straight/junction road edges get NW shadow gradients + lit SE inner walls, so paths read as sunken channels under the global light.
+    - **Bridges**: `loadMap` classifies route overlaps — perpendicular = crossing (`CROSS_MAP`/`BRIDGES`), parallel = merge. Crossings render as live steel decks (`drawBridges`) with correct layering: under-route enemies → deck → over-route enemies (`bridgeUnder` predicate splits `drawEnemies`).
+    - **Structures**: breach = ruined tunnel mouth (rock collar, teeth, dark throat, molten glow); base = walled fortress (wall ring, corner bastions with beacons, court) around the bunker.
+    - **Authored set-pieces**: optional `MAPS[i].props` hand-place landmarks (reserved before hash decor); Outpost + Twin Gates composed.
+    Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **Remaining from Part 3: V2.3 sprite baking, V2.4 bloom/post pass, V2.5 optional tilt.**
 
 ## 2.1 Where things are
 
