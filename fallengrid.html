@@ -191,9 +191,12 @@
     sentinel:   { hp: 92, speed: 60, reward: 13, r: 23, body: "#697079", dark: "#33383f", eye: "#f2b23a", shape: "brute", armor: true },
     wraith:     { hp: 38, speed: 122, reward: 8, r: 16, body: "#7d61a2", dark: "#3d2c5c", eye: "#cfa8ff", shape: "wraith", flying: true },
     warden:     { hp: 66, speed: 72, reward: 12, r: 20, body: "#3a6a68", dark: "#1f3d3c", eye: "#37e0d0", shape: "raider", shield: 60 },
+    mender:     { hp: 55, speed: 72, reward: 14, r: 19, body: "#4a9a5f", dark: "#26543a", eye: "#8fe04a", shape: "mender", heal: 1 },
+    splitter:   { hp: 110, speed: 60, reward: 16, r: 23, body: "#9a4a8a", dark: "#5c2a52", eye: "#ff9ae0", shape: "splitter", split: 3 },
+    spawnling:  { hp: 14, speed: 138, reward: 2, r: 11, body: "#b06ab0", dark: "#6a3a66", eye: "#ffd2f2", shape: "stalker" },
     juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut", shield: 420 },
   };
-  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", juggernaut: "Juggernaut" };
+  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const NEXT_WAVE_COUNTDOWN = 6;
@@ -242,6 +245,11 @@
       routes: [[[0, 1], [9, 1], [9, 4], [1, 4], [1, 7], [9, 7], [9, 10], [1, 10], [1, 13], [9, 13], [9, 15], [5, 15]]] },
     { name: "Crossroads", diff: 3, seed: 5, cols: 11, rows: 16, biome: "toxic",
       routes: [[[0, 4], [8, 4], [8, 15], [5, 15]], [[10, 7], [2, 7], [2, 15], [5, 15]]] },
+    { name: "Gauntlet", diff: 3, seed: 11, cols: 9, rows: 18, biome: "ash",
+      routes: [[[4, 0], [4, 2], [1, 2], [1, 5], [7, 5], [7, 8], [1, 8], [1, 11], [7, 11], [7, 14], [4, 14], [4, 17]]] },
+    { name: "Delta", diff: 4, seed: 13, cols: 13, rows: 18, biome: "toxic",
+      props: [{ c: 2, r: 16, type: "building" }, { c: 10, r: 15, type: "dropship" }],
+      routes: [[[0, 2], [10, 2], [10, 7], [6, 7], [6, 17]], [[12, 9], [6, 9], [6, 17]], [[0, 13], [6, 13], [6, 17]]] },
     { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
       routes: [[[0, 1], [11, 1], [11, 4], [2, 4], [2, 7], [11, 7], [11, 10], [2, 10], [2, 13], [11, 13], [11, 16], [2, 16], [2, 19], [8, 19], [8, 21]]] },
     { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
@@ -406,6 +414,8 @@
     const wr = n >= 3 ? Math.min(1 + Math.floor(n / 3), 11) : 0;      // wraiths (flyers) force anti-air
     const se = n >= 6 ? Math.min(Math.floor((n - 3) / 2.5), 11) : 0;  // sentinels (armored) force AP/explosive
     const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0;     // wardens (shielded) reward energy
+    const md = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // menders heal packs: focus-fire them
+    const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
@@ -413,10 +423,12 @@
     for (let i = 0; i < se; i++) seq.push("sentinel");
     for (let i = 0; i < wr; i++) seq.push("wraith");
     for (let i = 0; i < wd; i++) seq.push("warden");
+    for (let i = 0; i < md; i++) seq.push("mender");
+    for (let i = 0; i < sl; i++) seq.push("splitter");
     const cm = diffCfg().count || 1, extraN = Math.round(seq.length * (cm - 1));
     for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
     seq.sort(() => Math.random() - 0.4);
-    const slow = { brute: 560, sentinel: 560, warden: 460 };
+    const slow = { brute: 560, sentinel: 560, warden: 460, mender: 500, splitter: 560 };
     let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += slow[type] || 380; }
     return list;
   }
@@ -429,7 +441,7 @@
     const sh = b.shield ? Math.round(b.shield * (1 + 0.12 * w)) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
       hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed * spMul, reward: Math.round(b.reward * rwMul),
-      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0 };
+      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0, heal: b.heal || 0, split: b.split || 0 };
   }
 
   /* ---------------- ENTITIES / STATE ---------------- */
@@ -452,7 +464,7 @@
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
     strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0,
-    mapIndex: Store.get("map", 0), endless: false,
+    mapIndex: Store.get("map", 0), endless: false, campaign: false,
     highEndless: Store.get("highEndless", 0),
   };
   // three difficulty tiers: hp/speed multipliers, starting core, and the Alloy payout scale
@@ -597,6 +609,15 @@
       e.alive = false; const rw = Math.max(1, Math.round(e.reward * rewardMul() * (diffCfg().reward || 1))); S.scrap += rw; S.kills++; heroXp(e);
       floats.push({ x: e.x, y: e.y - e.r, text: "+" + rw, life: 0.9, vy: -42, color: C.scrap, big });
       scorch(e.x, e.y + e.r * 0.4, e.r * (big ? 1.3 : 0.85));
+      // splitter: bursts into spawnlings that continue along its route
+      if (e.split) {
+        for (let i = 0; i < e.split; i++) {
+          const st2 = statsFor("spawnling", S.wave);
+          st2.hp = Math.round(st2.hp * diffMul()); st2.maxHp = st2.hp; st2.speed *= diffCfg().spd;
+          enemies.push(Object.assign({ x: e.x + (i - 1) * 9, y: e.y + (i % 2 ? 7 : -7), route: e.route, pi: e.pi, slowT: 0, slowF: 1, alive: true, flash: 0.1, face: e.face, bob: Math.random() * 6 }, st2));
+        }
+        burst(e.x, e.y, "#ff9ae0", 12, 1.2);
+      }
       gibBurst(e.x, e.y, e.body, e.dark, big ? 22 : heavy ? 14 : 9, big ? 1.5 : 1);
       burst(e.x, e.y, e.body, big ? 24 : heavy ? 13 : 9, big ? 1.5 : 1);
       // impact hierarchy: chip < kill < heavy kill < boss death
@@ -631,6 +652,9 @@
       if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowF = 1; }
       // regenerating shield: recharges after a lull with no damage
       if (e.shieldMax) { e.shieldCd += dt; if (e.shieldCd > 3 && e.shield < e.shieldMax) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.22 * dt); }
+      // mender: periodic heal pulse to nearby ground allies
+      if (e.heal) { e.healT = (e.healT || 0) + dt; if (e.healT > 1.3) { e.healT = 0; let did = false; for (const o of enemies) { if (o.alive && o !== e && o.hp < o.maxHp && Math.hypot(o.x - e.x, o.y - e.y) < 95) { o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.07); did = true; } } if (did) e.healFx = 0.5; } }
+      if (e.healFx > 0) e.healFx -= dt;
       if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
       const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = ROUTES[e.route][e.pi + 1];
       if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
@@ -1053,7 +1077,7 @@
       ctx.fillStyle = un; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
     });
     // V2.4 bloom emitter sprites (one per emissive color) + cloud shadow blob
-    const glowCols = { turret: "#f2b23a", cryo: "#37e0d0", mortar: "#f28a3a", tesla: "#e0479a", fire: "#ff8c46", core: "#37e0d0", gold: "#ffd24a" };
+    const glowCols = { turret: "#f2b23a", cryo: "#37e0d0", mortar: "#f28a3a", tesla: "#e0479a", fire: "#ff8c46", core: "#37e0d0", gold: "#ffd24a", heal: "#8fe04a" };
     for (const k in glowCols) bakeSprite("gl_" + k, 64, () => {
       const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 30);
       g.addColorStop(0, rgba(glowCols[k], 0.85)); g.addColorStop(0.4, rgba(glowCols[k], 0.28)); g.addColorStop(1, rgba(glowCols[k], 0));
@@ -1347,6 +1371,24 @@
       ctx.fillStyle = bodyFill(r * 0.7, e.body, 0.5, 0.42); ctx.beginPath(); ctx.ellipse(0, 0, r * 0.62, r * 0.5, 0, 0, 7); ctx.fill();
       ctx.strokeStyle = darken(e.body, 0.5); ctx.lineWidth = 1.2; ctx.stroke();
       ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(-r * 0.12, -r * 0.12, r * 0.34, r * 0.22, -0.5, 0, 7); ctx.stroke();
+    } else if (e.shape === "mender") {
+      // medic drone: round hull, side pods, baked cross plate (glow drawn live)
+      ctx.fillStyle = bodyFill(r * 0.9, e.body, 0.5, 0.4); ctx.beginPath(); ctx.arc(0, 0, r * 0.85, 0, 7); ctx.fill();
+      ctx.strokeStyle = darken(e.body, 0.45); ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = darken(e.body, 0.3);
+      for (const side of [-1, 1]) { rr(-r * 0.25, side * r * 0.75 - r * 0.14, r * 0.6, r * 0.28, r * 0.1); ctx.fill(); }
+      ctx.fillStyle = "#e8f5ea"; rr(-r * 0.42, -r * 0.12, r * 0.84, r * 0.24, r * 0.08); ctx.fill(); rr(-r * 0.12, -r * 0.42, r * 0.24, r * 0.84, r * 0.08); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, 7); ctx.stroke();
+    } else if (e.shape === "splitter") {
+      // brood sac: bulbous membrane with spawnling blobs inside
+      ctx.fillStyle = bodyFill(r, e.body, 0.42, 0.45); ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.8, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = darken(e.body, 0.5); ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.fillStyle = "#b06ab0";
+      for (const [bx, by2, br2] of [[-0.3, -0.2, 0.26], [0.25, 0.1, 0.3], [-0.1, 0.35, 0.22]]) { ctx.beginPath(); ctx.arc(r * bx, r * by2, r * br2, 0, 7); ctx.fill(); }
+      ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1;
+      for (const [bx, by2, br2] of [[-0.3, -0.2, 0.26], [0.25, 0.1, 0.3], [-0.1, 0.35, 0.22]]) { ctx.beginPath(); ctx.arc(r * bx - 2, r * by2 - 2, r * br2 * 0.5, 0, 7); ctx.stroke(); }
+      ctx.strokeStyle = darken(e.body, 0.3); ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(-r * 0.6, -r * 0.4); ctx.quadraticCurveTo(0, 0, r * 0.55, r * 0.45); ctx.stroke();
     } else {
       ctx.fillStyle = bodyFill(r, e.body, 0.32, 0.4);
       rr(-r * 0.85, -r * 0.72, r * 1.7, r * 1.44, 6); ctx.fill();
@@ -1410,6 +1452,24 @@
       }
       ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6); ctx.shadowColor = e.eye; ctx.shadowBlur = 8; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, 7); ctx.fill(); ctx.restore();
       ctx.save(); ctx.shadowColor = e.eye; ctx.shadowBlur = 5; ctx.fillStyle = e.eye; ctx.beginPath(); ctx.arc(r * 0.46, 0, Math.max(1.8, r * 0.16), 0, 7); ctx.fill(); ctx.restore();
+    } else if (e.shape === "mender") {
+      blit();
+      // pulsing cross glow + expanding heal ring when a pulse fired
+      ctx.save(); ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 5); ctx.shadowColor = e.eye; ctx.shadowBlur = 7; ctx.fillStyle = e.eye;
+      rr(-r * 0.34, -r * 0.09, r * 0.68, r * 0.18, r * 0.06); ctx.fill(); rr(-r * 0.09, -r * 0.34, r * 0.18, r * 0.68, r * 0.06); ctx.fill(); ctx.restore();
+      if (e.healFx > 0) { const p2 = 1 - e.healFx / 0.5; ctx.save(); ctx.globalAlpha = (1 - p2) * 0.8; ctx.strokeStyle = e.eye; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r + p2 * 70, 0, 7); ctx.stroke(); ctx.restore(); }
+    } else if (e.shape === "splitter") {
+      // stubby legs + sac blit + squirming inner glow
+      ctx.strokeStyle = darken(e.body, 0.4); ctx.lineWidth = 2.4; ctx.lineCap = "round";
+      for (let i = 0; i < 2; i++) for (const side of [-1, 1]) {
+        const s = Math.sin(ph * 1.3 + i * 1.6 + (side < 0 ? Math.PI : 0));
+        const hx = r * 0.35 - i * r * 0.6, fy = side * (r * 0.95 + Math.abs(s) * r * 0.12);
+        ctx.beginPath(); ctx.moveTo(hx, side * r * 0.4); ctx.lineTo(hx + s * r * 0.3, fy); ctx.stroke();
+      }
+      blit();
+      ctx.save(); ctx.globalAlpha = 0.3 + 0.25 * Math.sin(t * 4 + r); ctx.fillStyle = e.eye;
+      ctx.beginPath(); ctx.arc(r * 0.25 + Math.sin(t * 3) * 2, r * 0.1, r * 0.14, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(-r * 0.3, -r * 0.2 + Math.cos(t * 2.6) * 2, r * 0.12, 0, 7); ctx.fill(); ctx.restore();
     } else {
       const tread = (ph * 6) % 8;
       for (const side of [-1, 1]) {
@@ -1716,7 +1776,7 @@
     if (canStart) {
       // incoming preview
       const counts = waveCounts(S.wave + 1); let px = nwX - 8, shown = 0; ctx.textAlign = "right";
-      const order = ["juggernaut", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
+      const order = ["juggernaut", "splitter", "mender", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
       for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
       ctx.save(); ctx.shadowColor = C.neonC; ctx.shadowBlur = 5 + pulse * 8; ctx.fillStyle = C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
@@ -1915,6 +1975,7 @@
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
+        <button class="btn" id="cp">⚔ Campaign · Mission ${Math.min(Store.get("camp", 0), MAPS.length - 1) + 1}/${MAPS.length}</button>
         <button class="btn" id="e">∞ Endless</button>
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">Field Manual</button>
@@ -1923,8 +1984,9 @@
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}">${DIFFS[d].label}</button>`).join("")}</div>
         <button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio On" : "○ Audio Off"}</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
-      byId("p").onclick = () => { S.endless = false; reset(); S.screen = "playing"; render(); };
-      byId("e").onclick = () => { S.endless = true; reset(); S.screen = "playing"; render(); };
+      byId("p").onclick = () => { S.endless = false; S.campaign = false; reset(); S.screen = "playing"; render(); };
+      byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.mapIndex = Math.min(Store.get("camp", 0), MAPS.length - 1); selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
+      byId("e").onclick = () => { S.endless = true; S.campaign = false; reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       MAPS.forEach((m, i) => { const el = byId("map" + i); if (el) el.onclick = () => { S.mapIndex = i; Store.set("map", i); selectMap(i); render(); }; });
@@ -1950,6 +2012,7 @@
     } else if (S.screen === "howto") {
       show(`<div class="panel"><h2>Field Manual</h2><ul class="how">
         <li><b>Build</b> on open ground, then <b>upgrade</b> — level 3 splits into two <b>specializations</b>, so choose.</li>
+        <li><b>Menders</b> heal packs (focus them with STRONGEST targeting) and <b>Splitters</b> burst into spawnlings. <b>Campaign</b> plays all maps in sequence; progress is saved.</li>
         <li><b>Counter their kind:</b> <b>armored</b> foes shrug off kinetic Auto-Gun (use Mortar or a Piercing branch); <b>shielded</b> foes melt to energy (Cryo, Tesla); <b>flyers</b> are hit only by Auto-Gun and Tesla.</li>
         <li><b>Airstrike:</b> tap <b>✷</b>, then a target zone, for armor-piercing burst damage on a cooldown.</li>
         <li><b>Commander:</b> tap <b>⚑</b> then a plot to deploy your hero — it auto-fires, levels up from the fight, and its <b>Pulse</b> stuns and blasts nearby foes.</li>
@@ -1971,8 +2034,12 @@
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "victory") {
-      show(`<div class="panel"><div class="crest">✦</div><h2>Grid Secured</h2><p class="tag">All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div><button class="btn primary" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
-      byId("e").onclick = () => { S.endless = true; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
+      const campNext = S.campaign && S.mapIndex < MAPS.length - 1;
+      if (S.campaign) Store.set("camp", Math.min(S.mapIndex + 1, MAPS.length - 1));
+      const missionBtn = campNext ? `<button class="btn primary" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
+      show(`<div class="panel"><div class="crest">✦</div><h2>${S.campaign ? "Mission " + (S.mapIndex + 1) + " Secured" : "Grid Secured"}</h2><p class="tag">All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
+      byId("e").onclick = () => { S.endless = true; S.campaign = false; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
       byId("r").onclick = () => { S.endless = false; reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
@@ -2092,6 +2159,7 @@
     for (const tw of towers) { if (tw.target) { const p = center(tw.c, tw.r); drawSprite("gl_" + tw.type, p.x, p.y - 8, 0.7); } }
     if (hero) drawSprite("gl_gold", hero.x, hero.y - 8, hero.abil <= 0 ? 0.8 : 0.55);
     for (const p of projs) if (p.kind === "orb") drawSprite("gl_cryo", p.x, p.y, 0.5);
+    for (const e of enemies) if (e.alive && e.heal) drawSprite("gl_heal", e.x, e.y, 0.6);
   }
   function renderGlow(so) {
     gctx.setTransform(1, 0, 0, 1, 0, 0);
