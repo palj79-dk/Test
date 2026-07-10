@@ -469,9 +469,10 @@
   function shakeOff() { if (shake.t <= 0) return { x: 0, y: 0 }; const p = shake.t / shake.dur, m = shake.mag * p; return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m }; }
   let screenFlash = 0;
 
-  // V2.5 oblique tilt: the ground plane is y-foreshortened by TILT inside the camera
-  // transform; entities/floats counter-scale upright at their anchor so they read taller.
-  const TILT = 0.85, UNTILT = 1 / TILT;
+  // V2.5 tilt experiment, reverted after playtest: TILT=1 is exact full-2D math.
+  // (0.85 squashed the top-down terrain without adding real perspective, so ground-plane
+  // ellipses read as inconsistent. A true tilted view needs a WebGL renderer, not a scale.)
+  const TILT = 1, UNTILT = 1 / TILT;
   function uprightAt(y) { ctx.translate(0, y); ctx.scale(1, UNTILT); ctx.translate(0, -y); }
   const cam = { x: 0, y: 0, zoom: 1 };
   let MINZOOM = Math.min(W / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98; // recomputed per map in loadMap
