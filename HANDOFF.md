@@ -77,7 +77,7 @@ Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11
 START_SCRAP = 150   START_CORE = 20   TOTAL_WAVES = 20   NEXT_WAVE_COUNTDOWN = 6s
 SELL_REFUND = 0.7 (of cumulative cost through current level incl. branch)
 Wave clear bonus = round((20 + wave*3) * waveBonusMul())
-Difficulty: normal = 1.0, hard = 1.35 enemy-HP multiplier (diffMul)
+Difficulty (three tiers in `DIFFS`, chosen on the menu, persisted): Normal hp1.0/spd1.0/core20/alloy1.0 · Hard hp1.7/spd1.1/core18/count1.25/reward0.92/alloy1.5 · Brutal hp2.6/spd1.2/core15/count1.6/reward0.85/alloy2.0. `count` pads each wave's spawn list; `reward` scales scrap per kill. Leaks cost 1 core (brute/sentinel/warden 2, juggernaut 6).
 ```
 
 Meta (persistent, via `Store`): **Alloy** earned per run = `round((kills + wave*4 + (victory?120:0)) * (hard?1.4:1))`, awarded once (`awardAlloy`, guarded by `S.alloyAwarded`). Spent in the **Armory** on six talents (see 1.15).
@@ -99,7 +99,7 @@ Targeting: per-tower `mode` in `[first, strong, close]`. `findTarget` skips flye
 
 ## 1.8 Enemies
 
-Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.13*(wave-1)`, reward mul `1 + 0.045*(wave-1)`, shield mul `1 + 0.1*(wave-1)`, and copies trait flags.
+Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.013*w²` (quadratic so late waves outpace maxed towers), speed mul `1 + min(0.25, 0.011*w)`, reward mul `1 + 0.035*w`, shield mul `1 + 0.12*w`, and copies trait flags. Non-boss wave counts grow faster (`rd = 3 + 0.7n` capped 22, etc.) and are padded by the difficulty `count` multiplier.
 
 | id | label | base hp | speed | reward | r | shape | trait |
 |----|-------|--------:|------:|-------:|--:|-------|-------|
@@ -197,6 +197,7 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
     - **Structures**: breach = ruined tunnel mouth (rock collar, teeth, dark throat, molten glow); base = walled fortress (wall ring, corner bastions with beacons, court) around the bunker.
     - **Authored set-pieces**: optional `MAPS[i].props` hand-place landmarks (reserved before hash decor); Outpost + Twin Gates composed.
     Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **V2.3 sprite baking SHIPPED**: `bakeSprites()` renders static tower bases (`towerBaseArt`) and enemy bodies (`enemyStatic`, per type incl. armor plating) once at 3x into offscreen canvases (`SPRITES`, `bakeSprite`/`drawSprite`; `ctx` is `let` and retargeted during baking so all shared helpers bake). Frame keeps only animated parts vector: legs/boots/arms/treads/rotor blades, rotating heads/cannon, and glows. Per-enemy sheen/underside overlays are baked generic sprites (`fx_sheen`/`fx_under`) blitted scaled by r — the frame loop constructs no per-entity gradients. Baked sprites carry an extra wear+rim pass (`wearPass`). Verified: no errors, walk anim intact, 57-59fps at max stress on software rendering. **Remaining: V2.4 bloom/post pass, V2.5 optional tilt.**
+13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
 
 ## 2.1 Where things are
 
