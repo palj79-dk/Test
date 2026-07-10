@@ -69,7 +69,9 @@ Maps vary in **grid size** and can have **multiple entrances**. `COLS/ROWS/WORLD
 
 Each map defines `routes: [[...corners], ...]` — one or more routes, each a `[col,row]` corner list (consecutive corners share a row/column). **All routes end at the shared base** (the last point); their starts are the entrances. `loadMap` builds `ROUTES` (array of world-point polylines) and `PATH_SET` = the union of all route tiles, so where two routes overlap the roads simply **cross** (baked as an intersection). Enemies carry a `route` index assigned round-robin at spawn (`spawnIdx`, reset each wave); they move along `ROUTES[e.route]` and leak at its end. `drawSpawnAndBase` draws a breach at every route start and one base. `buildable` = any in-bounds tile not in `PATH_SET`. **`buildTerrain()` must never run in the frame loop** — only on map load; `selectMap(i)` re-bakes only on change.
 
-Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11×16 ★★ · `Crossroads` 11×16 ★★★ 2-gate crossing · `Sprawl` 13×22 ★★★★ long single route (panned) · `Twin Gates` 13×20 ★★★★★ 2-gate crossing (panned). `S.mapIndex` (persisted `map`) selects; the menu shows name/★/size/gates.
+Roster (rising difficulty): `Outpost` 9×12 ★ 1-route intro · `Serpentine` 11×16 ★★ · `Crossroads` 11×16 ★★★ 2-gate crossing · `Gauntlet` 9×18 ★★★ tall single-route switchback ladder (panned) · `Delta` 13×18 ★★★★ **3 entrances** whose routes T-merge (parallel overlap = merge, no bridge) into one final approach · `Sprawl` 13×22 ★★★★ long single route (panned) · `Twin Gates` 13×20 ★★★★★ 2-gate crossing (panned). `S.mapIndex` (persisted `map`) selects; the menu shows name/★/size/gates.
+
+**Campaign mode**: the maps double as a mission sequence. Menu button `⚔ Campaign · Mission N/7` (`id "cp"`) starts at `Store("camp")` (clamped); `S.campaign = true`. On victory the screen becomes "Mission N Secured", persists `camp = mapIndex+1` (clamped to last), and offers `⚔ Next Mission · <name>` (`id "nm"` → next map, fresh run) — or a `⚔ CAMPAIGN COMPLETE` banner on the last map. Free-play Deploy and Endless set `S.campaign = false`; map picker stays independent for free play.
 
 ## 1.6 Economy and progression
 
@@ -99,7 +101,7 @@ Targeting: per-tower `mode` in `[first, strong, close]`. `findTarget` skips flye
 
 ## 1.8 Enemies
 
-Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.013*w²` (quadratic so late waves outpace maxed towers), speed mul `1 + min(0.25, 0.011*w)`, reward mul `1 + 0.035*w`, shield mul `1 + 0.12*w`, and copies trait flags. Non-boss wave counts grow faster (`rd = 3 + 0.7n` capped 22, etc.) and are padded by the difficulty `count` multiplier.
+Ten types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.013*w²` (quadratic so late waves outpace maxed towers), speed mul `1 + min(0.25, 0.011*w)`, reward mul `1 + 0.035*w`, shield mul `1 + 0.12*w`, and copies trait flags. Non-boss wave counts grow faster (`rd = 3 + 0.7n` capped 22, etc.) and are padded by the difficulty `count` multiplier.
 
 | id | label | base hp | speed | reward | r | shape | trait |
 |----|-------|--------:|------:|-------:|--:|-------|-------|
@@ -110,13 +112,18 @@ Seven types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.
 | wraith | Wraith | 38 | 122 | 8 | 16 | wraith | **flying** |
 | warden | Warden | 66 | 72 | 12 | 20 | raider | **shield 60** |
 | juggernaut | Juggernaut | 1150 | 42 | 130 | 34 | juggernaut | boss, **shield 420** |
+| mender | Mender | 55 | 72 | 14 | 19 | mender | **heals** allies in r95 by 7% maxHp every 1.3s (`heal:1`) |
+| splitter | Splitter | 110 | 60 | 16 | 23 | splitter | **splits** into 3 spawnlings on death (`split:3`) |
+| spawnling | Spawnling | 14 | 138 | 2 | 11 | stalker | fast fragment (spawned only, never in `waveComp`) |
+
+**Behavior traits**: `statsFor` copies `heal`/`split`. Mender pulse lives in `updEnemies` (timer `healT`, fx flag `healFx` drives a green cross-glow + expanding ring; only fires if it actually healed someone) — counterplay is STRONGEST targeting to focus it. Splitter death lives in `hurt()` (after the scorch decal): spawns `e.split` spawnlings via `statsFor("spawnling", S.wave)` with the difficulty hp/speed multipliers applied, on the parent's route/`pi` with position offsets — leaks do NOT split (no `hurt` call), so letting one through costs 1 core, killing it late costs 3 fast runners near your base.
 
 **Counterplay triangle** (in `hurt(e, dmg, type, pierce)`):
 - **armor** (unless `pierce`): kinetic `*0.4`, explosive `*1.2`, energy `*1.0`.
 - **shield**: absorbs the whole hit (no bleed-through that hit); energy strips `*1.6`, kinetic `*0.7`, explosive `*1.0`. Regenerates `shieldMax*0.22`/s after 3s with no damage (`shieldCd`). Boss shield shown on the boss bar; others as a bubble + thin bar.
 - **flying**: only direct-fire towers (turret, tesla) can target; ground splash (mortar, cryo) cannot; splash loops skip flyers. Airstrike hits everything.
 
-`waveComp(n)`: every 5th wave is a boss wave (2 juggernauts every 20th wave, else 1). Non-boss waves add stalkers/raiders/brutes plus `wraith` (n≥3), `sentinel` (n≥6), `warden` (n≥8). Counts are capped (rd≤20, br≤12, wr≤10, se≤10, wd≤8, boss-wave extra≤16) so deep **endless** waves stay performant; `statsFor` keeps scaling HP unbounded. Campaign values (n≤20) are below the caps, so the campaign is unchanged. Leaks cost 1 Core (5 for a juggernaut).
+`waveComp(n)`: every 5th wave is a boss wave (2 juggernauts every 20th wave, else 1). Non-boss waves add stalkers/raiders/brutes plus `wraith` (n≥3), `sentinel` (n≥6), `warden` (n≥8), `mender` (n≥9), `splitter` (n≥11). Counts are capped (rd≤20, br≤12, wr≤10, se≤10, wd≤8, md≤6, sl≤7, boss-wave extra≤16) so deep **endless** waves stay performant; `statsFor` keeps scaling HP unbounded. Campaign values (n≤20) are below the caps, so the campaign is unchanged. Leaks cost 1 Core (5 for a juggernaut).
 
 **Endless mode** (`S.endless`): reachable from the menu (`∞ Endless`) or by continuing after a campaign victory. Waves never trigger `victory`; `startWave`, the auto-advance countdown, and the HUD deploy control all drop the `TOTAL_WAVES` cap when `S.endless`. Best endless wave persists as `highEndless`. A long endless run is the main Alloy farm (Alloy scales with `S.wave`).
 
@@ -198,6 +205,7 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
     - **Authored set-pieces**: optional `MAPS[i].props` hand-place landmarks (reserved before hash decor); Outpost + Twin Gates composed.
     Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **V2.3 sprite baking SHIPPED**: `bakeSprites()` renders static tower bases (`towerBaseArt`) and enemy bodies (`enemyStatic`, per type incl. armor plating) once at 3x into offscreen canvases (`SPRITES`, `bakeSprite`/`drawSprite`; `ctx` is `let` and retargeted during baking so all shared helpers bake). Frame keeps only animated parts vector: legs/boots/arms/treads/rotor blades, rotating heads/cannon, and glows. Per-enemy sheen/underside overlays are baked generic sprites (`fx_sheen`/`fx_under`) blitted scaled by r — the frame loop constructs no per-entity gradients. Baked sprites carry an extra wear+rim pass (`wearPass`). Verified: no errors, walk anim intact, 57-59fps at max stress on software rendering. **V2.4 bloom/post pass SHIPPED**: a half-res glow buffer (`glowCv`/`renderGlow`) collects pure-glow emitters as cheap sprite blits (pool glows, breach/base/tower/hero/orb glows via baked `gl_*` sprites, beam impacts, boom flashes) under the same camera transform, then composites additively (`compositeGlow`, `lighter`) — bilinear upscale doubles as the blur. Plus drifting cloud shadows (`fx_cloud` sprite, multiply) and a per-biome screen-space color grade (`drawGrade`) that covers entities. **Adaptive quality** (`FX`/`fxTick`): bloom and clouds default on and auto-degrade (bloom first, then clouds) when the rolling 90-frame average exceeds 19ms, so weak devices settle at full frame rate (measured: 58.8fps settled on software rendering; capable GPUs keep everything). Do not re-run shadowBlur-heavy passes inside the glow layer — blits only. **Remaining: V2.5 optional tilt (only if still needed).**
 13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
+14. **Behavior enemies + 2 maps + Campaign mode** — (a) `mender` (radius heal pulse with cross-glow/ring fx + `gl_heal` bloom hint, wave 9+) and `splitter` (bursts into 3 `spawnling` fragments on kill, wave 11+); trait flags flow through `statsFor`, heal logic in `updEnemies`, split in `hurt()` so leaks don't split. Baked statics + animated bodies for both (mender pods/cross plates, splitter sac with squirming inner blobs + stubby legs). (b) `Gauntlet` 9×18 ash switchback ladder and `Delta` 13×18 toxic **3-entrance** map whose routes T-merge — roster is now 7, all in the menu picker. (c) **Campaign**: `⚔ Campaign · Mission N/7` menu button resumes from persisted `camp`; victory becomes "Mission N Secured" with a Next Mission button (or CAMPAIGN COMPLETE on map 7); Deploy/Endless clear `S.campaign`. Verified: both new maps route-sim to gameover, Delta uses all 3 routes, heal + split observed in a wave-12 sim, campaign start→victory→next→resume→complete flow, 60fps in combat on both maps, zero pageerrors, guards intact.
 
 ## 2.1 Where things are
 
@@ -222,20 +230,19 @@ Single IIFE, `"use strict"`. Terse helpers (`clamp`, `lerp`, `rr`, `hash2`, `mix
 
 ## 2.5 Quality assessment vs genre leaders (Kingdom Rush, Bloons TD 6, Arknights)
 
-Mechanically the game is at genre standard: depth (counterplay triangle, branches, hero, airstrike), retention (Alloy/Armory, endless), content (5 maps, 4 biomes), feedback, audio, onboarding, and a verified balance curve. The remaining distance to the flagships:
+Mechanically the game is at genre standard: depth (counterplay triangle, branches, hero, airstrike), retention (Alloy/Armory, endless, campaign), content (7 maps, 4 biomes), feedback, audio, onboarding, and a verified balance curve. The remaining distance to the flagships:
 - **Presentation** is now the #1 gap — see Part 3 for the full root-cause analysis and plan. Short version: the game is drawn in true top-down with no verticality, so nothing has fronts/sides; leaders render in a tilted 3D-ish view where everything is a volume.
-- **Enemy design** is 3 traits deep vs healing/splitting/spawning/teleporting in leaders.
+- **Enemy design**: 5 traits deep (armor/shield/flying/heal/split) — now comparable to mid-tier leaders; teleport/burrow-style movement tricks remain unexplored.
 - Content keeps scaling value (more maps/enemies) but is no longer structurally behind.
 - No liveops/social/monetization (not a craft gap).
 
 ## 2.6 Backlog, prioritized (remaining)
 
-1. **Visual & Map Direction V2** — the pseudo-3D uplift and map-composition overhaul. Full plan in Part 3. Top priority.
-2. **More enemy behaviors** — healing, splitting, or shielded-aura for real puzzles.
-3. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
-4. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
+1. **V2.5 optional world tilt** — only if the board still reads flat after playtesting (see Part 3).
+2. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
+3. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
 
-Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1 (terrain landmarks/AO, tower sheen, enemy form-shading).
+Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1, Visual Direction V2.1–V2.4, difficulty tiers, behavior enemies + campaign (changelog 14).
 
 ---
 
