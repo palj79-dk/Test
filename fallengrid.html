@@ -1052,6 +1052,20 @@
       un.addColorStop(0, "rgba(0,0,0,0.22)"); un.addColorStop(0.7, "rgba(0,0,0,0.05)"); un.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = un; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
     });
+    // V2.4 bloom emitter sprites (one per emissive color) + cloud shadow blob
+    const glowCols = { turret: "#f2b23a", cryo: "#37e0d0", mortar: "#f28a3a", tesla: "#e0479a", fire: "#ff8c46", core: "#37e0d0", gold: "#ffd24a" };
+    for (const k in glowCols) bakeSprite("gl_" + k, 64, () => {
+      const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 30);
+      g.addColorStop(0, rgba(glowCols[k], 0.85)); g.addColorStop(0.4, rgba(glowCols[k], 0.28)); g.addColorStop(1, rgba(glowCols[k], 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 30, 0, 7); ctx.fill();
+    });
+    bakeSprite("fx_cloud", 96, () => {
+      for (const [ox, oy, rr2] of [[-14, 4, 30], [12, -6, 34], [2, 10, 26]]) {
+        const g = ctx.createRadialGradient(ox, oy, 1, ox, oy, rr2);
+        g.addColorStop(0, "rgba(0,0,0,0.18)"); g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, rr2, 0, 7); ctx.fill();
+      }
+    });
   }
   function resize() {
     const sc = Math.min(window.innerWidth / W, window.innerHeight / H), dpr = window.devicePixelRatio || 1;
@@ -1059,6 +1073,11 @@
     canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   window.addEventListener("resize", resize); resize();
+  // V2.4 bloom: half-res additive glow buffer (bilinear upscale = cheap blur)
+  const glowCv = document.createElement("canvas");
+  const gctx = glowCv.getContext("2d");
+  const GLOW_Q = 0.5;
+  glowCv.width = Math.ceil(W * GLOW_Q); glowCv.height = Math.ceil(H * GLOW_Q);
   function rr(x, y, w, h, rad) { ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); }
 
   /* ---------------- WORLD DRAW ---------------- */
@@ -2054,6 +2073,66 @@
     }
   }
 
+  /* ---------------- V2.4 POST PASSES ---------------- */
+  // adaptive quality: bloom/clouds default on; degrade automatically if the device can't hold frame time.
+  const FX = { bloom: true, clouds: true, _acc: 0, _n: 0 };
+  function fxTick(dtMs) {
+    FX._acc += dtMs; FX._n++;
+    if (FX._n >= 90) {
+      const avg = FX._acc / FX._n; FX._acc = 0; FX._n = 0;
+      if (avg > 19) { if (FX.bloom) FX.bloom = false; else if (FX.clouds) FX.clouds = false; }
+    }
+  }
+  // pure-glow emitters rendered only into the glow buffer
+  function drawGlowHints() {
+    const t = S.time;
+    for (const route of ROUTES) { const st = route[0]; drawSprite("gl_fire", st.x, st.y, (52 + Math.sin(t * 3) * 8) / 64); }
+    const base = ROUTES[0][ROUTES[0].length - 1];
+    drawSprite("gl_core", base.x, base.y, (44 + Math.sin(t * 4) * 8) / 64);
+    for (const tw of towers) { if (tw.target) { const p = center(tw.c, tw.r); drawSprite("gl_" + tw.type, p.x, p.y - 8, 0.7); } }
+    if (hero) drawSprite("gl_gold", hero.x, hero.y - 8, hero.abil <= 0 ? 0.8 : 0.55);
+    for (const p of projs) if (p.kind === "orb") drawSprite("gl_cryo", p.x, p.y, 0.5);
+  }
+  function renderGlow(so) {
+    gctx.setTransform(1, 0, 0, 1, 0, 0);
+    gctx.clearRect(0, 0, glowCv.width, glowCv.height);
+    gctx.save();
+    gctx.scale(GLOW_Q, GLOW_Q);
+    gctx.beginPath(); gctx.rect(0, PLAY_TOP, W, PLAY_H); gctx.clip();
+    gctx.translate(so.x, so.y); gctx.translate(0, PLAY_TOP); gctx.scale(cam.zoom, cam.zoom); gctx.translate(-cam.x, -cam.y);
+    const old = ctx; ctx = gctx;
+    try {
+      drawPoolGlow(); drawGlowHints();
+      // beam/impact glow as cheap sprite blits (no shadowBlur re-run)
+      for (const bm of beams) { const k = bm.color === "#ffd24a" ? "gl_gold" : bm.color === "#37e0d0" ? "gl_cryo" : bm.color === "#e0479a" ? "gl_tesla" : bm.color === "#f28a3a" ? "gl_mortar" : "gl_turret"; drawSprite(k, bm.x2, bm.y2, 0.55); }
+      for (const bo of booms) { const a = Math.max(0, bo.life / bo.mlife); if (a > 0.15) drawSprite("gl_fire", bo.x, bo.y, (bo.r * 1.6 / 64) * (0.6 + (1 - a))); }
+    } finally { ctx = old; }
+    gctx.restore();
+  }
+  function compositeGlow() {
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.6;
+    ctx.drawImage(glowCv, 0, 0, W, H);
+    ctx.restore();
+  }
+  // slow cloud shadows drifting over the island (world space, multiply)
+  function drawCloudShadows() {
+    const t = S.time;
+    ctx.save(); ctx.globalCompositeOperation = "multiply";
+    for (let i = 0; i < 2; i++) {
+      const span = WORLD_W + 900;
+      const cx = ((t * (7 + i * 4) + i * 700) % span + span) % span - 450;
+      const cy = (i ? WORLD_H * 0.68 : WORLD_H * 0.24) + Math.sin(t * 0.1 + i * 2) * 90;
+      drawSprite("fx_cloud", cx, cy, 6 + i * 2.5);
+    }
+    ctx.restore();
+  }
+  // biome color grade over the whole play viewport (covers entities too)
+  function drawGrade() {
+    const g = ctx.createLinearGradient(0, PLAY_TOP, W, PLAY_BOTTOM);
+    g.addColorStop(0, "rgba(" + BM.light + ",0.05)"); g.addColorStop(1, "rgba(" + BM.shade + ",0.12)");
+    ctx.fillStyle = g; ctx.fillRect(0, PLAY_TOP, W, PLAY_H);
+  }
+
   /* ---------------- LOOP ---------------- */
   // one simulation tick (entity updates only); shared by the render loop and the headless sim hook
   function stepSim(stepMs) {
@@ -2062,7 +2141,7 @@
   }
   let last = performance.now();
   function frame(now) {
-    let dtMs = now - last; last = now; dtMs = Math.min(dtMs, 50);
+    let dtMs = now - last; last = now; dtMs = Math.min(dtMs, 50); fxTick(dtMs);
     const raw = dtMs / 1000; S.time += raw;
     if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - raw * 2.2);
 
@@ -2084,8 +2163,11 @@
     if (terrain) ctx.drawImage(terrain, -TMARGIN, -TMARGIN, WORLD_W + 2 * TMARGIN, WORLD_H + 2 * TMARGIN);
     drawPoolGlow(); drawScorches(); drawSpawnAndBase(); drawSelRange(); drawTowers(); drawHero();
     drawEnemies(bridgeUnder); drawBridges(); drawEnemies((e) => !bridgeUnder(e));
-    drawGibs(); drawBeams(); drawProjs(); drawBooms(); drawSmoke(); drawParts(); drawAtmosphere();
+    drawGibs(); drawBeams(); drawProjs(); drawBooms(); drawSmoke(); drawParts(); if (FX.clouds) drawCloudShadows(); drawAtmosphere();
     ctx.restore();
+
+    // V2.4 post: additive bloom + biome grade
+    if (FX.bloom) { renderGlow(so); compositeGlow(); } drawGrade();
 
     // screen layer
     drawScreenFlash(); drawLowCore();
