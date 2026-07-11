@@ -4246,7 +4246,7 @@
   // Procedural synth: layered oscillators + filtered noise through a master compressor,
   // plus a low ambient music bed. No asset files. All guarded for sandboxed WebViews.
   const Sound = (function () {
-    let ctx = null, master = null, on = Store.get("sfx", true), noiseBuf = null, music = null;
+    let ctx = null, master = null, sfx = Store.get("sfx", true), musc = Store.get("music", true), noiseBuf = null, music = null;
     function ac() {
       if (!ctx) {
         try {
@@ -4266,7 +4266,7 @@
     }
     // one enveloped oscillator (optional pitch glide + lowpass)
     function osc(f, d, type, g, glide, lp) {
-      if (!on) return; const a = ac(); if (!a) return; try {
+      if (!sfx) return; const a = ac(); if (!a) return; try {
         const t0 = a.currentTime, o = a.createOscillator(), gain = a.createGain(); o.type = type || "sine";
         o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t0 + d);
         let node = o;
@@ -4277,7 +4277,7 @@
     }
     // enveloped filtered noise burst (percussion / texture)
     function nz(d, g, type, ff, q) {
-      if (!on) return; const a = ac(); if (!a) return; try {
+      if (!sfx) return; const a = ac(); if (!a) return; try {
         const t0 = a.currentTime, s = noiseSrc(a), filt = a.createBiquadFilter(), gain = a.createGain();
         filt.type = type || "bandpass"; filt.frequency.value = ff || 1000; if (q) filt.Q.value = q;
         gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.05, t0 + 0.004); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
@@ -4301,7 +4301,7 @@
       win: () => [330, 440, 550, 740].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "triangle", 0.07); osc(f * 2, 0.3, "sine", 0.03); }, i * 140)),
       lose: () => [300, 220, 150, 90].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "sawtooth", 0.08, f * 0.6); nz(0.3, 0.03, "lowpass", 500); }, i * 160)),
       startMusic() {
-        if (!on || music) return; const a = ac(); if (!a) return; try {
+        if (!musc || music) return; const a = ac(); if (!a) return; try {
           const t = a.currentTime, g = a.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(0.05, t + 3);
           const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
           const lfo = a.createOscillator(), lfoG = a.createGain(); lfo.frequency.value = 0.05; lfoG.gain.value = 260; lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start();
@@ -4313,8 +4313,10 @@
       },
       stopMusic() { if (music) { music.stop(); music = null; } },
       resume() { ac(); },
-      toggle(v) { on = v; Store.set("sfx", v); if (!v) api.stopMusic(); else if (S && S.screen === "playing") api.startMusic(); },
-      isOn: () => on,
+      toggleSfx(v) { sfx = v; Store.set("sfx", v); },
+      sfxOn: () => sfx,
+      toggleMusic(v) { musc = v; Store.set("music", v); if (!v) api.stopMusic(); else if (S && S.screen === "playing") api.startMusic(); },
+      musicOn: () => musc,
     };
     return api;
   })();
@@ -5925,8 +5927,8 @@
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}">${DIFFS[d].label}</button>`).join("")}</div>
-        <div class="row"><button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio" : "○ Audio"}</button><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button></div>
-        <button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery Saver On" : "○ Battery Saver Off"}</button>
+        <div class="row"><button class="btn small ghost" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ghost" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
+        <div class="row"><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
       byId("p").onclick = () => { S.endless = false; S.campaign = false; reset(); S.screen = "playing"; render(); };
       byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.mapIndex = Math.min(Store.get("camp", 0), MAPS.length - 1); selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
@@ -5935,7 +5937,8 @@
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       byId("mapsel").onchange = (ev) => { const i = +ev.target.value; S.mapIndex = i; Store.set("map", i); selectMap(i); render(); };
       DIFF_ORDER.forEach((d) => { byId("df_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
-      byId("s").onclick = () => { Sound.toggle(!Sound.isOn()); render(); };
+      byId("mus").onclick = () => { Sound.toggleMusic(!Sound.musicOn()); render(); };
+      byId("sfx").onclick = () => { const nv = !Sound.sfxOn(); Sound.toggleSfx(nv); if (nv) Sound.place(); render(); };
       byId("v").onclick = () => { const nv = !Haptics.isOn(); Haptics.toggle(nv); if (nv) vibrate(35); render(); };
       const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
       byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
@@ -6006,8 +6009,8 @@
     if (S.screen !== "playing") return;
     ev.preventDefault();
     const s = evToScreen(ev); ptrs.set(ev.pointerId, s);
-    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM; }
-    else if (ptrs.size === 2) { gest.mode = "pinch"; const ps = pinchState(); pinch = ps; }
+    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM; previewFromPoint(s.x, s.y); }
+    else if (ptrs.size === 2) { gest.mode = "pinch"; S.rangePreview = null; const ps = pinchState(); pinch = ps; }
   });
   canvas.addEventListener("pointermove", (ev) => {
     if (S.screen !== "playing" || !ptrs.has(ev.pointerId)) return;
@@ -6020,12 +6023,14 @@
       const dx = s.x - gest.downX, dy = s.y - gest.downY;
       if (!gest.moved && Math.hypot(dx, dy) > DRAG_THRESH && gest.inPlay) { gest.mode = "pan"; gest.moved = true; }
       if (gest.mode === "pan") { cam.x -= (s.x - gest.prevX) / cam.zoom; cam.y -= (s.y - gest.prevY) / (cam.zoom * TILT); clampCam(); }
+      else if (gest.mode === "tap") previewFromPoint(s.x, s.y); // dragging across tray buttons updates the range preview
       gest.prevX = s.x; gest.prevY = s.y;
     }
   });
   function endPtr(ev) {
     if (!ptrs.has(ev.pointerId)) return;
     const was = ptrs.size, s = ptrs.get(ev.pointerId); ptrs.delete(ev.pointerId);
+    S.rangePreview = null; // release clears the preview (the tap below performs the actual build/upgrade)
     if (was === 1 && gest.mode === "tap" && !gest.moved) tap(gest.downX, gest.downY);
     if (ptrs.size === 1) { const rem = [...ptrs.values()][0]; gest.mode = "pan"; gest.moved = true; gest.prevX = rem.x; gest.prevY = rem.y; }
     else if (ptrs.size === 0) gest.mode = "none";
@@ -6036,6 +6041,18 @@
   document.addEventListener("pointerdown", () => Sound.resume(), { passive: true });
 
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  // range preview: while a tray build/upgrade/branch button is pressed, show the resulting range ring
+  function previewFromPoint(sx, sy) {
+    S.rangePreview = null;
+    if (sy < PLAY_BOTTOM) return;
+    for (const b of trayBtns) {
+      if (!inBox(sx, sy, b)) continue;
+      if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range }; }
+      else if (b.action === "upgrade" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower]; if (t.lvl < 1) { const p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].levels[t.lvl + 1].range }; } }
+      else if (b.action === "branch" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].branches[b.branch].range }; }
+      return;
+    }
+  }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
     for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
@@ -6806,8 +6823,20 @@
     selFill.rotation.x = -Math.PI / 2; selFill.visible = false; scene.add(selFill);
     const selTileM = new T.Mesh(GEO.plane, new T.MeshBasicMaterial({ color: 0x37e0d0, transparent: true, opacity: 0.22, depthWrite: false, side: T.DoubleSide }));
     selTileM.rotation.x = -Math.PI / 2; selTileM.visible = false; scene.add(selTileM);
+    // range preview ring (amber) shown while a build/upgrade tray button is pressed
+    const preRing = new T.Mesh(GEO.ringThin, new T.MeshBasicMaterial({ color: 0xf2b23a, transparent: true, opacity: 0.7, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    preRing.rotation.x = -Math.PI / 2; preRing.visible = false; scene.add(preRing);
+    const preFill = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0xf2b23a, transparent: true, opacity: 0.06, depthWrite: false }));
+    preFill.rotation.x = -Math.PI / 2; preFill.visible = false; scene.add(preFill);
     function syncSel() {
-      selRing.visible = selFill.visible = selTileM.visible = false;
+      selRing.visible = selFill.visible = selTileM.visible = preRing.visible = preFill.visible = false;
+      if (S.rangePreview) {
+        const pv = S.rangePreview;
+        preRing.visible = preFill.visible = true;
+        preRing.material.opacity = 0.55 + 0.25 * Math.sin(S.time * 8);
+        preRing.position.set(pv.x, 1.6, pv.y); preRing.scale.setScalar(pv.range);
+        preFill.position.set(pv.x, 1.3, pv.y); preFill.scale.setScalar(pv.range);
+      }
       if (S.selTower != null && towers[S.selTower]) {
         const t = towers[S.selTower], p = center(t.c, t.r), rng = tStats(t).range;
         selRing.visible = selFill.visible = true;
