@@ -2011,7 +2011,7 @@
         const info = "★".repeat(m.diff) + " · " + m.cols + "×" + m.rows + (m.routes.length > 1 ? " · " + m.routes.length + " gates" : "");
         return `<option value="${i}" ${S.mapIndex === i ? "selected" : ""}>${m.name}   ${info}</option>`;
       }).join("")}</select>`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.0 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.2 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -2251,15 +2251,28 @@
     const glCanvas = document.getElementById("gl");
     const renderer = new T.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
-    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(45, W / H, 40, 6000);
     const ELEV = 0.96;                       // camera elevation (rad) — ~55deg tilt sells the 3D
     const ROAD_Y = -10, DECK_Y = 6, DEPTH = 46, FLY_H = 26;
-    const hemi = new T.HemisphereLight(0x9fb2c8, 0x14100c, 0.72); scene.add(hemi);
-    const sun = new T.DirectionalLight(0xfff0dc, 1.35);
+    const hemi = new T.HemisphereLight(0x9fb2c8, 0x14100c, 0.55); scene.add(hemi);
+    const sun = new T.DirectionalLight(0xfff0dc, 1.5);
     sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0015;
     scene.add(sun); scene.add(sun.target);
+    // procedural sky-gradient environment → PMREM, so metal catches real reflections
+    (function () {
+      const envCv = document.createElement("canvas"); envCv.width = 256; envCv.height = 128;
+      const eg = envCv.getContext("2d");
+      const grd = eg.createLinearGradient(0, 0, 0, 128);
+      grd.addColorStop(0, "#c2d2e6"); grd.addColorStop(0.48, "#7a8698"); grd.addColorStop(0.55, "#4a5360"); grd.addColorStop(1, "#191c22");
+      eg.fillStyle = grd; eg.fillRect(0, 0, 256, 128);
+      eg.fillStyle = "rgba(255,244,220,0.9)"; eg.beginPath(); eg.arc(70, 34, 12, 0, 7); eg.fill(); // sun disc
+      const envTex = new T.CanvasTexture(envCv); envTex.mapping = T.EquirectangularReflectionMapping;
+      const pm = new T.PMREMGenerator(renderer); pm.compileEquirectangularShader();
+      scene.environment = pm.fromEquirectangular(envTex).texture;
+      envTex.dispose(); pm.dispose();
+    })();
 
     /* ---- shared geometry + material caches ---- */
     const GEO = {
@@ -2271,6 +2284,28 @@
     function lam(col, emis) { const k = "l" + col + (emis || ""); if (!MATS.has(k)) MATS.set(k, new T.MeshLambertMaterial({ color: col, emissive: emis || 0x000000 })); return MATS.get(k); }
     function bas(col) { const k = "b" + col; if (!MATS.has(k)) MATS.set(k, new T.MeshBasicMaterial({ color: col })); return MATS.get(k); }
     function add3(col, op) { const k = "a" + col + op; if (!MATS.has(k)) MATS.set(k, new T.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false })); return MATS.get(k); }
+    function std(col, rough, met) { const k = "s" + col + rough + met; if (!MATS.has(k)) MATS.set(k, new T.MeshStandardMaterial({ color: col, roughness: rough, metalness: met, envMapIntensity: 0.9 })); return MATS.get(k); }
+    var _aoTex = null, _aoMat = null;
+    function aoTex() {
+      if (_aoTex) return _aoTex;
+      const cvv = document.createElement("canvas"); cvv.width = cvv.height = 64;
+      const g = cvv.getContext("2d"); const rg = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+      rg.addColorStop(0, "rgba(0,0,0,0.85)"); rg.addColorStop(0.55, "rgba(0,0,0,0.4)"); rg.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+      _aoTex = new T.CanvasTexture(cvv); return _aoTex;
+    }
+    function aoMat() { if (!_aoMat) _aoMat = new T.MeshBasicMaterial({ map: aoTex(), transparent: true, opacity: 0.5, depthWrite: false }); return _aoMat; }
+    function aoDisc(scale) { const m = new T.Mesh(GEO.disc, aoMat()); m.rotation.x = -Math.PI / 2; m.scale.set(scale, scale, 1); m.position.y = 0.5; return m; }
+    var _grungeTex = null;
+    function grungeTex() {
+      if (_grungeTex) return _grungeTex;
+      const N = 128, cvv = document.createElement("canvas"); cvv.width = cvv.height = N;
+      const g = cvv.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, N, N);
+      for (let i = 0; i < 1400; i++) { const v = 150 + ((i * 61) % 90); const a = 0.05 + ((i * 13) % 20) / 200; g.fillStyle = "rgba(" + v + "," + v + "," + v + "," + a + ")"; const x = (i * 971) % N, y = (i * 613) % N, r = 0.5 + ((i * 7) % 3); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+      for (let i = 0; i < 26; i++) { g.strokeStyle = "rgba(120,120,120," + (0.05 + (i % 5) / 60) + ")"; g.lineWidth = 0.6; g.beginPath(); const x = (i * 977) % N, y = (i * 331) % N; g.moveTo(x, y); g.lineTo(x + ((i * 37) % 40) - 20, y + ((i * 53) % 40) - 20); g.stroke(); }
+      _grungeTex = new T.CanvasTexture(cvv); _grungeTex.wrapS = _grungeTex.wrapT = T.RepeatWrapping;
+      return _grungeTex;
+    }
     var _glowTex = null;
     function glowTex() {
       if (_glowTex) return _glowTex;
@@ -2354,11 +2389,12 @@
       for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2; m.pos.push(x + Math.cos(a) * rad, y, z + Math.sin(a) * rad); m.nor.push(0, 1, 0); m.col.push(col.r, col.g, col.b); m.n++; }
       for (let i = 0; i < seg; i++) m.idx.push(c0, c0 + 1 + i, c0 + 2 + i);
     }
-    function toMesh(m, mat) {
+    function toMesh(m, mat, uvScale) {
       const g = new T.BufferGeometry();
       g.setAttribute("position", new T.Float32BufferAttribute(m.pos, 3));
       g.setAttribute("normal", new T.Float32BufferAttribute(m.nor, 3));
       g.setAttribute("color", new T.Float32BufferAttribute(m.col, 3));
+      if (uvScale) { const uv = new Float32Array(m.n * 2); for (let i = 0; i < m.n; i++) { uv[i * 2] = m.pos[i * 3] * uvScale; uv[i * 2 + 1] = m.pos[i * 3 + 2] * uvScale; } g.setAttribute("uv", new T.Float32BufferAttribute(uv, 2)); }
       g.setIndex(m.idx);
       return new T.Mesh(g, mat);
     }
@@ -2481,7 +2517,7 @@
       scene.add(coreMesh);
       if (coreGlow) scene.remove(coreGlow);
       coreGlow = glowSprite("#37e0d0", 60, 0.45); coreGlow.position.set(base.x, ROAD_Y + 32, base.y); scene.add(coreGlow);
-      const landMesh = toMesh(land, new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide }));
+      const landMesh = toMesh(land, new T.MeshLambertMaterial({ vertexColors: true, map: grungeTex(), side: T.DoubleSide }), 1 / 96);
       landMesh.receiveShadow = true;
       const glowMesh = toMesh(glow, new T.MeshBasicMaterial({ vertexColors: true, side: T.DoubleSide }));
       world.add(landMesh); world.add(glowMesh);
@@ -2504,10 +2540,13 @@
     function barrelMesh(mat, len, r, x, y) { const m = mesh(GEO.cyl, mat, r, len, r, x + len / 2, y, 0); m.rotation.z = -Math.PI / 2; m.castShadow = true; return m; }
     function buildTower(t) {
       const spec = TOWERS[t.type], st = tStats(t);
-      const g = new T.Group(), metal = lam(spec.metal), metalLt = lam(spec.metalLt), acc = bas(spec.accent);
-      const pad = mesh(GEO.box, lam("#3a3f46"), 50, 5, 50, 0, 2.5, 0); pad.receiveShadow = true; g.add(pad);
-      const plinth = mesh(GEO.cyl, metal, 19, 10, 19, 0, 10, 0); plinth.castShadow = true; g.add(plinth);
-      g.add(mesh(GEO.cyl, acc, 20, 1.4, 20, 0, 15.6, 0));
+      const g = new T.Group(), metal = std(spec.metal, 0.42, 0.72), metalLt = std(spec.metalLt, 0.38, 0.62), acc = bas(spec.accent);
+      const baseDk = std("#2b2f35", 0.7, 0.5);
+      g.add(aoDisc(30));
+      const foot = mesh(GEO.cyl, baseDk, 24, 4, 24, 0, 2, 0); foot.rotation.y = Math.PI / 8; foot.receiveShadow = true; foot.castShadow = true; g.add(foot);
+      const bevel = mesh(GEO.cyl, metal, 20, 3.4, 20, 0, 5.4, 0); bevel.rotation.y = Math.PI / 8; g.add(bevel);
+      const plinth = mesh(GEO.cyl, metal, 18, 9, 18, 0, 10.4, 0); plinth.rotation.y = Math.PI / 8; plinth.castShadow = true; g.add(plinth);
+      g.add(mesh(GEO.cyl, acc, 19, 1.5, 19, 0, 15.3, 0));
       const head = new T.Group(); head.position.y = 22; g.add(head);
       const L = t.lvl, br = t.branch;
       if (t.type === "turret") {
@@ -2626,7 +2665,8 @@
       bub.scale.setScalar(r * 1.35); bub.position.y = r * 0.55; bub.visible = false; g.add(bub);
       const healR = new T.Mesh(GEO.ring, add3("#8fe04a", 0.7)); healR.rotation.x = -Math.PI / 2; healR.position.y = 1.5; healR.visible = false; g.add(healR);
       let ringSpin = null; if (b.shape === "wraith") ringSpin = g.children[1];
-      return { g, mats, bub, healR, legs, ringSpin, bodyH, type, base: mats.map((m) => m.color.clone()) };
+      let ao = null; if (!b.flying) { ao = aoDisc(r * 1.5); ao.material = aoMat(); g.add(ao); }
+      return { g, mats, bub, healR, legs, ringSpin, ao, bodyH, type, base: mats.map((m) => m.color.clone()) };
     }
     function barrelJug(mat, r) { const m = mesh(GEO.cyl, mat, 2.6, r * 1.1, 2.6, r * 0.55, r * 1.0, 0); m.rotation.z = -Math.PI / 2; return m; }
     const enemyObjs = new Map(), frostCol = new T.Color(0x9fd8ff), flashCol = new T.Color(0xffffff);
@@ -2657,6 +2697,7 @@
         o.g.rotation.y = -e.face;
         o.g.rotation.z = e.flying ? (e.bank || 0) * 0.6 : Math.sin(e.walk || 0) * 0.07;
         if (e._pop < 1) { e._pop = Math.min(1, e._pop + dt * 4); o.g.scale.setScalar(0.3 + 0.7 * e._pop); }
+        if (o.ao) { const gs = o.g.scale.x || 1; o.ao.position.y = (0.5 - (e._gy + hop + hover)) / gs; }
         for (let li = 0; li < o.legs.length; li++) o.legs[li].rotation.z = Math.sin((e.walk || 0) + li * Math.PI) * 0.55;
         if (o.ringSpin) o.ringSpin.rotation.z = S.time * 2.2;
         const fl = e.flash > 0 ? Math.min(0.8, e.flash / 0.12) : 0, fr = e.frost || 0;
@@ -2685,10 +2726,11 @@
       if (!hero) return;
       if (!heroObj) {
         const g = new T.Group();
-        const plat = mesh(GEO.cyl6, lam("#3c434c"), 24, 8, 24, 0, 4, 0); plat.castShadow = true; g.add(plat);
+        g.add(aoDisc(34));
+        const plat = mesh(GEO.cyl6, std("#3c434c", 0.45, 0.65), 24, 8, 24, 0, 4, 0); plat.castShadow = true; g.add(plat);
         g.add(mesh(GEO.cyl6, bas(HERO.accent), 25, 1.6, 25, 0, 8.4, 0));
         const head = new T.Group(); head.position.y = 14; g.add(head);
-        const cn = mesh(GEO.box, lam("#4a525a"), 22, 8, 9, 6, 4, 0); cn.castShadow = true; head.add(cn);
+        const cn = mesh(GEO.box, std("#4a525a", 0.4, 0.6), 22, 8, 9, 6, 4, 0); cn.castShadow = true; head.add(cn);
         head.add(mesh(GEO.sph, bas(HERO.accent), 4, 4, 4, 0, 6, 0));
         const halo = new T.Mesh(GEO.ring, add3(HERO.accent, 0.6)); halo.rotation.x = -Math.PI / 2; halo.position.y = 2; halo.scale.setScalar(28); g.add(halo);
         heroObj = { g, head, halo };
