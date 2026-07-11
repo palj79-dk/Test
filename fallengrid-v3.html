@@ -5905,7 +5905,7 @@
         const info = "★".repeat(m.diff) + " · " + m.cols + "×" + m.rows + (m.routes.length > 1 ? " · " + m.routes.length + " gates" : "");
         return `<option value="${i}" ${S.mapIndex === i ? "selected" : ""}>${m.name}   ${info}</option>`;
       }).join("")}</select>`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.4 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.5 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6488,9 +6488,11 @@
         sph(r, p, mat, sc) { return self.add(xf(new T.SphereGeometry(r, 16, 12), p, null, sc), mat); },
         cone(r, h, seg, p, mat, rot) { return self.add(xf(new T.ConeGeometry(r, h, seg || 16), p, rot), mat); },
         tor(r, tb, seg, p, mat, rot) { return self.add(xf(new T.TorusGeometry(r, tb, 10, seg || 22), p, rot), mat); },
+        cap(rad, len, p, mat, rot) { return self.add(xf(new T.CapsuleGeometry(rad, len, 4, 10), p, rot), mat); },
+        ico(rad, det, p, mat, sc) { return self.add(xf(new T.IcosahedronGeometry(rad, det || 0), p, null, sc), mat); },
         build(shadow) {
           const grp = new T.Group();
-          for (const k in G) { const gp = G[k]; let mg; try { mg = BGU.mergeBufferGeometries(gp.geos, false); } catch (e) { mg = gp.geos[0]; } const me = new T.Mesh(mg, gp.mat); me.castShadow = shadow !== false; me.receiveShadow = true; grp.add(me); }
+          for (const k in G) { const gp = G[k]; let mg; try { mg = BGU.mergeBufferGeometries(gp.geos.map((x) => x.index ? x.toNonIndexed() : x), false); } catch (e) { mg = gp.geos[0]; } const me = new T.Mesh(mg, gp.mat); me.castShadow = shadow !== false; me.receiveShadow = true; grp.add(me); }
           return grp;
         }
       };
@@ -6600,67 +6602,78 @@
     function tintable(col) { return new T.MeshLambertMaterial({ color: col }); }
     function buildEnemy(type) {
       const b = ENEMIES[type], r = b.r, g = new T.Group();
-      const mats = [], tm = (c) => { const m = tintable(c); mats.push(m); return m; };
-      const bodyM = tm(b.body), darkM = tm(b.dark), eyeM = bas(b.eye);
-      let bodyH = r;
-      if (b.shape === "stalker") {
-        const bd = mesh(GEO.sph, bodyM, r * 0.85, r * 0.6, r * 0.62, 0, r * 0.55, 0); bd.castShadow = true; g.add(bd);
-        g.add(mesh(GEO.sph, eyeM, 2.6, 2.6, 2.6, r * 0.62, r * 0.62, 0));
-        for (const s of [-1, 1]) { g.add(mesh(GEO.box, darkM, r * 0.8, 2.2, 2.2, -r * 0.1, r * 0.28, s * r * 0.5)); }
-        bodyH = r * 0.9;
-      } else if (b.shape === "raider") {
-        const bd = mesh(GEO.box, bodyM, r * 1.1, r * 0.75, r * 0.95, 0, r * 0.5, 0); bd.castShadow = true; g.add(bd);
-        g.add(mesh(GEO.sph, darkM, r * 0.34, r * 0.34, r * 0.34, r * 0.42, r * 0.95, 0));
-        g.add(mesh(GEO.sph, eyeM, 2.4, 2.4, 2.4, r * 0.68, r * 0.95, 0));
-        for (const s of [-1, 1]) g.add(mesh(GEO.box, darkM, r * 0.45, r * 0.3, r * 0.28, -r * 0.15, r * 0.72, s * r * 0.52));
+      const mats = [], legs = [];
+      const P = (col, rough, met) => { const mt = new T.MeshStandardMaterial({ color: col, roughness: rough, metalness: met }); mats.push(mt); return mt; };
+      const organic = b.shape === "splitter" || b.shape === "mender" || b.shape === "wraith";
+      const bodyM = P(b.body, organic ? 0.55 : 0.48, organic ? 0.08 : 0.34);
+      const darkM = P(b.dark, 0.6, 0.42);
+      const eyeM = emis(b.eye, 1.6), m = Model();
+      const eye = (p, sz) => m.sph(sz, p, eyeM);
+      const leg = (x, z, len, w) => { const lg = new T.Mesh(new T.CapsuleGeometry(w, len, 3, 7), darkM); lg.position.set(x, len * 0.45, z); lg.castShadow = true; legs.push(lg); g.add(lg); };
+      let bodyH = r, ringSpin = null;
+      if (b.shape === "stalker") {                                   // sleek hunter drone
+        m.cap(r * 0.4, r * 1.0, [0, r * 0.52, 0], bodyM, [0, 0, Math.PI / 2]);
+        m.cone(r * 0.38, r * 0.55, 10, [r * 0.9, r * 0.52, 0], darkM, [0, 0, -Math.PI / 2]);
+        for (const sd of [-1, 1]) m.box(r * 0.55, 1.4, r * 0.28, [-r * 0.15, r * 0.62, sd * r * 0.42], darkM, [0, sd * 0.45, 0]);
+        eye([r * 0.95, r * 0.56, 0], 2.6);
+        leg(-r * 0.1, r * 0.42, r * 0.5, 1.5); leg(-r * 0.1, -r * 0.42, r * 0.5, 1.5); leg(r * 0.35, r * 0.34, r * 0.42, 1.3); leg(r * 0.35, -r * 0.34, r * 0.42, 1.3);
+        bodyH = r * 0.85;
+      } else if (b.shape === "raider") {                            // scrappy trooper-bot
+        m.box(r * 0.95, r * 0.85, r * 0.8, [0, r * 0.72, 0], bodyM);
+        m.box(r * 1.05, r * 0.28, r * 0.9, [0, r * 1.06, 0], darkM);
+        m.cap(r * 0.32, r * 0.28, [r * 0.18, r * 1.34, 0], darkM);
+        for (const sd of [-1, 1]) { m.box(r * 0.34, r * 0.4, r * 0.34, [-r * 0.08, r * 1.0, sd * r * 0.62], darkM); m.cap(r * 0.16, r * 0.55, [r * 0.12, r * 0.62, sd * r * 0.6], bodyM); }
+        if (type === "warden") { m.box(r * 0.22, r * 0.95, r * 0.95, [r * 0.55, r * 0.72, 0], darkM); m.cyl(r * 0.5, r * 0.5, r * 0.22, 12, [-r * 0.55, r * 1.1, 0], darkM, [Math.PI / 2, 0, 0]); }
+        eye([r * 0.48, r * 1.37, 0], 2.4);
+        leg(0, r * 0.34, r * 0.6, 2); leg(0, -r * 0.34, r * 0.6, 2);
+        bodyH = r * 1.25;
+      } else if (b.shape === "brute") {                             // hulking heavy mech
+        m.box(r * 1.2, r * 1.0, r * 1.0, [0, r * 0.88, 0], bodyM);
+        m.box(r * 0.9, r * 0.5, r * 1.4, [-r * 0.05, r * 1.38, 0], darkM);
+        m.cap(r * 0.3, r * 0.3, [r * 0.35, r * 1.42, 0], darkM);
+        for (const sd of [-1, 1]) { m.cap(r * 0.32, r * 0.7, [r * 0.15, r * 0.78, sd * r * 0.82], bodyM); m.box(r * 0.42, r * 0.42, r * 0.42, [r * 0.38, r * 0.36, sd * r * 0.86], darkM); }
+        if (type === "sentinel") { for (const sd of [-1, 1]) m.box(r * 0.95, r * 0.72, r * 0.14, [r * 0.2, r * 0.92, sd * r * 0.56], darkM); m.box(r * 0.55, r * 0.75, r * 1.0, [r * 0.5, r * 0.88, 0], darkM); }
+        eye([r * 0.6, r * 1.44, 0], 2.8);
+        leg(0, r * 0.44, r * 0.7, 3); leg(0, -r * 0.44, r * 0.7, 3);
+        bodyH = r * 1.5;
+      } else if (b.shape === "wraith") {                            // floating crystalline specter
+        m.ico(r * 0.8, 0, [0, r * 0.1, 0], bodyM, [1, 1.25, 1]);
+        m.ico(r * 0.42, 0, [r * 0.25, -r * 0.4, 0], darkM);
+        eye([r * 0.46, r * 0.1, 0], 2.8);
+        const ring = new T.Mesh(new T.TorusGeometry(r * 1.15, r * 0.09, 8, 24), emis(b.eye, 1.1)); ring.rotation.x = Math.PI / 2; ring.position.y = r * 0.1; g.add(ring); ringSpin = ring;
+        bodyH = r * 0.95;
+      } else if (b.shape === "mender") {                            // rounded support medbot
+        m.cap(r * 0.72, r * 0.5, [0, r * 0.72, 0], bodyM, [0, 0, Math.PI / 2]);
+        for (const sd of [-1, 1]) m.cyl(r * 0.26, r * 0.26, r * 0.5, 10, [-r * 0.08, r * 0.62, sd * r * 0.72], darkM, [Math.PI / 2, 0, 0]);
+        const cross = emis("#8fe04a", 1.4);
+        m.box(r * 0.85, r * 0.22, r * 0.22, [r * 0.5, r * 0.9, 0], cross); m.box(r * 0.22, r * 0.22, r * 0.85, [r * 0.5, r * 0.9, 0], cross);
+        eye([r * 0.55, r * 1.08, 0], 2.2);
+        leg(0, r * 0.38, r * 0.42, 2); leg(0, -r * 0.38, r * 0.42, 2);
         bodyH = r * 1.15;
-      } else if (b.shape === "brute") {
-        const bd = mesh(GEO.box, bodyM, r * 1.25, r * 0.95, r * 1.05, 0, r * 0.6, 0); bd.castShadow = true; g.add(bd);
-        g.add(mesh(GEO.box, darkM, r * 0.5, r * 0.45, r * 1.25, r * 0.25, r * 1.05, 0));
-        g.add(mesh(GEO.sph, eyeM, 2.8, 2.8, 2.8, r * 0.66, r * 0.8, 0));
-        for (const s of [-1, 1]) { const arm = mesh(GEO.box, darkM, r * 0.42, r * 0.75, r * 0.34, r * 0.1, r * 0.45, s * r * 0.72); arm.castShadow = true; g.add(arm); }
-        bodyH = r * 1.3;
-      } else if (b.shape === "wraith") {
-        const bd = mesh(GEO.oct, bodyM, r * 0.72, r * 0.95, r * 0.72, 0, 0, 0); bd.castShadow = true; g.add(bd);
-        const ring = mesh(GEO.ring, add3(b.eye, 0.6), r * 1.15, r * 1.15, 1, 0, r * 0.15, 0); ring.rotation.x = -Math.PI / 2; g.add(ring);
-        g.add(mesh(GEO.sph, eyeM, 2.6, 2.6, 2.6, r * 0.5, 0, 0));
-        bodyH = r;
-      } else if (b.shape === "mender") {
-        const bd = mesh(GEO.sph, bodyM, r * 0.8, r * 0.7, r * 0.8, 0, r * 0.55, 0); bd.castShadow = true; g.add(bd);
-        g.add(mesh(GEO.box, bas("#8fe04a"), r * 0.9, 3, 3.4, 0, r * 1.0, 0));
-        g.add(mesh(GEO.box, bas("#8fe04a"), 3.4, 3, r * 0.9, 0, r * 1.0, 0));
-        for (const s of [-1, 1]) g.add(mesh(GEO.box, darkM, r * 0.4, r * 0.4, r * 0.3, -r * 0.2, r * 0.4, s * r * 0.62));
-        bodyH = r * 1.1;
-      } else if (b.shape === "splitter") {
-        const bd = mesh(GEO.sph, bodyM, r * 0.85, r * 0.72, r * 0.85, 0, r * 0.5, 0); bd.castShadow = true; g.add(bd);
-        for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2; g.add(mesh(GEO.sph, tm("#b06ab0"), r * 0.3, r * 0.3, r * 0.3, Math.cos(a) * r * 0.4, r * 0.6 + Math.sin(a) * r * 0.2, Math.sin(a) * r * 0.4)); }
-        g.add(mesh(GEO.sph, eyeM, 2.4, 2.4, 2.4, r * 0.66, r * 0.62, 0));
-        bodyH = r;
-      } else { // juggernaut
-        const hull = mesh(GEO.box, bodyM, r * 1.5, r * 0.7, r * 1.15, 0, r * 0.45, 0); hull.castShadow = true; g.add(hull);
-        g.add(mesh(GEO.box, darkM, r * 0.7, r * 0.45, r * 0.7, -r * 0.1, r * 0.95, 0));
-        g.add(barrelJug(darkM, r));
-        for (const s of [-1, 1]) g.add(mesh(GEO.box, tm("#26292e"), r * 1.6, r * 0.35, r * 0.3, 0, r * 0.18, s * r * 0.62));
-        g.add(mesh(GEO.sph, eyeM, 3.2, 3.2, 3.2, r * 0.8, r * 0.6, 0));
-        bodyH = r * 1.2;
+      } else if (b.shape === "splitter") {                          // bulbous sac ready to burst
+        m.ico(r * 0.85, 1, [0, r * 0.68, 0], bodyM);
+        for (let i = 0; i < 3; i++) { const a = i / 3 * 6.283; m.ico(r * 0.32, 0, [Math.cos(a) * r * 0.4, r * 0.72 + Math.sin(a) * r * 0.2, Math.sin(a) * r * 0.4], darkM); }
+        eye([r * 0.72, r * 0.7, 0], 2.4);
+        leg(0, r * 0.42, r * 0.34, 2.4); leg(0, -r * 0.42, r * 0.34, 2.4); leg(-r * 0.34, 0, r * 0.34, 2.4);
+        bodyH = r * 1.05;
+      } else {                                                      // juggernaut siege boss
+        m.box(r * 1.6, r * 0.7, r * 1.25, [0, r * 0.5, 0], bodyM);
+        m.box(r * 1.2, r * 0.4, r * 1.4, [0, r * 0.92, 0], darkM);
+        m.cyl(r * 0.72, r * 0.82, r * 0.5, 8, [0, r * 1.2, 0], bodyM);
+        m.cyl(r * 0.2, r * 0.2, r * 1.35, 10, [r * 0.95, r * 1.2, 0], darkM, [0, 0, Math.PI / 2]);
+        m.cyl(r * 0.28, r * 0.28, r * 0.3, 10, [r * 1.6, r * 1.2, 0], darkM, [0, 0, Math.PI / 2]);
+        for (const sd of [-1, 1]) { m.box(r * 1.7, r * 0.42, r * 0.35, [0, r * 0.26, sd * r * 0.72], darkM); for (let i = 0; i < 4; i++) m.cyl(r * 0.22, r * 0.22, r * 0.32, 8, [-r * 1.05 + i * r * 0.7, r * 0.2, sd * r * 0.74], darkM, [Math.PI / 2, 0, 0]); }
+        m.cyl(0.5, 0.5, r * 0.7, 6, [-r * 0.6, r * 1.7, r * 0.35], darkM);
+        eye([r * 0.4, r * 1.32, 0], 3.4);
+        bodyH = r * 1.4;
       }
-      // swinging legs for ground walkers (driven by e.walk in sync)
-      const legs = [];
-      if (!b.flying && b.shape !== "juggernaut") {
-        for (const sd of [-1, 1]) {
-          const lg2 = mesh(GEO.box, darkM, 3.4, r * 0.55, 3.4, sd * r * 0.28, r * 0.3, sd * r * 0.3);
-          lg2.geometry = GEO.box; legs.push(lg2); g.add(lg2);
-        }
-      }
-      // shield bubble + heal ring (hidden by default)
+      g.add(m.build());
       const bub = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.18, depthWrite: false }));
-      bub.scale.setScalar(r * 1.35); bub.position.y = r * 0.55; bub.visible = false; g.add(bub);
+      bub.scale.setScalar(r * 1.4); bub.position.y = r * 0.6; bub.visible = false; g.add(bub);
       const healR = new T.Mesh(GEO.ring, add3("#8fe04a", 0.7)); healR.rotation.x = -Math.PI / 2; healR.position.y = 1.5; healR.visible = false; g.add(healR);
-      let ringSpin = null; if (b.shape === "wraith") ringSpin = g.children[1];
       let ao = null; if (!b.flying) { ao = aoDisc(r * 1.5); ao.material = aoMat(); g.add(ao); }
-      return { g, mats, bub, healR, legs, ringSpin, ao, bodyH, type, base: mats.map((m) => m.color.clone()) };
+      return { g, mats, bub, healR, legs, ringSpin, ao, bodyH, type, base: mats.map((mt) => mt.color.clone()) };
     }
-    function barrelJug(mat, r) { const m = mesh(GEO.cyl, mat, 2.6, r * 1.1, 2.6, r * 0.55, r * 1.0, 0); m.rotation.z = -Math.PI / 2; return m; }
     const enemyObjs = new Map(), frostCol = new T.Color(0x9fd8ff), flashCol = new T.Color(0xffffff);
     function enemyGroundY(e) {
       const c = Math.floor(e.x / TILE), r = Math.floor(e.y / TILE), k = c + "," + r;
