@@ -2,7 +2,7 @@
 
 Single-file HTML5 canvas tower defense, post-apocalyptic sci-fi theme, portrait mobile-first, intended to ship on Google Play via a Capacitor WebView wrapper. This document is the source of truth for continuing the work. Part 0 is the operating contract. Part 1 is the technical spec (updated to current code). Part 2 is the continuation brief: quality assessment, backlog, changelog. Part 3 is the **Visual & Map Direction V2** — the re-evaluation of graphics ("how do we get a 3D-rendered look?") and map layout, with a phased implementation plan.
 
-The deliverable file is `fallengrid.html`. Everything (HTML, CSS, JS) lives in that one file inside a single IIFE. There is no build step and no framework. Vanilla Canvas2D + WebAudio.
+The deliverable file is `fallengrid-v3.html` (real-3D build — see Part 4; the older 2D builds are kept frozen alongside). Everything lives in one file inside a single IIFE. No build step, no CDN: three.js r147 is embedded inline. WebGL via three.js for the world + Canvas2D for UI + WebAudio.
 
 **Current state (v3).** All original backlog items are closed: graphics pass 1, strategic depth, audio, onboarding, meta-progression, endless + 5-map roster with biomes, balance pass, and the Hero/Commander. The game is mechanically a genre-standard TD with retention. The open front is **presentation ceiling and map composition** — the subject of Part 3.
 
@@ -207,16 +207,18 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
 13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
 14. **Behavior enemies + 2 maps + Campaign mode** — (a) `mender` (radius heal pulse with cross-glow/ring fx + `gl_heal` bloom hint, wave 9+) and `splitter` (bursts into 3 `spawnling` fragments on kill, wave 11+); trait flags flow through `statsFor`, heal logic in `updEnemies`, split in `hurt()` so leaks don't split. Baked statics + animated bodies for both (mender pods/cross plates, splitter sac with squirming inner blobs + stubby legs). (b) `Gauntlet` 9×18 ash switchback ladder and `Delta` 13×18 toxic **3-entrance** map whose routes T-merge — roster is now 7, all in the menu picker. (c) **Campaign**: `⚔ Campaign · Mission N/7` menu button resumes from persisted `camp`; victory becomes "Mission N Secured" with a Next Mission button (or CAMPAIGN COMPLETE on map 7); Deploy/Endless clear `S.campaign`. Verified: both new maps route-sim to gameover, Delta uses all 3 routes, heal + split observed in a wave-12 sim, campaign start→victory→next→resume→complete flow, 60fps in combat on both maps, zero pageerrors, guards intact.
 15. **V2.5 in a new file (`fallengrid-v25.html`; `fallengrid.html` frozen at V2.4)** — (a) the oblique tilt experiment — **since reverted to full 2D after user playtest; see Part 3 V2.5 for the verdict** (`TILT = 1` now; scaffolding inert); (b) **3 more maps → 10**: `Spiral` ★★ ember (single route spiraling to a center base), `Fracture` ★★★★ rust (2 gates, one bridge crossing + T-merge final), `Terminus` ★★★★★ ash finale (15×22, 3 entrances, two bridge crossings + merges); campaign is Mission N/10; (c) the free-play map picker is now a **styled `<select>` dropdown** (`#mapsel`) replacing the button grid — campaign is unaffected (it always resumes from `camp`). Verified: 154-probe screen↔world round-trip exact under tilt, tap selects the intended tile, all 10 maps no-tower route-sim to gameover, Terminus spawns on all 3 routes, campaign flow to CAMPAIGN COMPLETE on map 10, 56–60fps in heavy combat, zero pageerrors, guards intact.
+16. **V3.0 REAL 3D — `fallengrid-v3.html`** — the documented WebGL exit, taken on user request. three.js r147 (UMD, 607KB) is embedded inline so the game stays a single offline file; the world is a true 3D scene (perspective camera at ~55°, extruded terrain, procedural low-poly meshes, one shadow-casting sun, per-biome sky/fog) while **all game logic, UI panels, HUD, audio, and the sim harness are unchanged** from V2.5. Full architecture in **Part 4**. Verified: 100-tile raycast round-trip exact, taps select the intended tile, all 10 maps route-sim to gameover, campaign flow, distinct biomes, zero pageerrors, ~40fps on SwiftShader *software* GL after adaptive quality (real GPUs run full quality).
 
 ## 2.1 Where things are
 
 ```
-fallengrid-v25.html  the current build (full 2D, 10 maps, dropdown picker) — ship this
-fallengrid.html      the V2.4 build (untilted, 7 maps, button-grid picker) — kept per user request
+fallengrid-v3.html   the current build — REAL 3D (three.js r147 embedded), 10 maps, campaign, dropdown — ship this
+fallengrid-v25.html  the V2.5 build (full-2D Canvas2D, 10 maps, dropdown picker) — kept as the 2D fallback
+fallengrid.html      the V2.4 build (7 maps, button-grid picker) — frozen, kept per user request
 HANDOFF.md           this document (source of truth)
 README.md            repo readme
 ```
-New work goes into `fallengrid-v25.html` unless the user asks otherwise; `fallengrid.html` is frozen at V2.4.
+New work goes into `fallengrid-v3.html` (see Part 4 for its renderer architecture); the older files are frozen.
 Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed; verification scripts are ephemeral (see 2.7).
 
 ## 2.2 Edit and verify loop
@@ -351,3 +353,46 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
 3. Icons/splash via `@capacitor/assets`.
 4. `npx cap sync`, `npx cap open android`.
 5. In Android Studio set applicationId, build a signed release AAB, upload to Play Console (content rating, privacy policy, store assets are not code). No known technical rejection cause.
+
+---
+
+# Part 4 — V3.0 Real-3D Renderer (`fallengrid-v3.html`)
+
+The WebGL exit documented in Part 3 was taken on user request. V3.0 replaces the world renderer with a true 3D scene; **everything else — game state, simulation, waves, economy, UI panels, HUD/tray drawing, audio, the `__GAME` sim harness — is byte-identical logic carried over from V2.5.** The 3D module only *reads* game state.
+
+## 4.1 Architecture
+
+- **Single file, still offline.** three.js r147 (UMD build, 607KB, global `THREE`) is embedded inline as the first `<script>`; the game IIFE follows. No CDN, no build step. r147 is pinned deliberately: it is the last release line with a UMD single-file build.
+- **Two stacked canvases.** `#gl` (WebGL, z-index 1) renders the world; `#game` (Canvas2D, z-index 2, transparent) renders ALL screen-space UI exactly as before: HUD, tray, banners, FABs, boss bar, tutorial, plus the projected overlay (enemy health bars, damage floats). `frame()` clears the 2D canvas, calls `G3D.frame(shake, dt, dtMs)` then `G3D.overlay()`, then the unchanged screen-layer draw calls.
+- **The `G3D` module** (IIFE inside the game IIFE, also on `window.G3D`) exposes: `buildMap()` (called by `loadMap` — replaces the 2D terrain bake), `frame(so, raw, dtMs)`, `overlay()`, `pick(sx, sy)`, `project(wx, wy, h)`, `resize(sc, dpr)`, `applyCam()`, plus `scene/camera/renderer` for debugging.
+
+## 4.2 Camera & input (the critical contract)
+
+`cam { x, y, zoom }` keeps its exact V2 semantics — a virtual top-down window (world coords of the viewport top-left, pixels-per-world-unit) — so **all pan/pinch/clamp/fit code is unchanged**. `applyCam()` derives the real camera each frame: view center `(cx, cz)` from the window, distance `dist = (W/zoom/2) / (tan(fov/2) * aspect)`, position at elevation `ELEV = 0.96 rad (~55°)` south of the target, `lookAt` the center (with a small aim offset so the play viewport, not the full canvas, centers the world). World mapping: 2D `(wx, wy)` → 3D `(x=wx, y=up, z=wy)`.
+
+- `screenToWorld` = `G3D.pick`: raycast through the pixel onto the ground plane `y=0`. Exact by construction — verified 100/100 tile round-trips.
+- `worldToScreen` = `G3D.project(wx, wy, 0)`: project + NDC→pixels. Used by coach marks and the overlay.
+- `zoomAt` re-anchors by raycasting the same pixel after the zoom change and shifting `cam` by the world delta (perspective-safe).
+
+## 4.3 World build (per map, `buildMap`)
+
+Heights: buildable tile tops `y=0`, road channels sunken to `ROAD_Y=-10`, bridge decks `DECK_Y=+6`, island bottom `-46`, flyers at `+26`. The whole island — tile columns with conditional side walls (lit SE / shadowed NW faces, cliff color at the perimeter), craters, sandbags, rubble, wrecks, dead trees, buildings with emissive windows, dropships, breach tunnels, fortress base walls — is pushed into **one merged vertex-colored BufferGeometry** (Lambert) plus one emissive merged geometry (road dashes, windows, barrel tops) = 2 draw calls for all static world. Pools and breach lava are small separate meshes with pulsing opacity; the reactor core is a pulsing emissive sphere. Per-biome: sky/fog color, hemisphere tint, sun color (warm on ember). One directional sun casts real shadow maps (1024px ortho frustum sized to the world).
+
+## 4.4 Entities & effects
+
+- **Towers**: procedural low-poly groups per type×level×branch (rebuilt when the key changes) — plinth + rotating head (`rotation.y = -t.angle`), barrels/domes/tubes/coils per type, emissive accent tips, muzzle-flash sphere on `t.flash`, recoil offset. Cached shared unit geometries (`GEO.*`) scaled per part.
+- **Enemies**: per-shape builders (stalker/raider/brute/wraith/mender/splitter/juggernaut) pooled per type; per-instance cloned body materials so **frost tints** (lerp to ice blue), **hit flashes** (emissive pulse), shield bubbles (transparent sphere, opacity from shield fraction), and the mender's expanding heal ring all animate independently. Position = sim state; ground height lerps between road/deck (smooth bridge ramps); walk wobble from `e.walk`, flyers hover with bank roll.
+- **Effects, all pooled, zero allocation per frame**: beams = additive-blended stretched cylinders; explosion rings = ground rings, flashes = additive spheres; orbs/mortar shells = pooled meshes (shells fly a real arc); scorches = dark ground decals; smoke = billboarded sprites (canvas radial texture); sparks + gibs share one 500-point additive `THREE.Points` cloud with per-point color fade.
+- **Selection**: range ring (thin additive ring, radius = range — a true ground-plane circle, consistent under perspective), pulsing tile highlight quad, tutorial plot spotlight.
+
+## 4.5 Performance & quality ladder
+
+Adaptive controller (90-frame rolling average): >30ms → shadows off + pixelRatio 1; >45ms → shadow maps disabled + 0.8× render scale. SwiftShader *software* GL settles ~40fps at 360×640 with heavy combat; real GPUs never degrade. Never rebuild geometry in the frame loop — `buildMap` runs only on map change; entity meshes rebuild only on upgrade/branch.
+
+## 4.6 Verification additions (on top of 2.7)
+
+Headless WebGL needs Chromium flags: `--no-sandbox --enable-unsafe-swiftshader`. Verify per change: `THREE.REVISION` loads, `G3D.renderer.getContext()` truthy, 100-tile `project→pick` round-trip exact, `tap` selects the intended tile, all-map no-tower route sims, campaign flow, biome screenshots, settled fps, zero pageerrors, and the 1.10 guards (unchanged, they live in sim/HUD code).
+
+## 4.7 Known deltas vs the 2D build (accepted)
+
+No bloom post-pass (emissive materials + additive blending stand in), no cloud shadows or color-grade overlay (real lighting + fog replace them), simplified walk-cycle (bob/wobble instead of articulated legs), boss juggernaut uses the standard health-bar-free boss banner. The 2D sprite bake still runs at load purely for HUD tray icons.
