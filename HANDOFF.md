@@ -18,7 +18,7 @@ If a request is ambiguous, make a reasonable assumption, state it in one line, a
 
 All code, config, and data must be copy-paste ready with no placeholders or TODO stubs unless a template was explicitly requested. Flag genuine technical flaws, regressions, or Play-compliance risks directly rather than softening them.
 
-Definition of done is fixed in 2.7 and is non-negotiable: syntax check, hex scan, headless logic/render check, and the three wave-progression guards in 1.10 intact.
+Definition of done is fixed in 2.7 and is non-negotiable: syntax check, hex scan, headless logic/render check, and the two wave-progression guards in 1.10 intact.
 
 ---
 
@@ -133,12 +133,11 @@ Ten types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.01
 
 ## 1.10 The wave-progression guarantee (do not regress)
 
-Three independent guards make a freeze impossible; all three must remain:
-1. The Deploy/Start control lives in the persistent top HUD (`drawHUD`), always rendered (`hudBtns` id `"nextwave"`).
+Two independent guards make a freeze impossible; both must remain:
+1. The Deploy/Start control lives in the persistent top HUD (`drawHUD`), always rendered (`hudBtns` id `"nextwave"`) and checked **first** in the tap handler, so it is always tappable even with a selection panel showing.
 2. `NEXT_WAVE_COUNTDOWN` auto-starts the next wave with zero input after a wave resolves (`frame` loop, `S.countdown -= raw`).
-3. Selection is force-cleared (`selTile = selTower = null`) the instant a wave resolves (`updSpawns`) and on `startWave`.
 
-Onboarding, airstrike arming, and the Armory are all **non-blocking** — they never gate input, so they cannot introduce a soft-lock. Enemies a mismatched defense cannot kill simply leak and the wave still resolves.
+**UX note (changed on request):** selection is **no longer** force-cleared when a wave *resolves* — the player's build/upgrade focus stays on the build menu through the between-wave countdown (a wave ending no longer yanks the menu away). This is safe because guards 1–2 alone prevent any softlock (selection panels never gate input in v3; the Deploy button and the countdown both work regardless). Selection is still cleared on `startWave` (a fresh wave begins) and on `reset`, and whenever an ability is armed. Onboarding, airstrike arming, and the Armory remain **non-blocking**. Enemies a mismatched defense cannot kill simply leak and the wave still resolves.
 
 ## 1.11 Game loop
 
@@ -351,7 +350,7 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
    ```
 2. **Headless logic/render.** Playwright + Chromium (`/opt/pw-browsers/...`) driving `__GAME`: assert waves resolve, auto-advance fires, wave 2 auto-starts with no input, no NaN in `S`/enemies across several waves (incl. a boss shield wave), and capture at least one screenshot confirming the change renders. Watch `pageerror`/console for zero errors.
 3. **Performance.** Sample frame times; hold ~60fps. Never move baked terrain work into the per-frame path.
-4. **Guards.** The three wave-progression guards in 1.10 remain intact.
+4. **Guards.** The two wave-progression guards in 1.10 remain intact.
 5. State any balance or UX assumption made.
 
 ## 2.8 Android port path

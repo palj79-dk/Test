@@ -4572,7 +4572,10 @@
       enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6 }, st));
     }
     if (S.queue.length === 0 && enemies.length === 0 && S.waveActive) {
-      S.waveActive = false; S.scrap += Math.round((20 + S.wave * 3) * waveBonusMul()); S.selTile = null; S.selTower = null;
+      // Wave resolved. Keep the player's build/upgrade selection (focus stays on the build menu
+      // through the between-wave countdown). Softlock is still impossible: the Deploy control lives
+      // in the persistent HUD (checked first on tap) and the countdown auto-advances regardless.
+      S.waveActive = false; S.scrap += Math.round((20 + S.wave * 3) * waveBonusMul());
       if (!S.endless && S.wave >= TOTAL_WAVES) { S.screen = "victory"; if (S.wave > S.high) { S.high = S.wave; Store.set("high", S.high); } awardAlloy(true); Sound.win(); }
       else S.countdown = NEXT_WAVE_COUNTDOWN;
     }
