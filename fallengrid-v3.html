@@ -4318,7 +4318,12 @@
     };
     return api;
   })();
-  const vibrate = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+  // haptics: user-toggleable, persisted; gates every vibrate() call in the game
+  const Haptics = (function () {
+    let on = Store.get("haptics", true);
+    return { isOn() { return on; }, toggle(v) { on = v; Store.set("haptics", v); } };
+  })();
+  const vibrate = (ms) => { if (!Haptics.isOn()) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 
   /* ---------------- WAVES ---------------- */
   // Counts are capped so deep endless waves stay performant/playable; statsFor keeps scaling HP.
@@ -4386,7 +4391,7 @@
   const STRIKE_CD = 30, STRIKE_R = 92;
   const S = {
     screen: "menu", scrap: START_SCRAP, core: START_CORE, wave: 0, kills: 0,
-    waveActive: false, queue: [], speed: 1, selTile: null, selTower: null,
+    waveActive: false, queue: [], speed: Store.get("speed", 1), selTile: null, selTower: null,
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
     strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0,
@@ -5910,13 +5915,15 @@
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
         <button class="btn" id="cp">⚔ Campaign · Mission ${Math.min(Store.get("camp", 0), MAPS.length - 1) + 1}/${MAPS.length}</button>
+        ${Store.get("camp", 0) > 0 ? `<button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
         <button class="btn" id="e">∞ Endless</button>
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">Field Manual</button>
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}">${DIFFS[d].label}</button>`).join("")}</div>
-        <button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio On" : "○ Audio Off"}</button>
+        <div class="row"><button class="btn small ghost" id="s">${Sound.isOn() ? "◉ Audio" : "○ Audio"}</button><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button></div>
+        <button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery Saver On" : "○ Battery Saver Off"}</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
       byId("p").onclick = () => { S.endless = false; S.campaign = false; reset(); S.screen = "playing"; render(); };
       byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.mapIndex = Math.min(Store.get("camp", 0), MAPS.length - 1); selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
@@ -5926,6 +5933,9 @@
       byId("mapsel").onchange = (ev) => { const i = +ev.target.value; S.mapIndex = i; Store.set("map", i); selectMap(i); render(); };
       DIFF_ORDER.forEach((d) => { byId("df_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
       byId("s").onclick = () => { Sound.toggle(!Sound.isOn()); render(); };
+      byId("v").onclick = () => { const nv = !Haptics.isOn(); Haptics.toggle(nv); if (nv) vibrate(35); render(); };
+      const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
+      byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
     } else if (S.screen === "armory") {
       const rows = TALENT_ORDER.map((id) => {
         const t = TALENTS[id], lvl = Meta.lvl(id), maxed = Meta.maxed(id), cost = Meta.nextCost(id);
@@ -5960,7 +5970,7 @@
       show(`<div class="panel"><h2>Paused</h2><button class="btn primary" id="r">Resume</button><button class="btn" id="rs">Restart</button><button class="btn ghost" id="m">Abandon</button></div>`);
       byId("r").onclick = () => { S.screen = "playing"; render(); };
       byId("rs").onclick = () => { reset(); S.screen = "playing"; render(); };
-      byId("m").onclick = () => { S.screen = "menu"; render(); };
+      byId("m").onclick = () => { if (confirm("Abandon this run and return to the menu? Progress this run is lost.")) { S.screen = "menu"; render(); } };
     } else if (S.screen === "gameover") {
       const where = S.endless ? `Endless wave ${S.wave}${S.wave >= S.highEndless ? " · new best" : ""}` : `wave ${S.wave} of ${TOTAL_WAVES}`;
       show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div><button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
@@ -6025,7 +6035,7 @@
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); return; }
@@ -6946,7 +6956,7 @@
     /* ---- adaptive quality (shadows off + DPR 1 if the device can't keep up) ---- */
     // adaptive quality: degrade-only ladder. L0 full (SSAO+bloom+SMAA) → L1 no SSAO → L2 no composer
     // → L3 no shadows → L4 downscale. Normal maps/PBR stay on at every level (near-free on real GPUs).
-    let q = { acc: 0, n: 0, level: 0, warm: 0 }, curSc = 1;
+    let q = { acc: 0, n: 0, level: 0, warm: 0, locked: false }, curSc = 1;
     function setLevel(L) {
       if (L === q.level) return; q.level = L;
       post.ssao = L < 1; post.on = L < 2;
@@ -6954,7 +6964,10 @@
       renderer.setPixelRatio(L >= 2 ? 1 : Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(W * curSc * (L >= 4 ? 0.8 : 1), H * curSc * (L >= 4 ? 0.8 : 1), false);
     }
+    // Battery Saver: pin a lean fixed level (no post / no shadows, full res, PBR+normals kept) and stop the auto-ladder
+    function setEco(on) { q.locked = on; setLevel(on ? 3 : 0); q.warm = 0; }
     function quality(dtMs) {
+      if (q.locked) return;
       if (q.warm < 40) { q.warm++; return; }          // ignore warmup frames (shader compile / texture upload)
       q.acc += dtMs; q.n++;
       if (q.n >= 40) {
@@ -7032,7 +7045,7 @@
     resize3d(Math.min(window.innerWidth / W, window.innerHeight / H), window.devicePixelRatio || 1);
 
     return { buildMap, frame: frame3d, overlay, pick, project, resize: resize3d, scene, camera, renderer, applyCam,
-      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; } };
+      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; }, setEco };
   })();
   window.G3D = G3D;
 
@@ -7078,6 +7091,7 @@
 
   bakeSprites();
   selectMap(S.mapIndex);
+  if (window.G3D && G3D.setEco) G3D.setEco(Store.get("eco", false)); // honor persisted Battery Saver
   fitCamera();
   render();
   requestAnimationFrame(frame);
