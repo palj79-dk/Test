@@ -2250,13 +2250,14 @@
     const T = window.THREE;
     const glCanvas = document.getElementById("gl");
     const renderer = new T.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(45, W / H, 40, 6000);
     const ELEV = 0.96;                       // camera elevation (rad) — ~55deg tilt sells the 3D
     const ROAD_Y = -10, DECK_Y = 6, DEPTH = 46, FLY_H = 26;
-    const hemi = new T.HemisphereLight(0x9fb2c8, 0x14100c, 0.9); scene.add(hemi);
-    const sun = new T.DirectionalLight(0xfff0dc, 1.1);
+    const hemi = new T.HemisphereLight(0x9fb2c8, 0x14100c, 0.72); scene.add(hemi);
+    const sun = new T.DirectionalLight(0xfff0dc, 1.35);
     sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0015;
     scene.add(sun); scene.add(sun.target);
 
@@ -2270,6 +2271,41 @@
     function lam(col, emis) { const k = "l" + col + (emis || ""); if (!MATS.has(k)) MATS.set(k, new T.MeshLambertMaterial({ color: col, emissive: emis || 0x000000 })); return MATS.get(k); }
     function bas(col) { const k = "b" + col; if (!MATS.has(k)) MATS.set(k, new T.MeshBasicMaterial({ color: col })); return MATS.get(k); }
     function add3(col, op) { const k = "a" + col + op; if (!MATS.has(k)) MATS.set(k, new T.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false })); return MATS.get(k); }
+    var _glowTex = null;
+    function glowTex() {
+      if (_glowTex) return _glowTex;
+      const cvv = document.createElement("canvas"); cvv.width = cvv.height = 64;
+      const g = cvv.getContext("2d"); const rg = g.createRadialGradient(32, 32, 1, 32, 32, 31);
+      rg.addColorStop(0, "rgba(255,255,255,1)"); rg.addColorStop(0.35, "rgba(255,255,255,0.42)"); rg.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+      _glowTex = new T.CanvasTexture(cvv); return _glowTex;
+    }
+    function glowSprite(col, scale, op) {
+      const m = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false }));
+      m.scale.set(scale, scale, 1); return m;
+    }
+    const _skyCache = new Map();
+    function skyGrad(top, bot) {
+      const k = top + bot;
+      if (!_skyCache.has(k)) {
+        const cvv = document.createElement("canvas"); cvv.width = 2; cvv.height = 256;
+        const g = cvv.getContext("2d"); const lg = g.createLinearGradient(0, 0, 0, 256);
+        lg.addColorStop(0, top); lg.addColorStop(1, bot);
+        g.fillStyle = lg; g.fillRect(0, 0, 2, 256);
+        _skyCache.set(k, new T.CanvasTexture(cvv));
+      }
+      return _skyCache.get(k);
+    }
+    var _vig = null;
+    function vignette() {
+      if (_vig) return _vig;
+      _vig = document.createElement("canvas"); _vig.width = W; _vig.height = H;
+      const g = _vig.getContext("2d");
+      const rg = g.createRadialGradient(W / 2, H * 0.45, H * 0.3, W / 2, H * 0.52, H * 0.72);
+      rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, "rgba(0,0,0,0.36)");
+      g.fillStyle = rg; g.fillRect(0, 0, W, H);
+      return _vig;
+    }
     function c3(h) { if (h && h.indexOf && h.indexOf(",") > 0) { const p = h.split(","); return new T.Color(p[0] / 255, p[1] / 255, p[2] / 255); } return new T.Color(h); }
     function mesh(geo, mat, sx, sy, sz, x, y, z) { const m = new T.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x || 0, y || 0, z || 0); return m; }
     function disposeDeep(o) { o.traverse((n) => { if (n.geometry && !Object.values(GEO).includes(n.geometry)) n.geometry.dispose(); }); }
@@ -2328,10 +2364,12 @@
     }
 
     /* ---- per-map world build ---- */
-    let world = null, coreMesh = null, poolMats = [], breachMats = [];
+    let world = null, coreMesh = null, coreGlow = null, poolMats = [], breachMats = [];
+    let tileH = new Map();
     const inB = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS;
     const isRoad = (c, r) => PATH_SET.has(c + "," + r);
-    const topAt = (c, r) => !inB(c, r) ? -DEPTH : (isRoad(c, r) ? ROAD_Y : 0);
+    const slabH = (c, r) => Math.floor(hash2(c * 3 + 1, r * 5 + 2) * 3) * 1.1; // 0 / 1.1 / 2.2 broken-slab steps
+    const topAt = (c, r) => !inB(c, r) ? -DEPTH : (isRoad(c, r) ? ROAD_Y : slabH(c, r));
     function jit(col, amt) { const c = col.clone(); const f = 1 + (amt || 0); c.r = Math.min(1, c.r * f); c.g = Math.min(1, c.g * f); c.b = Math.min(1, c.b * f); return c; }
     function buildMap() {
       if (world) { scene.remove(world); disposeDeep(world); }
@@ -2339,15 +2377,25 @@
       const g1 = c3(BM.ash1), g2 = c3(BM.ash2), road = c3(BM.road).multiplyScalar(0.92);
       const cliff = c3(BM.ashEdge).multiplyScalar(0.6), wallLit = c3(BM.ashEdge).multiplyScalar(1.25), wallDk = c3(BM.ashEdge).multiplyScalar(0.7);
       const land = mk(), glow = mk();
+      tileH = new Map();
+      const lip = c3(BM.ashEdge).multiplyScalar(1.55);
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const top = topAt(c, r), x0 = c * TILE, z0 = r * TILE, x1 = x0 + TILE, z1 = z0 + TILE;
-        const h = hash2(c * 7 + currentMap, r * 13);
-        const tcol = isRoad(c, r) ? jit(road, (h - 0.5) * 0.08) : jit(h > 0.5 ? g1 : g2, (h - 0.5) * 0.12);
+        if (!isRoad(c, r)) tileH.set(c + "," + r, top);
+        const h = hash2(c * 7 + currentMap, r * 13), patch = hash2(c >> 1, (r >> 1) + 40) > 0.72 ? 0.9 : 1;
+        let tcol = isRoad(c, r) ? jit(road, (h - 0.5) * 0.08) : jit(h > 0.5 ? g1 : g2, (h - 0.5) * 0.2).multiplyScalar(patch);
         const edge = (dc, dr) => topAt(c + dc, r + dr) < top;
         const scol = (dc, dr, lit) => topAt(c + dc, r + dr) <= -DEPTH ? cliff : (lit ? wallLit : wallDk);
         boxM(land, x0, -DEPTH, z0, x1, top, z1, tcol,
           edge(0, -1) ? scol(0, -1, false) : null, edge(0, 1) ? scol(0, 1, true) : null,
           edge(-1, 0) ? scol(-1, 0, false) : null, edge(1, 0) ? scol(1, 0, true) : null);
+        // curb lip strips where solid ground meets a sunken road (reads as a trench rim)
+        if (!isRoad(c, r)) {
+          if (isRoad(c, r - 1)) boxM(land, x0 + 1, top, z0 - 2, x1 - 1, top + 1.3, z0 + 2.4, lip, null, wallDk, null, null);
+          if (isRoad(c, r + 1)) boxM(land, x0 + 1, top, z1 - 2.4, x1 - 1, top + 1.3, z1 + 2, lip, wallDk, null, null, null);
+          if (isRoad(c - 1, r)) boxM(land, x0 - 2, top, z0 + 1, x0 + 2.4, top + 1.3, z1 - 1, lip, null, null, null, wallDk);
+          if (isRoad(c + 1, r)) boxM(land, x1 - 2.4, top, z0 + 1, x1 + 2, top + 1.3, z1 - 1, lip, null, null, wallDk, null);
+        }
       }
       // road center dashes along each route
       const dash = c3(BM.roadLine);
@@ -2379,6 +2427,7 @@
           const pm = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: c3(BM.toxic), transparent: true, opacity: 0.55 }));
           pm.rotation.x = -Math.PI / 2; pm.scale.set(14, 10, 1); pm.position.set(cx, 0.5, cz);
           world.add(pm); poolMats.push(pm.material);
+          const pg2 = glowSprite(BM.toxic, 42, 0.3); pg2.position.set(cx, 5, cz); world.add(pg2);
           discM(land, cx, 0.35, cz, 17, c3(BM.ashEdge).multiplyScalar(0.5), 12);
         } else if (d.type === "barrel") {
           boxM(land, cx - 6, 0, cz - 6, cx + 6, 13, cz + 6, jit(barrel, (sd - 0.5) * 0.3), barrel, barrel, barrel, barrel);
@@ -2417,6 +2466,7 @@
         const lava = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0xff7a34, transparent: true, opacity: 0.85 }));
         lava.rotation.x = -Math.PI / 2; lava.scale.set(15, 15, 1); lava.position.set(st.x, ROAD_Y + 0.5, st.y);
         world.add(lava); breachMats.push(lava.material);
+        const lg2 = glowSprite("#ff7a34", 52, 0.4); lg2.position.set(st.x, ROAD_Y + 8, st.y); world.add(lg2);
       }
       const base = ROUTES[0][ROUTES[0].length - 1];
       const wallc = c3("#4a525c"), wallDk2 = c3("#262b31");
@@ -2429,6 +2479,8 @@
       coreMesh = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x37e0d0 }));
       coreMesh.scale.set(8, 8, 8); coreMesh.position.set(base.x, ROAD_Y + 30, base.y);
       scene.add(coreMesh);
+      if (coreGlow) scene.remove(coreGlow);
+      coreGlow = glowSprite("#37e0d0", 60, 0.45); coreGlow.position.set(base.x, ROAD_Y + 32, base.y); scene.add(coreGlow);
       const landMesh = toMesh(land, new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide }));
       landMesh.receiveShadow = true;
       const glowMesh = toMesh(glow, new T.MeshBasicMaterial({ vertexColors: true, side: T.DoubleSide }));
@@ -2436,7 +2488,9 @@
       scene.add(world);
       // biome sky, fog, lights, sun shadow frustum
       const sky = c3(BM.skyBot || "#0a0d12");
-      scene.background = sky; scene.fog = new T.Fog(sky.getHex(), 800, 2600);
+      scene.background = skyGrad(BM.skyTop || "#131922", BM.skyBot || "#07090d");
+      scene.fog = new T.Fog(sky.getHex(), 800, 2600);
+      dust.material.color = c3(BM.mote || "#c0c8d6").multiplyScalar(0.55);
       hemi.color = c3(BM.light || "190,205,225").multiplyScalar(0.55).add(new T.Color(0.25, 0.28, 0.32));
       sun.color = c3(BM.ember ? "#ffd2a8" : "#fff0dc");
       sun.position.set(WORLD_W / 2 - 420, 760, WORLD_H / 2 - 260);
@@ -2458,13 +2512,13 @@
       const L = t.lvl, br = t.branch;
       if (t.type === "turret") {
         const body = mesh(GEO.box, metalLt, 20, 11, 15, -2, 0, 0); body.castShadow = true; head.add(body);
-        if (L === 2 && br === "a") { for (const oz of [-4, 0, 4]) head.add(barrelMesh(metal, 24, 1.7, 8, oz * 0.9)); head.children[head.children.length - 2].position.y = 2; }
+        if (L === 2 && br === "a") { const sp = new T.Group(); for (const oz of [-4, 0, 4]) sp.add(barrelMesh(metal, 24, 1.7, 8, oz * 0.9)); sp.children[1].position.y = 2; head.add(sp); g.userData.spin = sp; }
         else if (L === 2 && br === "b") head.add(barrelMesh(metal, 32, 3.4, 8, 0));
         else { head.add(barrelMesh(metal, 20 + L * 4, 2.4, 8, 0)); if (L >= 1) head.add(barrelMesh(metal, 18 + L * 4, 2.0, 8, 5)); }
         head.add(mesh(GEO.box, acc, 4, 2, 10, -8, 6.5, 0));
       } else if (t.type === "cryo") {
         const dome = mesh(GEO.sph, new T.MeshLambertMaterial({ color: spec.metalLt, emissive: 0x1d5a55 }), 13 + L * 1.5, 10 + L * 1.5, 13 + L * 1.5, 0, 2, 0);
-        dome.castShadow = true; head.add(dome);
+        dome.castShadow = true; head.add(dome); g.userData.dome = dome;
         head.add(mesh(GEO.cyl, acc, 4, 7, 4, 0, 10 + L * 1.5, 0));
         if (L === 2) head.add(mesh(GEO.ring, add3(spec.accent, 0.5), 20, 20, 1, 0, -4, 0)).children;
         const rg = head.children[head.children.length - 1]; if (L === 2) rg.rotation.x = -Math.PI / 2;
@@ -2477,11 +2531,14 @@
       } else if (t.type === "tesla") {
         const col = mesh(GEO.cyl, metal, 6.5, 22 + L * 4, 6.5, 0, 8, 0); col.castShadow = true; head.add(col);
         for (let i = 0; i < 2 + L; i++) head.add(mesh(GEO.cyl, metalLt, 9 - i * 1.4, 2.2, 9 - i * 1.4, 0, 4 + i * 7, 0));
-        head.add(mesh(GEO.sph, acc, 4.5 + L, 4.5 + L, 4.5 + L, 0, 22 + L * 4, 0));
+        const orb = mesh(GEO.sph, acc, 4.5 + L, 4.5 + L, 4.5 + L, 0, 22 + L * 4, 0); head.add(orb); g.userData.orb = orb;
+        const og = glowSprite(spec.accent, 20, 0.5); og.position.y = 22 + L * 4; head.add(og);
       }
-      const tip = new T.Mesh(GEO.sph, add3(spec.accent, 0.9)); tip.scale.set(3, 3, 3); tip.position.set(26, 0, 0); tip.visible = false; head.add(tip);
+      const tip = glowSprite(spec.accent, 22, 0.95); tip.position.set(26, 2, 0); tip.visible = false; head.add(tip);
+      head.add(glowSprite(spec.accent, 13, 0.3));
+      for (let i = 0; i <= L; i++) g.add(mesh(GEO.box, acc, 2.6, 1.6, 2.6, -14 + i * 7, 5.5, 21));
       g.scale.set(1.22, 1.22, 1.22);
-      return { g, head, tip, key: t.type + L + (br || "") };
+      return { g, head, tip, spin: g.userData.spin || null, dome: g.userData.dome || null, orb: g.userData.orb || null, key: t.type + L + (br || "") };
     }
     const towerObjs = new Map();
     function syncTowers() {
@@ -2492,13 +2549,16 @@
         if (!o || o.key !== key) {
           if (o) { scene.remove(o.g); disposeDeep(o.g); }
           o = buildTower(t); towerObjs.set(t, o);
-          const p = center(t.c, t.r); o.g.position.set(p.x, 0, p.y);
+          const p = center(t.c, t.r); o.g.position.set(p.x, tileH.get(t.c + "," + t.r) || 0, p.y);
           scene.add(o.g);
         }
         o.head.rotation.y = -t.angle;
         const pull = t.recoil > 0 ? t.recoil / 0.12 * 3.5 : 0;
         o.head.position.x = -Math.cos(t.angle) * pull; o.head.position.z = -Math.sin(t.angle) * pull;
         o.tip.visible = t.flash > 0;
+        if (o.spin && t.target) o.spin.rotation.x += 0.55;
+        if (o.orb) o.orb.scale.setScalar((4.5 + t.lvl) * (t.target ? 1 + 0.18 * Math.sin(S.time * 11) : 1));
+        if (o.dome) o.dome.material.emissive.setRGB(0.08, 0.35 + 0.12 * Math.sin(S.time * 3), 0.33);
         seen.add(t);
       }
       for (const [t, o] of towerObjs) if (!seen.has(t)) { scene.remove(o.g); disposeDeep(o.g); towerObjs.delete(t); }
@@ -2553,11 +2613,20 @@
         g.add(mesh(GEO.sph, eyeM, 3.2, 3.2, 3.2, r * 0.8, r * 0.6, 0));
         bodyH = r * 1.2;
       }
+      // swinging legs for ground walkers (driven by e.walk in sync)
+      const legs = [];
+      if (!b.flying && b.shape !== "juggernaut") {
+        for (const sd of [-1, 1]) {
+          const lg2 = mesh(GEO.box, darkM, 3.4, r * 0.55, 3.4, sd * r * 0.28, r * 0.3, sd * r * 0.3);
+          lg2.geometry = GEO.box; legs.push(lg2); g.add(lg2);
+        }
+      }
       // shield bubble + heal ring (hidden by default)
       const bub = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.18, depthWrite: false }));
       bub.scale.setScalar(r * 1.35); bub.position.y = r * 0.55; bub.visible = false; g.add(bub);
       const healR = new T.Mesh(GEO.ring, add3("#8fe04a", 0.7)); healR.rotation.x = -Math.PI / 2; healR.position.y = 1.5; healR.visible = false; g.add(healR);
-      return { g, mats, bub, healR, bodyH, type, base: mats.map((m) => m.color.clone()) };
+      let ringSpin = null; if (b.shape === "wraith") ringSpin = g.children[1];
+      return { g, mats, bub, healR, legs, ringSpin, bodyH, type, base: mats.map((m) => m.color.clone()) };
     }
     function barrelJug(mat, r) { const m = mesh(GEO.cyl, mat, 2.6, r * 1.1, 2.6, r * 0.55, r * 1.0, 0); m.rotation.z = -Math.PI / 2; return m; }
     const enemyObjs = new Map(), frostCol = new T.Color(0x9fd8ff), flashCol = new T.Color(0xffffff);
@@ -2577,6 +2646,7 @@
           o = pool.pop() || buildEnemy(e.type);
           scene.add(o.g); enemyObjs.set(e, o);
           e._gy = enemyGroundY(e);
+          e._pop = 0.3; o.g.scale.setScalar(0.3);
         }
         seen.add(e);
         const gy = enemyGroundY(e);
@@ -2586,6 +2656,9 @@
         o.g.position.set(e.x, e._gy + hop + hover, e.y);
         o.g.rotation.y = -e.face;
         o.g.rotation.z = e.flying ? (e.bank || 0) * 0.6 : Math.sin(e.walk || 0) * 0.07;
+        if (e._pop < 1) { e._pop = Math.min(1, e._pop + dt * 4); o.g.scale.setScalar(0.3 + 0.7 * e._pop); }
+        for (let li = 0; li < o.legs.length; li++) o.legs[li].rotation.z = Math.sin((e.walk || 0) + li * Math.PI) * 0.55;
+        if (o.ringSpin) o.ringSpin.rotation.z = S.time * 2.2;
         const fl = e.flash > 0 ? Math.min(0.8, e.flash / 0.12) : 0, fr = e.frost || 0;
         for (let i = 0; i < o.mats.length; i++) {
           const m = o.mats[i]; m.color.copy(o.base[i]);
@@ -2639,6 +2712,7 @@
       if (S.selTower != null && towers[S.selTower]) {
         const t = towers[S.selTower], p = center(t.c, t.r), rng = tStats(t).range;
         selRing.visible = selFill.visible = true;
+        selRing.material.opacity = 0.45 + 0.2 * Math.sin(S.time * 5);
         selRing.position.set(p.x, 1.2, p.y); selRing.scale.setScalar(rng);
         selFill.position.set(p.x, 1.0, p.y); selFill.scale.setScalar(rng);
       }
@@ -2660,8 +2734,8 @@
     function makePool(n, build) { const arr = []; for (let i = 0; i < n; i++) { const m = build(); m.visible = false; scene.add(m); arr.push(m); } return arr; }
     const beamPool = makePool(26, () => new T.Mesh(GEO.cyl, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })));
     const boomPool = makePool(20, () => { const m = new T.Mesh(GEO.ring, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); m.rotation.x = -Math.PI / 2; return m; });
-    const flashPool = makePool(10, () => new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })));
-    const orbPool = makePool(14, () => new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false })));
+    const flashPool = makePool(10, () => glowSprite("#ffffff", 1, 0.9));
+    const orbPool = makePool(14, () => { const m = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false })); const gl2 = glowSprite("#ffffff", 4, 0.6); m.add(gl2); return m; });
     const shellPool = makePool(10, () => new T.Mesh(GEO.box, new T.MeshLambertMaterial({ color: 0x3a3c40 })));
     const scorchPool = makePool(26, () => { const m = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0x0a0908, transparent: true, opacity: 0.5, depthWrite: false })); m.rotation.x = -Math.PI / 2; return m; });
     var _smokeTex = null;
@@ -2713,7 +2787,7 @@
         } else {
           if (fi >= flashPool.length) continue;
           const m = flashPool[fi++]; m.visible = true;
-          m.position.set(b.x, 10, b.y); m.scale.setScalar(Math.max(1, rad * 0.6));
+          m.position.set(b.x, 12, b.y); m.scale.set(Math.max(2, rad * 2.2), Math.max(2, rad * 2.2), 1);
           m.material.color.set(b.color); m.material.opacity = a * 0.85;
         }
       }
@@ -2726,6 +2800,7 @@
           if (oi >= orbPool.length) continue;
           const m = orbPool[oi++]; m.visible = true;
           m.position.set(p.x, 18, p.y); m.scale.setScalar(5); m.material.color.set(p.color);
+          m.children[0].material.color.set(p.color);
         } else if (p.kind === "lob") {
           if (si >= shellPool.length) continue;
           const m = shellPool[si++]; m.visible = true;
@@ -2765,6 +2840,23 @@
       pGeo.setDrawRange(0, PMAX);
     }
 
+    /* ---- ambient drifting dust ---- */
+    const DUSTN = 50, dustGeo = new T.BufferGeometry();
+    const dustPos = new Float32Array(DUSTN * 3);
+    dustGeo.setAttribute("position", new T.BufferAttribute(dustPos, 3));
+    const dust = new T.Points(dustGeo, new T.PointsMaterial({ color: 0x888890, size: 3.2, transparent: true, opacity: 0.5, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
+    dust.frustumCulled = false; scene.add(dust);
+    function syncDust() {
+      const t = S.time;
+      for (let i = 0; i < DUSTN; i++) {
+        const ph = i * 2.399963;
+        dustPos[i * 3] = ((i * 137.5 + t * (4 + (i % 5)) ) % (WORLD_W + 200)) - 100;
+        dustPos[i * 3 + 1] = 14 + ((i * 53) % 46) + Math.sin(t * 0.7 + ph) * 6;
+        dustPos[i * 3 + 2] = ((i * 211.3 + Math.sin(t * 0.23 + ph) * 30) % WORLD_H + WORLD_H) % WORLD_H;
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+    }
+
     /* ---- adaptive quality (shadows off + DPR 1 if the device can't keep up) ---- */
     let q = { acc: 0, n: 0, level: 0 };
     function quality(dtMs) {
@@ -2783,12 +2875,14 @@
       if (coreMesh) { const p = 0.7 + 0.3 * Math.sin(S.time * 4); coreMesh.material.color.setRGB(0.2 * p, 0.88 * p, 0.82 * p); coreMesh.scale.setScalar(7 + p * 2); }
       for (const m of poolMats) m.opacity = 0.4 + 0.2 * Math.sin(S.time * 2.5);
       for (const m of breachMats) m.opacity = 0.6 + 0.3 * Math.sin(S.time * 3);
-      syncTowers(); syncEnemies(raw); syncHero(); syncSel(); syncFx();
+      syncTowers(); syncEnemies(raw); syncHero(); syncSel(); syncFx(); syncDust();
+      if (coreGlow) coreGlow.material.opacity = 0.35 + 0.18 * Math.sin(S.time * 4);
       renderer.render(scene, camera);
     }
 
     /* ---- 2D overlay: health bars + damage floats (drawn on the UI canvas) ---- */
     function overlay() {
+      ctx.drawImage(vignette(), 0, 0, W, H);
       if (S.screen !== "playing" && S.screen !== "paused") return;
       for (const e of enemies) {
         if (!e.alive || e.type === "juggernaut") continue;
