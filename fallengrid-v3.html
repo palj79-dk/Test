@@ -2810,6 +2810,1169 @@
 
 </script>
 <script>
+( function () {
+
+	function computeTangents() {
+
+		throw new Error( 'BufferGeometryUtils: computeTangents renamed to computeMikkTSpaceTangents.' );
+
+	}
+
+	function computeMikkTSpaceTangents( geometry, MikkTSpace, negateSign = true ) {
+
+		if ( ! MikkTSpace || ! MikkTSpace.isReady ) {
+
+			throw new Error( 'BufferGeometryUtils: Initialized MikkTSpace library required.' );
+
+		}
+
+		if ( ! geometry.hasAttribute( 'position' ) || ! geometry.hasAttribute( 'normal' ) || ! geometry.hasAttribute( 'uv' ) ) {
+
+			throw new Error( 'BufferGeometryUtils: Tangents require "position", "normal", and "uv" attributes.' );
+
+		}
+
+		function getAttributeArray( attribute ) {
+
+			if ( attribute.normalized || attribute.isInterleavedBufferAttribute ) {
+
+				const dstArray = new Float32Array( attribute.getCount() * attribute.itemSize );
+				for ( let i = 0, j = 0; i < attribute.getCount(); i ++ ) {
+
+					dstArray[ j ++ ] = attribute.getX( i );
+					dstArray[ j ++ ] = attribute.getY( i );
+					if ( attribute.itemSize > 2 ) {
+
+						dstArray[ j ++ ] = attribute.getZ( i );
+
+					}
+
+				}
+
+				return dstArray;
+
+			}
+
+			if ( attribute.array instanceof Float32Array ) {
+
+				return attribute.array;
+
+			}
+
+			return new Float32Array( attribute.array );
+
+		}
+
+		// MikkTSpace algorithm requires non-indexed input.
+
+		const _geometry = geometry.index ? geometry.toNonIndexed() : geometry;
+
+		// Compute vertex tangents.
+
+		const tangents = MikkTSpace.generateTangents( getAttributeArray( _geometry.attributes.position ), getAttributeArray( _geometry.attributes.normal ), getAttributeArray( _geometry.attributes.uv ) );
+
+		// Texture coordinate convention of glTF differs from the apparent
+		// default of the MikkTSpace library; .w component must be flipped.
+
+		if ( negateSign ) {
+
+			for ( let i = 3; i < tangents.length; i += 4 ) {
+
+				tangents[ i ] *= - 1;
+
+			}
+
+		}
+
+		//
+
+		_geometry.setAttribute( 'tangent', new THREE.BufferAttribute( tangents, 4 ) );
+		if ( geometry !== _geometry ) {
+
+			geometry.copy( _geometry );
+
+		}
+
+		return geometry;
+
+	}
+
+	/**
+ * @param  {Array<BufferGeometry>} geometries
+ * @param  {Boolean} useGroups
+ * @return {BufferGeometry}
+ */
+	function mergeBufferGeometries( geometries, useGroups = false ) {
+
+		const isIndexed = geometries[ 0 ].index !== null;
+		const attributesUsed = new Set( Object.keys( geometries[ 0 ].attributes ) );
+		const morphAttributesUsed = new Set( Object.keys( geometries[ 0 ].morphAttributes ) );
+		const attributes = {};
+		const morphAttributes = {};
+		const morphTargetsRelative = geometries[ 0 ].morphTargetsRelative;
+		const mergedGeometry = new THREE.BufferGeometry();
+		let offset = 0;
+		for ( let i = 0; i < geometries.length; ++ i ) {
+
+			const geometry = geometries[ i ];
+			let attributesCount = 0;
+
+			// ensure that all geometries are indexed, or none
+
+			if ( isIndexed !== ( geometry.index !== null ) ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '. All geometries must have compatible attributes; make sure index attribute exists among all geometries, or in none of them.' );
+				return null;
+
+			}
+
+			// gather attributes, exit early if they're different
+
+			for ( const name in geometry.attributes ) {
+
+				if ( ! attributesUsed.has( name ) ) {
+
+					console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '. All geometries must have compatible attributes; make sure "' + name + '" attribute exists among all geometries, or in none of them.' );
+					return null;
+
+				}
+
+				if ( attributes[ name ] === undefined ) attributes[ name ] = [];
+				attributes[ name ].push( geometry.attributes[ name ] );
+				attributesCount ++;
+
+			}
+
+			// ensure geometries have the same number of attributes
+
+			if ( attributesCount !== attributesUsed.size ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '. Make sure all geometries have the same number of attributes.' );
+				return null;
+
+			}
+
+			// gather morph attributes, exit early if they're different
+
+			if ( morphTargetsRelative !== geometry.morphTargetsRelative ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '. .morphTargetsRelative must be consistent throughout all geometries.' );
+				return null;
+
+			}
+
+			for ( const name in geometry.morphAttributes ) {
+
+				if ( ! morphAttributesUsed.has( name ) ) {
+
+					console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '.  .morphAttributes must be consistent throughout all geometries.' );
+					return null;
+
+				}
+
+				if ( morphAttributes[ name ] === undefined ) morphAttributes[ name ] = [];
+				morphAttributes[ name ].push( geometry.morphAttributes[ name ] );
+
+			}
+
+			if ( useGroups ) {
+
+				let count;
+				if ( isIndexed ) {
+
+					count = geometry.index.count;
+
+				} else if ( geometry.attributes.position !== undefined ) {
+
+					count = geometry.attributes.position.count;
+
+				} else {
+
+					console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index ' + i + '. The geometry must have either an index or a position attribute' );
+					return null;
+
+				}
+
+				mergedGeometry.addGroup( offset, count, i );
+				offset += count;
+
+			}
+
+		}
+
+		// merge indices
+
+		if ( isIndexed ) {
+
+			let indexOffset = 0;
+			const mergedIndex = [];
+			for ( let i = 0; i < geometries.length; ++ i ) {
+
+				const index = geometries[ i ].index;
+				for ( let j = 0; j < index.count; ++ j ) {
+
+					mergedIndex.push( index.getX( j ) + indexOffset );
+
+				}
+
+				indexOffset += geometries[ i ].attributes.position.count;
+
+			}
+
+			mergedGeometry.setIndex( mergedIndex );
+
+		}
+
+		// merge attributes
+
+		for ( const name in attributes ) {
+
+			const mergedAttribute = mergeBufferAttributes( attributes[ name ] );
+			if ( ! mergedAttribute ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed while trying to merge the ' + name + ' attribute.' );
+				return null;
+
+			}
+
+			mergedGeometry.setAttribute( name, mergedAttribute );
+
+		}
+
+		// merge morph attributes
+
+		for ( const name in morphAttributes ) {
+
+			const numMorphTargets = morphAttributes[ name ][ 0 ].length;
+			if ( numMorphTargets === 0 ) break;
+			mergedGeometry.morphAttributes = mergedGeometry.morphAttributes || {};
+			mergedGeometry.morphAttributes[ name ] = [];
+			for ( let i = 0; i < numMorphTargets; ++ i ) {
+
+				const morphAttributesToMerge = [];
+				for ( let j = 0; j < morphAttributes[ name ].length; ++ j ) {
+
+					morphAttributesToMerge.push( morphAttributes[ name ][ j ][ i ] );
+
+				}
+
+				const mergedMorphAttribute = mergeBufferAttributes( morphAttributesToMerge );
+				if ( ! mergedMorphAttribute ) {
+
+					console.error( 'THREE.BufferGeometryUtils: .mergeBufferGeometries() failed while trying to merge the ' + name + ' morphAttribute.' );
+					return null;
+
+				}
+
+				mergedGeometry.morphAttributes[ name ].push( mergedMorphAttribute );
+
+			}
+
+		}
+
+		return mergedGeometry;
+
+	}
+
+	/**
+ * @param {Array<BufferAttribute>} attributes
+ * @return {BufferAttribute}
+ */
+	function mergeBufferAttributes( attributes ) {
+
+		let TypedArray;
+		let itemSize;
+		let normalized;
+		let arrayLength = 0;
+		for ( let i = 0; i < attributes.length; ++ i ) {
+
+			const attribute = attributes[ i ];
+			if ( attribute.isInterleavedBufferAttribute ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. InterleavedBufferAttributes are not supported.' );
+				return null;
+
+			}
+
+			if ( TypedArray === undefined ) TypedArray = attribute.array.constructor;
+			if ( TypedArray !== attribute.array.constructor ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. THREE.BufferAttribute.array must be of consistent array types across matching attributes.' );
+				return null;
+
+			}
+
+			if ( itemSize === undefined ) itemSize = attribute.itemSize;
+			if ( itemSize !== attribute.itemSize ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. THREE.BufferAttribute.itemSize must be consistent across matching attributes.' );
+				return null;
+
+			}
+
+			if ( normalized === undefined ) normalized = attribute.normalized;
+			if ( normalized !== attribute.normalized ) {
+
+				console.error( 'THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. THREE.BufferAttribute.normalized must be consistent across matching attributes.' );
+				return null;
+
+			}
+
+			arrayLength += attribute.array.length;
+
+		}
+
+		const array = new TypedArray( arrayLength );
+		let offset = 0;
+		for ( let i = 0; i < attributes.length; ++ i ) {
+
+			array.set( attributes[ i ].array, offset );
+			offset += attributes[ i ].array.length;
+
+		}
+
+		return new THREE.BufferAttribute( array, itemSize, normalized );
+
+	}
+
+	/**
+ * @param {BufferAttribute}
+ * @return {BufferAttribute}
+ */
+	function deepCloneAttribute( attribute ) {
+
+		if ( attribute.isInstancedInterleavedBufferAttribute || attribute.isInterleavedBufferAttribute ) {
+
+			return deinterleaveAttribute( attribute );
+
+		}
+
+		if ( attribute.isInstancedBufferAttribute ) {
+
+			return new THREE.InstancedBufferAttribute().copy( attribute );
+
+		}
+
+		return new THREE.BufferAttribute().copy( attribute );
+
+	}
+
+	/**
+ * @param {Array<BufferAttribute>} attributes
+ * @return {Array<InterleavedBufferAttribute>}
+ */
+	function interleaveAttributes( attributes ) {
+
+		// Interleaves the provided attributes into an THREE.InterleavedBuffer and returns
+		// a set of InterleavedBufferAttributes for each attribute
+		let TypedArray;
+		let arrayLength = 0;
+		let stride = 0;
+
+		// calculate the length and type of the interleavedBuffer
+		for ( let i = 0, l = attributes.length; i < l; ++ i ) {
+
+			const attribute = attributes[ i ];
+			if ( TypedArray === undefined ) TypedArray = attribute.array.constructor;
+			if ( TypedArray !== attribute.array.constructor ) {
+
+				console.error( 'AttributeBuffers of different types cannot be interleaved' );
+				return null;
+
+			}
+
+			arrayLength += attribute.array.length;
+			stride += attribute.itemSize;
+
+		}
+
+		// Create the set of buffer attributes
+		const interleavedBuffer = new THREE.InterleavedBuffer( new TypedArray( arrayLength ), stride );
+		let offset = 0;
+		const res = [];
+		const getters = [ 'getX', 'getY', 'getZ', 'getW' ];
+		const setters = [ 'setX', 'setY', 'setZ', 'setW' ];
+		for ( let j = 0, l = attributes.length; j < l; j ++ ) {
+
+			const attribute = attributes[ j ];
+			const itemSize = attribute.itemSize;
+			const count = attribute.count;
+			const iba = new THREE.InterleavedBufferAttribute( interleavedBuffer, itemSize, offset, attribute.normalized );
+			res.push( iba );
+			offset += itemSize;
+
+			// Move the data for each attribute into the new interleavedBuffer
+			// at the appropriate offset
+			for ( let c = 0; c < count; c ++ ) {
+
+				for ( let k = 0; k < itemSize; k ++ ) {
+
+					iba[ setters[ k ] ]( c, attribute[ getters[ k ] ]( c ) );
+
+				}
+
+			}
+
+		}
+
+		return res;
+
+	}
+
+	// returns a new, non-interleaved version of the provided attribute
+	function deinterleaveAttribute( attribute ) {
+
+		const cons = attribute.data.array.constructor;
+		const count = attribute.count;
+		const itemSize = attribute.itemSize;
+		const normalized = attribute.normalized;
+		const array = new cons( count * itemSize );
+		let newAttribute;
+		if ( attribute.isInstancedInterleavedBufferAttribute ) {
+
+			newAttribute = new THREE.InstancedBufferAttribute( array, itemSize, normalized, attribute.meshPerAttribute );
+
+		} else {
+
+			newAttribute = new THREE.BufferAttribute( array, itemSize, normalized );
+
+		}
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			newAttribute.setX( i, attribute.getX( i ) );
+			if ( itemSize >= 2 ) {
+
+				newAttribute.setY( i, attribute.getY( i ) );
+
+			}
+
+			if ( itemSize >= 3 ) {
+
+				newAttribute.setZ( i, attribute.getZ( i ) );
+
+			}
+
+			if ( itemSize >= 4 ) {
+
+				newAttribute.setW( i, attribute.getW( i ) );
+
+			}
+
+		}
+
+		return newAttribute;
+
+	}
+
+	// deinterleaves all attributes on the geometry
+	function deinterleaveGeometry( geometry ) {
+
+		const attributes = geometry.attributes;
+		const morphTargets = geometry.morphTargets;
+		const attrMap = new Map();
+		for ( const key in attributes ) {
+
+			const attr = attributes[ key ];
+			if ( attr.isInterleavedBufferAttribute ) {
+
+				if ( ! attrMap.has( attr ) ) {
+
+					attrMap.set( attr, deinterleaveAttribute( attr ) );
+
+				}
+
+				attributes[ key ] = attrMap.get( attr );
+
+			}
+
+		}
+
+		for ( const key in morphTargets ) {
+
+			const attr = morphTargets[ key ];
+			if ( attr.isInterleavedBufferAttribute ) {
+
+				if ( ! attrMap.has( attr ) ) {
+
+					attrMap.set( attr, deinterleaveAttribute( attr ) );
+
+				}
+
+				morphTargets[ key ] = attrMap.get( attr );
+
+			}
+
+		}
+
+	}
+
+	/**
+ * @param {Array<BufferGeometry>} geometry
+ * @return {number}
+ */
+	function estimateBytesUsed( geometry ) {
+
+		// Return the estimated memory used by this geometry in bytes
+		// Calculate using itemSize, count, and BYTES_PER_ELEMENT to account
+		// for InterleavedBufferAttributes.
+		let mem = 0;
+		for ( const name in geometry.attributes ) {
+
+			const attr = geometry.getAttribute( name );
+			mem += attr.count * attr.itemSize * attr.array.BYTES_PER_ELEMENT;
+
+		}
+
+		const indices = geometry.getIndex();
+		mem += indices ? indices.count * indices.itemSize * indices.array.BYTES_PER_ELEMENT : 0;
+		return mem;
+
+	}
+
+	/**
+ * @param {BufferGeometry} geometry
+ * @param {number} tolerance
+ * @return {BufferGeometry}
+ */
+	function mergeVertices( geometry, tolerance = 1e-4 ) {
+
+		tolerance = Math.max( tolerance, Number.EPSILON );
+
+		// Generate an index buffer if the geometry doesn't have one, or optimize it
+		// if it's already available.
+		const hashToIndex = {};
+		const indices = geometry.getIndex();
+		const positions = geometry.getAttribute( 'position' );
+		const vertexCount = indices ? indices.count : positions.count;
+
+		// next value for triangle indices
+		let nextIndex = 0;
+
+		// attributes and new attribute arrays
+		const attributeNames = Object.keys( geometry.attributes );
+		const tmpAttributes = {};
+		const tmpMorphAttributes = {};
+		const newIndices = [];
+		const getters = [ 'getX', 'getY', 'getZ', 'getW' ];
+		const setters = [ 'setX', 'setY', 'setZ', 'setW' ];
+
+		// Initialize the arrays, allocating space conservatively. Extra
+		// space will be trimmed in the last step.
+		for ( let i = 0, l = attributeNames.length; i < l; i ++ ) {
+
+			const name = attributeNames[ i ];
+			const attr = geometry.attributes[ name ];
+			tmpAttributes[ name ] = new THREE.BufferAttribute( new attr.array.constructor( attr.count * attr.itemSize ), attr.itemSize, attr.normalized );
+			const morphAttr = geometry.morphAttributes[ name ];
+			if ( morphAttr ) {
+
+				tmpMorphAttributes[ name ] = new THREE.BufferAttribute( new morphAttr.array.constructor( morphAttr.count * morphAttr.itemSize ), morphAttr.itemSize, morphAttr.normalized );
+
+			}
+
+		}
+
+		// convert the error tolerance to an amount of decimal places to truncate to
+		const decimalShift = Math.log10( 1 / tolerance );
+		const shiftMultiplier = Math.pow( 10, decimalShift );
+		for ( let i = 0; i < vertexCount; i ++ ) {
+
+			const index = indices ? indices.getX( i ) : i;
+
+			// Generate a hash for the vertex attributes at the current index 'i'
+			let hash = '';
+			for ( let j = 0, l = attributeNames.length; j < l; j ++ ) {
+
+				const name = attributeNames[ j ];
+				const attribute = geometry.getAttribute( name );
+				const itemSize = attribute.itemSize;
+				for ( let k = 0; k < itemSize; k ++ ) {
+
+					// double tilde truncates the decimal value
+					hash += `${~ ~ ( attribute[ getters[ k ] ]( index ) * shiftMultiplier )},`;
+
+				}
+
+			}
+
+			// Add another reference to the vertex if it's already
+			// used by another index
+			if ( hash in hashToIndex ) {
+
+				newIndices.push( hashToIndex[ hash ] );
+
+			} else {
+
+				// copy data to the new index in the temporary attributes
+				for ( let j = 0, l = attributeNames.length; j < l; j ++ ) {
+
+					const name = attributeNames[ j ];
+					const attribute = geometry.getAttribute( name );
+					const morphAttr = geometry.morphAttributes[ name ];
+					const itemSize = attribute.itemSize;
+					const newarray = tmpAttributes[ name ];
+					const newMorphArrays = tmpMorphAttributes[ name ];
+					for ( let k = 0; k < itemSize; k ++ ) {
+
+						const getterFunc = getters[ k ];
+						const setterFunc = setters[ k ];
+						newarray[ setterFunc ]( nextIndex, attribute[ getterFunc ]( index ) );
+						if ( morphAttr ) {
+
+							for ( let m = 0, ml = morphAttr.length; m < ml; m ++ ) {
+
+								newMorphArrays[ m ][ setterFunc ]( nextIndex, morphAttr[ m ][ getterFunc ]( index ) );
+
+							}
+
+						}
+
+					}
+
+				}
+
+				hashToIndex[ hash ] = nextIndex;
+				newIndices.push( nextIndex );
+				nextIndex ++;
+
+			}
+
+		}
+
+		// generate result THREE.BufferGeometry
+		const result = geometry.clone();
+		for ( const name in geometry.attributes ) {
+
+			const tmpAttribute = tmpAttributes[ name ];
+			result.setAttribute( name, new THREE.BufferAttribute( tmpAttribute.array.slice( 0, nextIndex * tmpAttribute.itemSize ), tmpAttribute.itemSize, tmpAttribute.normalized ) );
+			if ( ! ( name in tmpMorphAttributes ) ) continue;
+			for ( let j = 0; j < tmpMorphAttributes[ name ].length; j ++ ) {
+
+				const tmpMorphAttribute = tmpMorphAttributes[ name ][ j ];
+				result.morphAttributes[ name ][ j ] = new THREE.BufferAttribute( tmpMorphAttribute.array.slice( 0, nextIndex * tmpMorphAttribute.itemSize ), tmpMorphAttribute.itemSize, tmpMorphAttribute.normalized );
+
+			}
+
+		}
+
+		// indices
+
+		result.setIndex( newIndices );
+		return result;
+
+	}
+
+	/**
+ * @param {BufferGeometry} geometry
+ * @param {number} drawMode
+ * @return {BufferGeometry}
+ */
+	function toTrianglesDrawMode( geometry, drawMode ) {
+
+		if ( drawMode === THREE.TrianglesDrawMode ) {
+
+			console.warn( 'THREE.BufferGeometryUtils.toTrianglesDrawMode(): Geometry already defined as triangles.' );
+			return geometry;
+
+		}
+
+		if ( drawMode === THREE.TriangleFanDrawMode || drawMode === THREE.TriangleStripDrawMode ) {
+
+			let index = geometry.getIndex();
+
+			// generate index if not present
+
+			if ( index === null ) {
+
+				const indices = [];
+				const position = geometry.getAttribute( 'position' );
+				if ( position !== undefined ) {
+
+					for ( let i = 0; i < position.count; i ++ ) {
+
+						indices.push( i );
+
+					}
+
+					geometry.setIndex( indices );
+					index = geometry.getIndex();
+
+				} else {
+
+					console.error( 'THREE.BufferGeometryUtils.toTrianglesDrawMode(): Undefined position attribute. Processing not possible.' );
+					return geometry;
+
+				}
+
+			}
+
+			//
+
+			const numberOfTriangles = index.count - 2;
+			const newIndices = [];
+			if ( drawMode === THREE.TriangleFanDrawMode ) {
+
+				// gl.TRIANGLE_FAN
+
+				for ( let i = 1; i <= numberOfTriangles; i ++ ) {
+
+					newIndices.push( index.getX( 0 ) );
+					newIndices.push( index.getX( i ) );
+					newIndices.push( index.getX( i + 1 ) );
+
+				}
+
+			} else {
+
+				// gl.TRIANGLE_STRIP
+
+				for ( let i = 0; i < numberOfTriangles; i ++ ) {
+
+					if ( i % 2 === 0 ) {
+
+						newIndices.push( index.getX( i ) );
+						newIndices.push( index.getX( i + 1 ) );
+						newIndices.push( index.getX( i + 2 ) );
+
+					} else {
+
+						newIndices.push( index.getX( i + 2 ) );
+						newIndices.push( index.getX( i + 1 ) );
+						newIndices.push( index.getX( i ) );
+
+					}
+
+				}
+
+			}
+
+			if ( newIndices.length / 3 !== numberOfTriangles ) {
+
+				console.error( 'THREE.BufferGeometryUtils.toTrianglesDrawMode(): Unable to generate correct amount of triangles.' );
+
+			}
+
+			// build final geometry
+
+			const newGeometry = geometry.clone();
+			newGeometry.setIndex( newIndices );
+			newGeometry.clearGroups();
+			return newGeometry;
+
+		} else {
+
+			console.error( 'THREE.BufferGeometryUtils.toTrianglesDrawMode(): Unknown draw mode:', drawMode );
+			return geometry;
+
+		}
+
+	}
+
+	/**
+ * Calculates the morphed attributes of a morphed/skinned THREE.BufferGeometry.
+ * Helpful for Raytracing or Decals.
+ * @param {Mesh | Line | Points} object An instance of Mesh, Line or Points.
+ * @return {Object} An Object with original position/normal attributes and morphed ones.
+ */
+	function computeMorphedAttributes( object ) {
+
+		if ( object.geometry.isBufferGeometry !== true ) {
+
+			console.error( 'THREE.BufferGeometryUtils: Geometry is not of type THREE.BufferGeometry.' );
+			return null;
+
+		}
+
+		const _vA = new THREE.Vector3();
+		const _vB = new THREE.Vector3();
+		const _vC = new THREE.Vector3();
+		const _tempA = new THREE.Vector3();
+		const _tempB = new THREE.Vector3();
+		const _tempC = new THREE.Vector3();
+		const _morphA = new THREE.Vector3();
+		const _morphB = new THREE.Vector3();
+		const _morphC = new THREE.Vector3();
+		function _calculateMorphedAttributeData( object, attribute, morphAttribute, morphTargetsRelative, a, b, c, modifiedAttributeArray ) {
+
+			_vA.fromBufferAttribute( attribute, a );
+			_vB.fromBufferAttribute( attribute, b );
+			_vC.fromBufferAttribute( attribute, c );
+			const morphInfluences = object.morphTargetInfluences;
+			if ( morphAttribute && morphInfluences ) {
+
+				_morphA.set( 0, 0, 0 );
+				_morphB.set( 0, 0, 0 );
+				_morphC.set( 0, 0, 0 );
+				for ( let i = 0, il = morphAttribute.length; i < il; i ++ ) {
+
+					const influence = morphInfluences[ i ];
+					const morph = morphAttribute[ i ];
+					if ( influence === 0 ) continue;
+					_tempA.fromBufferAttribute( morph, a );
+					_tempB.fromBufferAttribute( morph, b );
+					_tempC.fromBufferAttribute( morph, c );
+					if ( morphTargetsRelative ) {
+
+						_morphA.addScaledVector( _tempA, influence );
+						_morphB.addScaledVector( _tempB, influence );
+						_morphC.addScaledVector( _tempC, influence );
+
+					} else {
+
+						_morphA.addScaledVector( _tempA.sub( _vA ), influence );
+						_morphB.addScaledVector( _tempB.sub( _vB ), influence );
+						_morphC.addScaledVector( _tempC.sub( _vC ), influence );
+
+					}
+
+				}
+
+				_vA.add( _morphA );
+				_vB.add( _morphB );
+				_vC.add( _morphC );
+
+			}
+
+			if ( object.isSkinnedMesh ) {
+
+				object.boneTransform( a, _vA );
+				object.boneTransform( b, _vB );
+				object.boneTransform( c, _vC );
+
+			}
+
+			modifiedAttributeArray[ a * 3 + 0 ] = _vA.x;
+			modifiedAttributeArray[ a * 3 + 1 ] = _vA.y;
+			modifiedAttributeArray[ a * 3 + 2 ] = _vA.z;
+			modifiedAttributeArray[ b * 3 + 0 ] = _vB.x;
+			modifiedAttributeArray[ b * 3 + 1 ] = _vB.y;
+			modifiedAttributeArray[ b * 3 + 2 ] = _vB.z;
+			modifiedAttributeArray[ c * 3 + 0 ] = _vC.x;
+			modifiedAttributeArray[ c * 3 + 1 ] = _vC.y;
+			modifiedAttributeArray[ c * 3 + 2 ] = _vC.z;
+
+		}
+
+		const geometry = object.geometry;
+		const material = object.material;
+		let a, b, c;
+		const index = geometry.index;
+		const positionAttribute = geometry.attributes.position;
+		const morphPosition = geometry.morphAttributes.position;
+		const morphTargetsRelative = geometry.morphTargetsRelative;
+		const normalAttribute = geometry.attributes.normal;
+		const morphNormal = geometry.morphAttributes.position;
+		const groups = geometry.groups;
+		const drawRange = geometry.drawRange;
+		let i, j, il, jl;
+		let group;
+		let start, end;
+		const modifiedPosition = new Float32Array( positionAttribute.count * positionAttribute.itemSize );
+		const modifiedNormal = new Float32Array( normalAttribute.count * normalAttribute.itemSize );
+		if ( index !== null ) {
+
+			// indexed buffer geometry
+
+			if ( Array.isArray( material ) ) {
+
+				for ( i = 0, il = groups.length; i < il; i ++ ) {
+
+					group = groups[ i ];
+					start = Math.max( group.start, drawRange.start );
+					end = Math.min( group.start + group.count, drawRange.start + drawRange.count );
+					for ( j = start, jl = end; j < jl; j += 3 ) {
+
+						a = index.getX( j );
+						b = index.getX( j + 1 );
+						c = index.getX( j + 2 );
+						_calculateMorphedAttributeData( object, positionAttribute, morphPosition, morphTargetsRelative, a, b, c, modifiedPosition );
+						_calculateMorphedAttributeData( object, normalAttribute, morphNormal, morphTargetsRelative, a, b, c, modifiedNormal );
+
+					}
+
+				}
+
+			} else {
+
+				start = Math.max( 0, drawRange.start );
+				end = Math.min( index.count, drawRange.start + drawRange.count );
+				for ( i = start, il = end; i < il; i += 3 ) {
+
+					a = index.getX( i );
+					b = index.getX( i + 1 );
+					c = index.getX( i + 2 );
+					_calculateMorphedAttributeData( object, positionAttribute, morphPosition, morphTargetsRelative, a, b, c, modifiedPosition );
+					_calculateMorphedAttributeData( object, normalAttribute, morphNormal, morphTargetsRelative, a, b, c, modifiedNormal );
+
+				}
+
+			}
+
+		} else {
+
+			// non-indexed buffer geometry
+
+			if ( Array.isArray( material ) ) {
+
+				for ( i = 0, il = groups.length; i < il; i ++ ) {
+
+					group = groups[ i ];
+					start = Math.max( group.start, drawRange.start );
+					end = Math.min( group.start + group.count, drawRange.start + drawRange.count );
+					for ( j = start, jl = end; j < jl; j += 3 ) {
+
+						a = j;
+						b = j + 1;
+						c = j + 2;
+						_calculateMorphedAttributeData( object, positionAttribute, morphPosition, morphTargetsRelative, a, b, c, modifiedPosition );
+						_calculateMorphedAttributeData( object, normalAttribute, morphNormal, morphTargetsRelative, a, b, c, modifiedNormal );
+
+					}
+
+				}
+
+			} else {
+
+				start = Math.max( 0, drawRange.start );
+				end = Math.min( positionAttribute.count, drawRange.start + drawRange.count );
+				for ( i = start, il = end; i < il; i += 3 ) {
+
+					a = i;
+					b = i + 1;
+					c = i + 2;
+					_calculateMorphedAttributeData( object, positionAttribute, morphPosition, morphTargetsRelative, a, b, c, modifiedPosition );
+					_calculateMorphedAttributeData( object, normalAttribute, morphNormal, morphTargetsRelative, a, b, c, modifiedNormal );
+
+				}
+
+			}
+
+		}
+
+		const morphedPositionAttribute = new THREE.Float32BufferAttribute( modifiedPosition, 3 );
+		const morphedNormalAttribute = new THREE.Float32BufferAttribute( modifiedNormal, 3 );
+		return {
+			positionAttribute: positionAttribute,
+			normalAttribute: normalAttribute,
+			morphedPositionAttribute: morphedPositionAttribute,
+			morphedNormalAttribute: morphedNormalAttribute
+		};
+
+	}
+
+	function mergeGroups( geometry ) {
+
+		if ( geometry.groups.length === 0 ) {
+
+			console.warn( 'THREE.BufferGeometryUtils.mergeGroups(): No groups are defined. Nothing to merge.' );
+			return geometry;
+
+		}
+
+		let groups = geometry.groups;
+
+		// sort groups by material index
+
+		groups = groups.sort( ( a, b ) => {
+
+			if ( a.materialIndex !== b.materialIndex ) return a.materialIndex - b.materialIndex;
+			return a.start - b.start;
+
+		} );
+
+		// create index for non-indexed geometries
+
+		if ( geometry.getIndex() === null ) {
+
+			const positionAttribute = geometry.getAttribute( 'position' );
+			const indices = [];
+			for ( let i = 0; i < positionAttribute.count; i += 3 ) {
+
+				indices.push( i, i + 1, i + 2 );
+
+			}
+
+			geometry.setIndex( indices );
+
+		}
+
+		// sort index
+
+		const index = geometry.getIndex();
+		const newIndices = [];
+		for ( let i = 0; i < groups.length; i ++ ) {
+
+			const group = groups[ i ];
+			const groupStart = group.start;
+			const groupLength = groupStart + group.count;
+			for ( let j = groupStart; j < groupLength; j ++ ) {
+
+				newIndices.push( index.getX( j ) );
+
+			}
+
+		}
+
+		geometry.dispose(); // Required to force buffer recreation
+		geometry.setIndex( newIndices );
+
+		// update groups indices
+
+		let start = 0;
+		for ( let i = 0; i < groups.length; i ++ ) {
+
+			const group = groups[ i ];
+			group.start = start;
+			start += group.count;
+
+		}
+
+		// merge groups
+
+		let currentGroup = groups[ 0 ];
+		geometry.groups = [ currentGroup ];
+		for ( let i = 1; i < groups.length; i ++ ) {
+
+			const group = groups[ i ];
+			if ( currentGroup.materialIndex === group.materialIndex ) {
+
+				currentGroup.count += group.count;
+
+			} else {
+
+				currentGroup = group;
+				geometry.groups.push( currentGroup );
+
+			}
+
+		}
+
+		return geometry;
+
+	}
+
+	// Creates a new, non-indexed geometry with smooth normals everywhere except faces that meet at
+	// an angle greater than the crease angle.
+	function toCreasedNormals( geometry, creaseAngle = Math.PI / 3 /* 60 degrees */ ) {
+
+		const creaseDot = Math.cos( creaseAngle );
+		const hashMultiplier = ( 1 + 1e-10 ) * 1e2;
+
+		// reusable vertors
+		const verts = [ new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3() ];
+		const tempVec1 = new THREE.Vector3();
+		const tempVec2 = new THREE.Vector3();
+		const tempNorm = new THREE.Vector3();
+		const tempNorm2 = new THREE.Vector3();
+
+		// hashes a vector
+		function hashVertex( v ) {
+
+			const x = ~ ~ ( v.x * hashMultiplier );
+			const y = ~ ~ ( v.y * hashMultiplier );
+			const z = ~ ~ ( v.z * hashMultiplier );
+			return `${x},${y},${z}`;
+
+		}
+
+		const resultGeometry = geometry.toNonIndexed();
+		const posAttr = resultGeometry.attributes.position;
+		const vertexMap = {};
+
+		// find all the normals shared by commonly located vertices
+		for ( let i = 0, l = posAttr.count / 3; i < l; i ++ ) {
+
+			const i3 = 3 * i;
+			const a = verts[ 0 ].fromBufferAttribute( posAttr, i3 + 0 );
+			const b = verts[ 1 ].fromBufferAttribute( posAttr, i3 + 1 );
+			const c = verts[ 2 ].fromBufferAttribute( posAttr, i3 + 2 );
+			tempVec1.subVectors( c, b );
+			tempVec2.subVectors( a, b );
+
+			// add the normal to the map for all vertices
+			const normal = new THREE.Vector3().crossVectors( tempVec1, tempVec2 ).normalize();
+			for ( let n = 0; n < 3; n ++ ) {
+
+				const vert = verts[ n ];
+				const hash = hashVertex( vert );
+				if ( ! ( hash in vertexMap ) ) {
+
+					vertexMap[ hash ] = [];
+
+				}
+
+				vertexMap[ hash ].push( normal );
+
+			}
+
+		}
+
+		// average normals from all vertices that share a common location if they are within the
+		// provided crease threshold
+		const normalArray = new Float32Array( posAttr.count * 3 );
+		const normAttr = new THREE.BufferAttribute( normalArray, 3, false );
+		for ( let i = 0, l = posAttr.count / 3; i < l; i ++ ) {
+
+			// get the face normal for this vertex
+			const i3 = 3 * i;
+			const a = verts[ 0 ].fromBufferAttribute( posAttr, i3 + 0 );
+			const b = verts[ 1 ].fromBufferAttribute( posAttr, i3 + 1 );
+			const c = verts[ 2 ].fromBufferAttribute( posAttr, i3 + 2 );
+			tempVec1.subVectors( c, b );
+			tempVec2.subVectors( a, b );
+			tempNorm.crossVectors( tempVec1, tempVec2 ).normalize();
+
+			// average all normals that meet the threshold and set the normal value
+			for ( let n = 0; n < 3; n ++ ) {
+
+				const vert = verts[ n ];
+				const hash = hashVertex( vert );
+				const otherNormals = vertexMap[ hash ];
+				tempNorm2.set( 0, 0, 0 );
+				for ( let k = 0, lk = otherNormals.length; k < lk; k ++ ) {
+
+					const otherNorm = otherNormals[ k ];
+					if ( tempNorm.dot( otherNorm ) > creaseDot ) {
+
+						tempNorm2.add( otherNorm );
+
+					}
+
+				}
+
+				tempNorm2.normalize();
+				normAttr.setXYZ( i3 + n, tempNorm2.x, tempNorm2.y, tempNorm2.z );
+
+			}
+
+		}
+
+		resultGeometry.setAttribute( 'normal', normAttr );
+		return resultGeometry;
+
+	}
+
+	THREE.BufferGeometryUtils = {};
+	THREE.BufferGeometryUtils.computeMikkTSpaceTangents = computeMikkTSpaceTangents;
+	THREE.BufferGeometryUtils.computeMorphedAttributes = computeMorphedAttributes;
+	THREE.BufferGeometryUtils.computeTangents = computeTangents;
+	THREE.BufferGeometryUtils.deepCloneAttribute = deepCloneAttribute;
+	THREE.BufferGeometryUtils.deinterleaveAttribute = deinterleaveAttribute;
+	THREE.BufferGeometryUtils.deinterleaveGeometry = deinterleaveGeometry;
+	THREE.BufferGeometryUtils.estimateBytesUsed = estimateBytesUsed;
+	THREE.BufferGeometryUtils.interleaveAttributes = interleaveAttributes;
+	THREE.BufferGeometryUtils.mergeBufferAttributes = mergeBufferAttributes;
+	THREE.BufferGeometryUtils.mergeBufferGeometries = mergeBufferGeometries;
+	THREE.BufferGeometryUtils.mergeGroups = mergeGroups;
+	THREE.BufferGeometryUtils.mergeVertices = mergeVertices;
+	THREE.BufferGeometryUtils.toCreasedNormals = toCreasedNormals;
+	THREE.BufferGeometryUtils.toTrianglesDrawMode = toTrianglesDrawMode;
+
+} )();
+
+</script>
+<script>
 (function () {
   "use strict";
 
@@ -4742,7 +5905,7 @@
         const info = "★".repeat(m.diff) + " · " + m.cols + "×" + m.rows + (m.routes.length > 1 ? " · " + m.routes.length + " gates" : "");
         return `<option value="${i}" ${S.mapIndex === i ? "selected" : ""}>${m.name}   ${info}</option>`;
       }).join("")}</select>`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.3 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.4 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -5308,46 +6471,105 @@
 
     /* ---- towers ---- */
     function barrelMesh(mat, len, r, x, y) { const m = mesh(GEO.cyl, mat, r, len, r, x + len / 2, y, 0); m.rotation.z = -Math.PI / 2; m.castShadow = true; return m; }
+    /* ---- V3.4 model toolkit: author detailed parts, merge per-material for perf ---- */
+    const BGU = T.BufferGeometryUtils;
+    function xf(geo, p, rot, sc) {
+      const m = new T.Matrix4(), q = new T.Quaternion();
+      if (rot) q.setFromEuler(new T.Euler(rot[0] || 0, rot[1] || 0, rot[2] || 0));
+      const v = sc == null ? new T.Vector3(1, 1, 1) : (Array.isArray(sc) ? new T.Vector3(sc[0], sc[1], sc[2]) : new T.Vector3(sc, sc, sc));
+      m.compose(new T.Vector3(p ? p[0] : 0, p ? p[1] : 0, p ? p[2] : 0), q, v);
+      geo.applyMatrix4(m); return geo;
+    }
+    function Model() {
+      const G = {}, self = {
+        add(geo, mat) { const k = mat.uuid; (G[k] = G[k] || { mat, geos: [] }).geos.push(geo); return self; },
+        box(w, h, d, p, mat, rot) { return self.add(xf(new T.BoxGeometry(w, h, d), p, rot), mat); },
+        cyl(rt, rb, h, seg, p, mat, rot) { return self.add(xf(new T.CylinderGeometry(rt, rb, h, seg || 16, 1), p, rot), mat); },
+        sph(r, p, mat, sc) { return self.add(xf(new T.SphereGeometry(r, 16, 12), p, null, sc), mat); },
+        cone(r, h, seg, p, mat, rot) { return self.add(xf(new T.ConeGeometry(r, h, seg || 16), p, rot), mat); },
+        tor(r, tb, seg, p, mat, rot) { return self.add(xf(new T.TorusGeometry(r, tb, 10, seg || 22), p, rot), mat); },
+        build(shadow) {
+          const grp = new T.Group();
+          for (const k in G) { const gp = G[k]; let mg; try { mg = BGU.mergeBufferGeometries(gp.geos, false); } catch (e) { mg = gp.geos[0]; } const me = new T.Mesh(mg, gp.mat); me.castShadow = shadow !== false; me.receiveShadow = true; grp.add(me); }
+          return grp;
+        }
+      };
+      return self;
+    }
+    function emis(col, inten) { const k = "e" + col + (inten || 1.4); if (!MATS.has(k)) MATS.set(k, new T.MeshStandardMaterial({ color: col, emissive: new T.Color(col), emissiveIntensity: inten || 1.4, roughness: 0.4, metalness: 0.1 })); return MATS.get(k); }
+    function towerBase(spec) {
+      const m = Model(), metal = std(spec.metal, 0.42, 0.72), dk = std("#262a31", 0.6, 0.7), acc = emis(spec.accent, 1.5);
+      m.cyl(25, 27, 5, 6, [0, 2.5, 0], dk, [0, Math.PI / 6, 0]);          // hex footing
+      m.cyl(20, 22, 4.5, 6, [0, 6.6, 0], metal, [0, Math.PI / 6, 0]);
+      for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + Math.PI / 6; m.cyl(1.3, 1.3, 1.8, 6, [Math.cos(a) * 21, 8, Math.sin(a) * 21], dk); }  // bolts
+      m.tor(18, 1.0, 26, [0, 8.8, 0], acc, [Math.PI / 2, 0, 0]);          // accent groove
+      m.cyl(9, 11, 8, 12, [0, 12, 0], metal);                            // mount post
+      return m;
+    }
     function buildTower(t) {
-      const spec = TOWERS[t.type], st = tStats(t);
-      const g = new T.Group(), metal = std(spec.metal, 0.42, 0.72), metalLt = std(spec.metalLt, 0.38, 0.62), acc = bas(spec.accent);
-      const baseDk = std("#2b2f35", 0.7, 0.5);
-      g.add(aoDisc(30));
-      const foot = mesh(GEO.cyl, baseDk, 24, 4, 24, 0, 2, 0); foot.rotation.y = Math.PI / 8; foot.receiveShadow = true; foot.castShadow = true; g.add(foot);
-      const bevel = mesh(GEO.cyl, metal, 20, 3.4, 20, 0, 5.4, 0); bevel.rotation.y = Math.PI / 8; g.add(bevel);
-      const plinth = mesh(GEO.cyl, metal, 18, 9, 18, 0, 10.4, 0); plinth.rotation.y = Math.PI / 8; plinth.castShadow = true; g.add(plinth);
-      g.add(mesh(GEO.cyl, acc, 19, 1.5, 19, 0, 15.3, 0));
-      const head = new T.Group(); head.position.y = 22; g.add(head);
-      const L = t.lvl, br = t.branch;
+      const spec = TOWERS[t.type], L = t.lvl, br = t.branch;
+      const g = new T.Group(); g.add(aoDisc(32));
+      g.add(towerBase(spec).build());
+      const head = new T.Group(); head.position.y = 17; g.add(head);
+      const metal = std(spec.metal, 0.4, 0.72), lt = std(spec.metalLt, 0.36, 0.62), dk = std("#242830", 0.6, 0.7), acc = emis(spec.accent, 1.15);
+      let spin = null, dome = null, orb = null, tipPos = [26, 2, 0];
       if (t.type === "turret") {
-        const body = mesh(GEO.box, metalLt, 20, 11, 15, -2, 0, 0); body.castShadow = true; head.add(body);
-        if (L === 2 && br === "a") { const sp = new T.Group(); for (const oz of [-4, 0, 4]) sp.add(barrelMesh(metal, 24, 1.7, 8, oz * 0.9)); sp.children[1].position.y = 2; head.add(sp); g.userData.spin = sp; }
-        else if (L === 2 && br === "b") head.add(barrelMesh(metal, 32, 3.4, 8, 0));
-        else { head.add(barrelMesh(metal, 20 + L * 4, 2.4, 8, 0)); if (L >= 1) head.add(barrelMesh(metal, 18 + L * 4, 2.0, 8, 5)); }
-        head.add(mesh(GEO.box, acc, 4, 2, 10, -8, 6.5, 0));
+        const hm = Model();
+        hm.box(19, 12, 16, [-3, 3, 0], lt);
+        hm.box(9, 11, 18, [5, 2.5, 0], metal);                           // mantlet
+        hm.box(2.4, 9, 6, [10, 2, 7.4], dk, [0, -0.32, 0]);
+        hm.box(2.4, 9, 6, [10, 2, -7.4], dk, [0, 0.32, 0]);
+        hm.box(3, 3.4, 5, [-10, 9, 0], dk); hm.sph(1.5, [-10, 9, 3.2], acc);   // sensor
+        if (L >= 1) { hm.cyl(5, 5, 8, 16, [-6, 4, 10.5], dk, [Math.PI / 2, 0, 0]); hm.cyl(5, 5, 8, 16, [-6, 4, -10.5], dk, [Math.PI / 2, 0, 0]); }  // ammo drums
+        if (L === 2 && br === "a") {
+          hm.cyl(4, 4, 6, 12, [10, 2.5, 0], dk, [0, 0, Math.PI / 2]);
+          const sp = Model(); for (let i = 0; i < 5; i++) { const a = i / 5 * 6.283; sp.cyl(1.3, 1.3, 22, 8, [13, 2.5 + Math.cos(a) * 3, Math.sin(a) * 3], metal, [0, 0, Math.PI / 2]); }
+          spin = sp.build(); head.add(spin); tipPos = [26, 2.5, 0];
+        } else if (L === 2 && br === "b") {
+          hm.cyl(4, 4.4, 34, 16, [17, 2.5, 0], metal, [0, 0, Math.PI / 2]);
+          hm.cyl(5, 5, 8, 16, [34, 2.5, 0], dk, [0, 0, Math.PI / 2]); tipPos = [39, 2.5, 0];
+        } else {
+          hm.cyl(2.7, 2.9, 24 + L * 4, 14, [16 + L, 2.5, 0], metal, [0, 0, Math.PI / 2]);
+          hm.cyl(3.4, 3.4, 5, 14, [28 + L * 3, 2.5, 0], dk, [0, 0, Math.PI / 2]);
+          if (L >= 1) hm.cyl(2.2, 2.2, 20, 14, [14, -1, 4.5], metal, [0, 0, Math.PI / 2]);
+          tipPos = [30 + L * 3, 2.5, 0];
+        }
+        head.add(hm.build());
       } else if (t.type === "cryo") {
-        const dome = mesh(GEO.sph, new T.MeshLambertMaterial({ color: spec.metalLt, emissive: 0x1d5a55 }), 13 + L * 1.5, 10 + L * 1.5, 13 + L * 1.5, 0, 2, 0);
-        dome.castShadow = true; head.add(dome); g.userData.dome = dome;
-        head.add(mesh(GEO.cyl, acc, 4, 7, 4, 0, 10 + L * 1.5, 0));
-        if (L === 2) head.add(mesh(GEO.ring, add3(spec.accent, 0.5), 20, 20, 1, 0, -4, 0)).children;
-        const rg = head.children[head.children.length - 1]; if (L === 2) rg.rotation.x = -Math.PI / 2;
+        const hm = Model();
+        for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; hm.box(3, 9, 1.6, [Math.cos(a) * 10, 3, Math.sin(a) * 10], lt, [0, -a, 0]); }  // cooling fins
+        hm.cyl(9, 10, 5, 16, [0, 1, 0], dk);
+        for (let i = 0; i < 3; i++) { const a = i / 3 * 6.283 + 0.5; hm.box(2, 13 + L * 2, 2, [Math.cos(a) * 7, 9, Math.sin(a) * 7], metal); hm.sph(1.7, [Math.cos(a) * 7, 15 + L * 2, Math.sin(a) * 7], acc); }  // emitter prongs
+        head.add(hm.build());
+        dome = new T.Mesh(new T.SphereGeometry(9 + L * 1.6, 8, 6), emis(spec.accent, 0.85).clone());   // faceted glowing core
+        dome.position.y = 7; dome.scale.y = 0.82; dome.castShadow = true; head.add(dome);
+        tipPos = [0, 15 + L * 2, 0];
       } else if (t.type === "mortar") {
-        const mount = mesh(GEO.box, metal, 18, 10, 18, 0, -2, 0); mount.castShadow = true; head.add(mount);
-        const tube = mesh(GEO.cyl, metalLt, 5.5 + L, 26 + L * 3, 5.5 + L, 10, 8, 0);
-        tube.rotation.z = -0.9; tube.castShadow = true; head.add(tube);
-        head.add(mesh(GEO.cyl, acc, 3.4, 2, 3.4, 19, 15, 0)).children;
-        const tip = head.children[head.children.length - 1]; tip.rotation.z = -0.9;
+        const hm = Model(), ang = -0.86;
+        hm.box(21, 9, 21, [0, 0, 0], dk);
+        hm.box(17, 8, 4, [0, 3, 9.5], metal); hm.box(17, 8, 4, [0, 3, -9.5], metal);  // trunnion cheeks
+        hm.cyl(1.6, 1.6, 15, 10, [-6, 6, 6], lt, [0.86, 0, 0]); hm.cyl(1.6, 1.6, 15, 10, [-6, 6, -6], lt, [0.86, 0, 0]);  // recoil pistons
+        hm.box(8, 9, 10, [-7, 5, 0], metal);   // breech
+        if (L === 2 && br === "a") { for (const oz of [-5.5, 0, 5.5]) hm.cyl(3.4, 3.6, 22, 14, [7, 12, oz], metal, [ang, 0, 0]); tipPos = [12, 22, 0]; }
+        else if (L === 2 && br === "b") { hm.cyl(7.5, 8, 30, 16, [6, 13, 0], metal, [ang, 0, 0]); hm.cyl(8.6, 8.6, 5, 16, [13, 24, 0], dk, [ang, 0, 0]); tipPos = [14, 25, 0]; }
+        else { hm.cyl(5.5 + L, 6 + L, 26 + L * 3, 16, [6, 12, 0], metal, [ang, 0, 0]);
+          hm.cyl(6.4 + L, 6.4 + L, 1.8, 16, [3, 8, 0], dk, [ang, 0, 0]); hm.cyl(6.2 + L, 6.2 + L, 1.8, 16, [8, 16, 0], dk, [ang, 0, 0]);  // bands
+          tipPos = [12, 20 + L * 2, 0]; }
+        head.add(hm.build());
       } else if (t.type === "tesla") {
-        const col = mesh(GEO.cyl, metal, 6.5, 22 + L * 4, 6.5, 0, 8, 0); col.castShadow = true; head.add(col);
-        for (let i = 0; i < 2 + L; i++) head.add(mesh(GEO.cyl, metalLt, 9 - i * 1.4, 2.2, 9 - i * 1.4, 0, 4 + i * 7, 0));
-        const orb = mesh(GEO.sph, acc, 4.5 + L, 4.5 + L, 4.5 + L, 0, 22 + L * 4, 0); head.add(orb); g.userData.orb = orb;
-        const og = glowSprite(spec.accent, 20, 0.5); og.position.y = 22 + L * 4; head.add(og);
+        const hm = Model(), topY = 11 + (1 + L) * 6 + 3;
+        hm.cyl(5, 6.5, 15, 14, [0, 6, 0], metal);
+        for (let i = 0; i < 2 + L; i++) hm.tor(7 - i * 0.6, 1.5, 22, [0, 12 + i * 6, 0], dk, [Math.PI / 2, 0, 0]);   // coils
+        hm.cone(4.5, 6, 12, [0, topY - 2, 0], metal);
+        if (L === 2 && br === "b") { hm.box(30, 1.8, 1.8, [16, topY, 3], metal); hm.box(30, 1.8, 1.8, [16, topY, -3], metal); tipPos = [32, topY, 0]; }
+        else tipPos = [0, topY + 3, 0];
+        head.add(hm.build());
+        orb = new T.Mesh(new T.SphereGeometry(3.2 + L * 0.7, 14, 10), emis(spec.accent, 0.75).clone()); orb.position.set(tipPos[0] * 0.5, topY + 3, 0); head.add(orb);
       }
-      const tip = glowSprite(spec.accent, 22, 0.95); tip.position.set(26, 2, 0); tip.visible = false; head.add(tip);
-      head.add(glowSprite(spec.accent, 13, 0.3));
-      for (let i = 0; i <= L; i++) g.add(mesh(GEO.box, acc, 2.6, 1.6, 2.6, -14 + i * 7, 5.5, 21));
-      g.scale.set(1.22, 1.22, 1.22);
-      return { g, head, tip, spin: g.userData.spin || null, dome: g.userData.dome || null, orb: g.userData.orb || null, key: t.type + L + (br || "") };
+      const tip = glowSprite(spec.accent, 7, 0.75); tip.position.set(tipPos[0], tipPos[1], tipPos[2]); tip.visible = false; head.add(tip);
+      for (let i = 0; i <= L; i++) g.add(mesh(GEO.box, acc, 2.4, 1.4, 2.4, -12 + i * 7, 9.6, 20));   // rank studs
+      g.scale.setScalar(1.16);
+      return { g, head, tip, spin, dome, orb, key: t.type + L + (br || "") };
     }
     const towerObjs = new Map();
     function syncTowers() {
@@ -5366,7 +6588,7 @@
         o.head.position.x = -Math.cos(t.angle) * pull; o.head.position.z = -Math.sin(t.angle) * pull;
         o.tip.visible = t.flash > 0;
         if (o.spin && t.target) o.spin.rotation.x += 0.55;
-        if (o.orb) o.orb.scale.setScalar((4.5 + t.lvl) * (t.target ? 1 + 0.18 * Math.sin(S.time * 11) : 1));
+        if (o.orb) o.orb.scale.setScalar(t.target ? 1 + 0.16 * Math.sin(S.time * 11) : 1);
         if (o.dome) o.dome.material.emissive.setRGB(0.08, 0.35 + 0.12 * Math.sin(S.time * 3), 0.33);
         seen.add(t);
       }
@@ -5495,14 +6717,27 @@
       if (!hero && heroObj) { scene.remove(heroObj.g); heroObj = null; }
       if (!hero) return;
       if (!heroObj) {
-        const g = new T.Group();
-        g.add(aoDisc(34));
-        const plat = mesh(GEO.cyl6, std("#3c434c", 0.45, 0.65), 24, 8, 24, 0, 4, 0); plat.castShadow = true; g.add(plat);
-        g.add(mesh(GEO.cyl6, bas(HERO.accent), 25, 1.6, 25, 0, 8.4, 0));
-        const head = new T.Group(); head.position.y = 14; g.add(head);
-        const cn = mesh(GEO.box, std("#4a525a", 0.4, 0.6), 22, 8, 9, 6, 4, 0); cn.castShadow = true; head.add(cn);
-        head.add(mesh(GEO.sph, bas(HERO.accent), 4, 4, 4, 0, 6, 0));
-        const halo = new T.Mesh(GEO.ring, add3(HERO.accent, 0.6)); halo.rotation.x = -Math.PI / 2; halo.position.y = 2; halo.scale.setScalar(28); g.add(halo);
+        const g = new T.Group(); g.add(aoDisc(36));
+        const gold = emis(HERO.accent, 1.3), body = std("#464e58", 0.4, 0.7), dkm = std("#23272e", 0.6, 0.7);
+        const bm = Model();
+        bm.cyl(24, 26, 6, 6, [0, 3, 0], dkm, [0, Math.PI / 6, 0]);         // command dais
+        bm.tor(19, 1.2, 6, [0, 6.4, 0], gold, [Math.PI / 2, 0, 0]);
+        bm.box(18, 16, 12, [0, 15, 0], body);                             // torso
+        bm.box(20, 4, 13, [0, 24, 0], gold);                              // collar
+        for (const sd of [-1, 1]) bm.box(7, 9, 7, [sd * 12, 18, 0], dkm); // pauldrons
+        bm.box(4, 14, 8, [-10, 20, 0], dkm);                              // backpack
+        bm.cyl(0.8, 0.8, 16, 6, [-10, 33, 0], gold);                      // antenna
+        g.add(bm.build());
+        const head = new T.Group(); head.position.y = 26; g.add(head);
+        const hm = Model();
+        hm.box(9, 7, 8, [1, 3, 0], body);                                 // head
+        hm.box(3, 2.6, 8.4, [4.5, 3, 0], gold);                           // visor
+        hm.box(6, 6, 6, [8, -3, 0], dkm);                                 // shoulder mount
+        hm.cyl(2.4, 2.6, 17, 12, [16, -3, 0], body, [0, 0, Math.PI / 2]); // energy cannon
+        hm.cyl(3.2, 3.2, 3, 12, [8, -3, 0], dkm, [0, 0, Math.PI / 2]);
+        head.add(hm.build());
+        const barrelGlow = new T.Mesh(new T.SphereGeometry(2.6, 12, 10), emis(HERO.accent, 1.2).clone()); barrelGlow.position.set(25, -3, 0); head.add(barrelGlow);
+        const halo = new T.Mesh(GEO.ring, add3(HERO.accent, 0.6)); halo.rotation.x = -Math.PI / 2; halo.position.y = 2; halo.scale.setScalar(30); g.add(halo);
         heroObj = { g, head, halo };
         scene.add(g);
       }
@@ -5599,8 +6834,8 @@
         } else {
           if (fi >= flashPool.length) continue;
           const m = flashPool[fi++]; m.visible = true;
-          m.position.set(b.x, 12, b.y); m.scale.set(Math.max(2, rad * 2.2), Math.max(2, rad * 2.2), 1);
-          m.material.color.set(b.color); m.material.opacity = a * 0.85;
+          m.position.set(b.x, 12, b.y); m.scale.set(Math.max(2, rad * 1.4), Math.max(2, rad * 1.4), 1);
+          m.material.color.set(b.color); m.material.opacity = a * 0.6;
         }
       }
       for (; ri < boomPool.length; ri++) boomPool[ri].visible = false;
@@ -5705,7 +6940,7 @@
       ssaoPass = new T.SSAOPass(scene, camera, w, h);
       ssaoPass.kernelRadius = 7; ssaoPass.minDistance = 0.003; ssaoPass.maxDistance = 0.08;
       composer.addPass(ssaoPass);
-      bloomPass = new T.UnrealBloomPass(new T.Vector2(w, h), 0.62, 0.65, 0.8); // strength, radius, threshold
+      bloomPass = new T.UnrealBloomPass(new T.Vector2(w, h), 0.34, 0.5, 0.88); // strength, radius, threshold
       composer.addPass(bloomPass);
       smaaPass = new T.SMAAPass(w, h);
       composer.addPass(smaaPass);
