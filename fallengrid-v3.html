@@ -5905,7 +5905,7 @@
         const info = "★".repeat(m.diff) + " · " + m.cols + "×" + m.rows + (m.routes.length > 1 ? " · " + m.routes.length + " gates" : "");
         return `<option value="${i}" ${S.mapIndex === i ? "selected" : ""}>${m.name}   ${info}</option>`;
       }).join("")}</select>`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.5 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V3.6 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6340,12 +6340,42 @@
     const slabH = (c, r) => Math.floor(hash2(c * 3 + 1, r * 5 + 2) * 3) * 1.1; // 0 / 1.1 / 2.2 broken-slab steps
     const topAt = (c, r) => !inB(c, r) ? -DEPTH : (isRoad(c, r) ? ROAD_Y : slabH(c, r));
     function jit(col, amt) { const c = col.clone(); const f = 1 + (amt || 0); c.r = Math.min(1, c.r * f); c.g = Math.min(1, c.g * f); c.b = Math.min(1, c.b * f); return c; }
+    // V3.6 focal structures: ruined breach portal + reactor fortress, authored with the toolkit
+    function buildBreach(st) {
+      const g = new T.Group(); g.position.set(st.x, 0, st.y);
+      const m = Model(), rk = std("#3d3a38", 0.88, 0.1), rkD = std("#242120", 0.92, 0.05);
+      for (let i = 0; i < 11; i++) { const a = i / 11 * 6.283, h = 16 + (i % 3) * 7; m.box(11, h, 9, [Math.cos(a) * 24, ROAD_Y + h / 2, Math.sin(a) * 24], i % 2 ? rkD : rk, [0, -a, 0]); }
+      for (let i = 0; i < 11; i++) { const a = (i + 0.5) / 11 * 6.283; m.cone(4, 11, 5, [Math.cos(a) * 22, ROAD_Y + 17, Math.sin(a) * 22], rkD); }
+      m.cyl(19, 21, 4, 20, [0, ROAD_Y + 1, 0], rkD);   // dark throat rim
+      g.add(m.build()); world.add(g);
+      const lava = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0xff7a34, transparent: true, opacity: 0.85 }));
+      lava.rotation.x = -Math.PI / 2; lava.scale.set(16, 16, 1); lava.position.set(st.x, ROAD_Y + 0.8, st.y); world.add(lava); breachMats.push(lava.material);
+      const lg = glowSprite("#ff7a34", 50, 0.4); lg.position.set(st.x, ROAD_Y + 12, st.y); world.add(lg);
+    }
+    function buildBase(base) {
+      const g = new T.Group(); g.position.set(base.x, 0, base.y);
+      const m = Model();
+      const wall = std("#3f4650", 0.55, 0.55), wallD = std("#20242a", 0.65, 0.5), plate = std("#333a42", 0.5, 0.6), trim = emis("#37e0d0", 1.2);
+      const W2 = 36, H2 = 18;
+      for (const [sx, sz, horiz] of [[0, -W2, 1], [0, W2, 1], [-W2, 0, 0], [W2, 0, 0]]) {
+        if (horiz) m.box(W2 * 2, H2, 9, [0, ROAD_Y + H2 / 2, sz], wall); else m.box(9, H2, W2 * 2, [sx, ROAD_Y + H2 / 2, 0], wall);
+      }
+      for (let i = 0; i < 4; i++) { const sx = (i < 2 ? -1 : 1) * W2, sz = (i % 2 ? -1 : 1) * W2; m.cyl(9, 10, H2 + 8, 8, [sx, ROAD_Y + (H2 + 8) / 2, sz], wallD); m.sph(3.6, [sx, ROAD_Y + H2 + 9, sz], trim); }  // corner bastions + beacons
+      m.box(30, 22, 30, [0, ROAD_Y + 11, 0], plate);       // reactor housing
+      m.cyl(11, 12, 12, 12, [0, ROAD_Y + 24, 0], wallD);
+      m.tor(13, 1.4, 24, [0, ROAD_Y + 20, 0], trim, [Math.PI / 2, 0, 0]);
+      g.add(m.build()); world.add(g);
+      if (coreMesh) scene.remove(coreMesh);
+      coreMesh = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x37e0d0 })); coreMesh.scale.set(7, 7, 7); coreMesh.position.set(base.x, ROAD_Y + 32, base.y); scene.add(coreMesh);
+      if (coreGlow) scene.remove(coreGlow);
+      coreGlow = glowSprite("#37e0d0", 60, 0.45); coreGlow.position.set(base.x, ROAD_Y + 34, base.y); scene.add(coreGlow);
+    }
     function buildMap() {
       if (world) { scene.remove(world); disposeDeep(world); }
       world = new T.Group(); poolMats = []; breachMats = [];
       const g1 = c3(BM.ash1), g2 = c3(BM.ash2), road = c3(BM.road).multiplyScalar(0.92);
       const cliff = c3(BM.ashEdge).multiplyScalar(0.6), wallLit = c3(BM.ashEdge).multiplyScalar(1.25), wallDk = c3(BM.ashEdge).multiplyScalar(0.7);
-      const land = mk(), glow = mk();
+      const land = mk(), glow = mk(), metal = mk();
       tileH = new Map();
       const lip = c3(BM.ashEdge).multiplyScalar(1.55);
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -6366,6 +6396,13 @@
           if (isRoad(c + 1, r)) boxM(land, x1 - 2.4, top, z0 + 1, x1 + 2, top + 1.3, z1 - 1, lip, null, null, wallDk, null);
         }
       }
+      // scattered rocks / debris on buildable ground (into the merged land buffer = free)
+      const peb = c3(BM.ashEdge).multiplyScalar(0.82);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (isRoad(c, r)) continue; const hp = hash2(c * 13 + 7, r * 17 + 3);
+        if (hp > 0.55 && hp < 0.72) { const th = tileH.get(c + "," + r) || 0, px = c * TILE + 32 + (hash2(c, r) - 0.5) * 30, pz = r * TILE + 32 + (hash2(r, c) - 0.5) * 30, sz = 2 + hash2(c * 3, r * 3) * 4;
+          boxM(land, px - sz, th, pz - sz, px + sz, th + sz * 0.8, pz + sz, jit(peb, (hp - 0.6) * 0.6), peb, peb, peb, peb); }
+      }
       // road center dashes along each route
       const dash = c3(BM.roadLine);
       for (const route of ROUTES) for (let i = 0; i < route.length - 1; i++) {
@@ -6381,12 +6418,12 @@
       for (const b of BRIDGES) {
         const cx = b.c * TILE + 32, cz = b.r * TILE + 32;
         const ax = b.horiz ? 44 : 15, az = b.horiz ? 15 : 44;
-        boxM(land, cx - ax, DECK_Y - 3, cz - az, cx + ax, DECK_Y, cz + az, steel, steelDk, steelDk, steelDk, steelDk);
+        boxM(metal, cx - ax, DECK_Y - 3, cz - az, cx + ax, DECK_Y, cz + az, steel, steelDk, steelDk, steelDk, steelDk);
         const rx = b.horiz ? 42 : 13, rz = b.horiz ? 13 : 42;
-        boxM(land, cx - rx, DECK_Y, cz - rz, cx + rx, DECK_Y + 6, cz - rz + 2.5, steelDk, null, null, null, null);
-        boxM(land, cx - rx, DECK_Y, cz + rz - 2.5, cx + rx, DECK_Y + 6, cz + rz, steelDk, null, null, null, null);
+        boxM(metal, cx - rx, DECK_Y, cz - rz, cx + rx, DECK_Y + 6, cz - rz + 2.5, steelDk, null, null, null, null);
+        boxM(metal, cx - rx, DECK_Y, cz + rz - 2.5, cx + rx, DECK_Y + 6, cz + rz, steelDk, null, null, null, null);
         for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])
-          boxM(land, cx + sx * (ax - 6) - 3, ROAD_Y, cz + sz * (az - 6) - 3, cx + sx * (ax - 6) + 3, DECK_Y - 3, cz + sz * (az - 6) + 3, steelDk, steelDk, steelDk, steelDk, steelDk);
+          boxM(metal, cx + sx * (ax - 6) - 3, ROAD_Y, cz + sz * (az - 6) - 3, cx + sx * (ax - 6) + 3, DECK_Y - 3, cz + sz * (az - 6) + 3, steelDk, steelDk, steelDk, steelDk, steelDk);
       }
       // decor props
       const barrel = c3("#7a5a30"), rock = c3(BM.ashEdge), rust = c3("#6f4a30"), bld = c3("#3d434c"), bldDk = c3("#282d34");
@@ -6399,14 +6436,17 @@
           const pg2 = glowSprite(BM.toxic, 42, 0.3); pg2.position.set(cx, 5, cz); world.add(pg2);
           discM(land, cx, 0.35, cz, 17, c3(BM.ashEdge).multiplyScalar(0.5), 12);
         } else if (d.type === "barrel") {
-          boxM(land, cx - 6, 0, cz - 6, cx + 6, 13, cz + 6, jit(barrel, (sd - 0.5) * 0.3), barrel, barrel, barrel, barrel);
-          if (sd > 0.6) discM(glow, cx, 13.3, cz, 4, c3(BM.toxic), 8);
+          const bc = jit(barrel, (sd - 0.5) * 0.3), band = c3("#463521");
+          boxM(metal, cx - 6, 0, cz - 6, cx + 6, 12, cz + 6, bc, bc, bc, bc, bc);
+          boxM(metal, cx - 6.6, 10.4, cz - 6.6, cx + 6.6, 12.6, cz + 6.6, band, band, band, band, band);   // lid rim
+          boxM(metal, cx - 6.6, 3.6, cz - 6.6, cx + 6.6, 5, cz + 6.6, band, band, band, band, band);        // mid band
+          if (sd > 0.6) discM(glow, cx, 12.8, cz, 4, c3(BM.toxic), 8);
         } else if (d.type === "rubble" || d.type === "wreck") {
           const n = d.type === "wreck" ? 3 : 2 + Math.floor(sd * 3);
           for (let i = 0; i < n; i++) {
             const ox = (hash2(i * 3, d.c + i) - 0.5) * 34, oz = (hash2(i * 7, d.r + i) - 0.5) * 34, s = 5 + hash2(i, d.c * d.r + i) * (d.type === "wreck" ? 14 : 7);
             const cc = d.type === "wreck" ? jit(rust, (sd - 0.5) * 0.4) : jit(rock, (sd - 0.5) * 0.3);
-            boxM(land, cx + ox - s, 0, cz + oz - s, cx + ox + s, s * 1.1, cz + oz + s, cc, cc, cc, cc, cc);
+            boxM(d.type === "wreck" ? metal : land, cx + ox - s, 0, cz + oz - s, cx + ox + s, s * 1.1, cz + oz + s, cc, cc, cc, cc, cc);
           }
         } else if (d.type === "sandbags") {
           for (let i = 0; i < 3; i++) boxM(land, cx - 18 + i * 12, 0, cz - 5, cx - 6 + i * 12, 7, cz + 5, c3("#8a7a58"), c3("#6a5c40"), c3("#6a5c40"), null, null);
@@ -6416,44 +6456,30 @@
           boxM(land, cx - 1.6, 0, cz - 1.6, cx + 1.6, 20 + sd * 8, cz + 1.6, c3("#3a3028"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"));
           boxM(land, cx - 7, 12, cz - 1.2, cx + 7, 14.4, cz + 1.2, c3("#332a24"), null, null, null, null);
         } else if (d.type === "building") {
-          boxM(land, cx - 22, 0, cz - 18, cx + 22, 30 + sd * 14, cz + 18, bld, bldDk, bldDk, bldDk, bldDk);
-          boxM(land, cx - 12, 30 + sd * 14, cz - 10, cx + 10, 44 + sd * 14, cz + 8, jit(bld, 0.1), bldDk, bldDk, bldDk, bldDk);
-          for (let i = 0; i < 3; i++) boxM(glow, cx - 14 + i * 11, 8, cz + 18, cx - 8 + i * 11, 14, cz + 18.4, c3("#ffb84a").multiplyScalar(0.55 + sd * 0.3), null, null, null, null);
+          const bh = 30 + sd * 14;
+          boxM(land, cx - 22, 0, cz - 18, cx + 22, bh, cz + 18, bld, bldDk, bldDk, bldDk, bldDk);
+          boxM(land, cx - 12, bh, cz - 10, cx + 10, bh + 14, cz + 8, jit(bld, 0.1), bldDk, bldDk, bldDk, bldDk);   // penthouse
+          boxM(metal, cx + 2, bh + 14, cz - 4, cx + 9, bh + 20, cz + 3, c3("#5a626c"), null, null, null, null);    // rooftop unit
+          boxM(metal, cx - 8, bh, cz - 6, cx - 6.4, bh + 16, cz - 4.4, c3("#6a727c"), null, null, null, null);     // antenna
+          for (let row = 0; row < 2; row++) for (let i = 0; i < 3; i++) boxM(glow, cx - 14 + i * 11, 8 + row * 12, cz + 18, cx - 8 + i * 11, 14 + row * 12, cz + 18.4, c3("#ffb84a").multiplyScalar(0.5 + sd * 0.3), null, null, null, null);  // lit windows (2 rows)
         } else if (d.type === "dropship") {
-          boxM(land, cx - 26, 2, cz - 12, cx + 20, 12, cz + 12, jit(rust, 0.15), rust, rust, rust, rust);
-          boxM(land, cx + 14, 10, cz - 2.5, cx + 30, 22, cz + 2.5, rust, rust, rust, rust, rust);
-          discM(land, cx - 6, 0.4, cz, 30, c3(BM.ashEdge).multiplyScalar(0.5), 12);
+          const hull = jit(rust, 0.12), hullD = c3("#4a3220");
+          boxM(metal, cx - 26, 3, cz - 11, cx + 20, 13, cz + 11, hull, hullD, hullD, hullD, hullD);          // fuselage
+          boxM(metal, cx + 12, 11, cz - 2.5, cx + 30, 22, cz + 2.5, hull, hullD, hullD, hullD, hullD);        // raised tail
+          for (const sd2 of [-1, 1]) boxM(metal, cx - 18, 4, cz + sd2 * 11, cx - 2, 8, cz + sd2 * 22, hullD, hullD, hullD, hullD, hullD);  // stub wings
+          boxM(metal, cx - 30, 5, cz - 6, cx - 24, 12, cz + 6, hullD, hullD, hullD, hullD, hullD);            // nose
+          discM(land, cx - 6, 0.4, cz, 32, c3(BM.ashEdge).multiplyScalar(0.5), 14);
         }
       }
-      // breach tunnel at each entrance + fortress base
-      const rockDk = c3(BM.ashEdge).multiplyScalar(0.45);
-      for (const route of ROUTES) {
-        const st = route[0];
-        boxM(land, st.x - 26, ROAD_Y, st.y - 26, st.x - 16, ROAD_Y + 30, st.y + 26, rockDk, rockDk, rockDk, rockDk, rockDk);
-        boxM(land, st.x + 16, ROAD_Y, st.y - 26, st.x + 26, ROAD_Y + 30, st.y + 26, rockDk, rockDk, rockDk, rockDk, rockDk);
-        boxM(land, st.x - 26, ROAD_Y + 26, st.y - 26, st.x + 26, ROAD_Y + 36, st.y + 26, rockDk, rockDk, rockDk, rockDk, rockDk);
-        const lava = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0xff7a34, transparent: true, opacity: 0.85 }));
-        lava.rotation.x = -Math.PI / 2; lava.scale.set(15, 15, 1); lava.position.set(st.x, ROAD_Y + 0.5, st.y);
-        world.add(lava); breachMats.push(lava.material);
-        const lg2 = glowSprite("#ff7a34", 52, 0.4); lg2.position.set(st.x, ROAD_Y + 8, st.y); world.add(lg2);
-      }
-      const base = ROUTES[0][ROUTES[0].length - 1];
-      const wallc = c3("#4a525c"), wallDk2 = c3("#262b31");
-      boxM(land, base.x - 34, ROAD_Y, base.y - 30, base.x + 34, ROAD_Y + 16, base.y - 24, wallc, wallDk2, wallDk2, wallDk2, wallDk2);
-      boxM(land, base.x - 34, ROAD_Y, base.y + 24, base.x + 34, ROAD_Y + 16, base.y + 30, wallc, wallDk2, wallDk2, wallDk2, wallDk2);
-      boxM(land, base.x - 34, ROAD_Y, base.y - 30, base.x - 28, ROAD_Y + 16, base.y + 30, wallc, wallDk2, wallDk2, wallDk2, wallDk2);
-      boxM(land, base.x + 28, ROAD_Y, base.y - 30, base.x + 34, ROAD_Y + 16, base.y + 30, wallc, wallDk2, wallDk2, wallDk2, wallDk2);
-      boxM(land, base.x - 20, ROAD_Y, base.y - 14, base.x + 20, ROAD_Y + 22, base.y + 14, c3("#3a4048"), wallDk2, wallDk2, wallDk2, wallDk2);
-      if (coreMesh) { scene.remove(coreMesh); }
-      coreMesh = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x37e0d0 }));
-      coreMesh.scale.set(8, 8, 8); coreMesh.position.set(base.x, ROAD_Y + 30, base.y);
-      scene.add(coreMesh);
-      if (coreGlow) scene.remove(coreGlow);
-      coreGlow = glowSprite("#37e0d0", 60, 0.45); coreGlow.position.set(base.x, ROAD_Y + 32, base.y); scene.add(coreGlow);
+      // focal structures: detailed breach portals + reactor fortress
+      for (const route of ROUTES) buildBreach(route[0]);
+      buildBase(ROUTES[0][ROUTES[0].length - 1]);
       const landMesh = toMesh(land, new T.MeshLambertMaterial({ vertexColors: true, map: grungeTex(), normalMap: groundNormal(), normalScale: new T.Vector2(0.8, 0.8), side: T.DoubleSide }), 1 / 96);
       landMesh.receiveShadow = true;
       const glowMesh = toMesh(glow, new T.MeshBasicMaterial({ vertexColors: true, side: T.DoubleSide }));
-      world.add(landMesh); world.add(glowMesh);
+      const metalMesh = toMesh(metal, new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.62, normalMap: metalNormal(), normalScale: new T.Vector2(0.5, 0.5), side: T.DoubleSide }), 1 / 48);
+      metalMesh.castShadow = true; metalMesh.receiveShadow = true;
+      world.add(landMesh); world.add(glowMesh); world.add(metalMesh);
       scene.add(world);
       // biome sky, fog, lights, sun shadow frustum
       const sky = c3(BM.skyBot || "#0a0d12");
