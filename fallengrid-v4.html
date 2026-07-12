@@ -4110,9 +4110,10 @@
     mender:     { hp: 55, speed: 72, reward: 14, r: 19, body: "#4a9a5f", dark: "#26543a", eye: "#8fe04a", shape: "mender", heal: 1 },
     splitter:   { hp: 110, speed: 60, reward: 16, r: 23, body: "#9a4a8a", dark: "#5c2a52", eye: "#ff9ae0", shape: "splitter", split: 3 },
     spawnling:  { hp: 14, speed: 138, reward: 2, r: 11, body: "#b06ab0", dark: "#6a3a66", eye: "#ffd2f2", shape: "stalker" },
+    phantom:    { hp: 46, speed: 116, reward: 9, r: 15, body: "#586a86", dark: "#28323f", eye: "#a8e6ff", shape: "stalker", camo: true },
     juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut", shield: 420 },
   };
-  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", juggernaut: "Juggernaut" };
+  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const NEXT_WAVE_COUNTDOWN = 6;
@@ -4197,6 +4198,21 @@
         [[7, 0], [7, 4], [2, 4], [2, 10], [12, 10], [12, 16], [7, 16], [7, 20]],
         [[0, 7], [9, 7], [9, 13], [4, 13], [4, 18], [7, 18], [7, 20]],
         [[14, 12], [14, 19], [7, 19], [7, 20]]] },
+    { name: "Switchback", diff: 3, seed: 29, cols: 10, rows: 16, biome: "ember",
+      props: [{ c: 9, r: 8, type: "dropship" }],
+      routes: [[[0, 2], [8, 2], [8, 5], [1, 5], [1, 8], [8, 8], [8, 11], [2, 11], [2, 14], [5, 14], [5, 15]]] },
+    { name: "Crucible", diff: 4, seed: 31, cols: 13, rows: 18, biome: "toxic",
+      props: [{ c: 0, r: 16, type: "building" }, { c: 12, r: 16, type: "dropship" }],
+      routes: [[[0, 3], [10, 3], [10, 8], [6, 8], [6, 17]], [[12, 6], [3, 6], [3, 11], [6, 11], [6, 17]]] },
+    { name: "Meltline", diff: 5, seed: 37, cols: 12, rows: 20, biome: "ash",
+      props: [{ c: 11, r: 1, type: "building" }],
+      routes: [[[6, 0], [6, 3], [1, 3], [1, 7], [10, 7], [10, 11], [2, 11], [2, 15], [9, 15], [9, 18], [6, 18], [6, 19]]] },
+    { name: "The Maw", diff: 5, seed: 41, cols: 15, rows: 22, biome: "rust",
+      props: [{ c: 0, r: 0, type: "building" }, { c: 14, r: 0, type: "dropship" }],
+      routes: [
+        [[7, 0], [7, 3], [2, 3], [2, 9], [12, 9], [12, 15], [7, 15], [7, 21]],
+        [[0, 6], [9, 6], [9, 12], [4, 12], [4, 18], [7, 18], [7, 21]],
+        [[14, 11], [14, 19], [7, 19], [7, 21]]] },
   ];
   function buildPath(wp) {
     const tiles = [], seen = new Set();
@@ -4371,6 +4387,7 @@
     const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0;     // wardens (shielded) reward energy
     const md = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // menders heal packs: focus-fire them
     const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
+    const ph = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;     // phantoms (camo) force detection (Tesla / Hero)
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
@@ -4380,6 +4397,7 @@
     for (let i = 0; i < wd; i++) seq.push("warden");
     for (let i = 0; i < md; i++) seq.push("mender");
     for (let i = 0; i < sl; i++) seq.push("splitter");
+    for (let i = 0; i < ph; i++) seq.push("phantom");
     const cm = modCount(), extraN = Math.round(seq.length * (cm - 1));
     for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
     seq.sort(() => Math.random() - 0.4);
@@ -4396,7 +4414,7 @@
     const sh = b.shield ? Math.round(b.shield * (1 + 0.12 * w)) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
       hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed * spMul, reward: Math.round(b.reward * rwMul),
-      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0, heal: b.heal || 0, split: b.split || 0 };
+      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0, heal: b.heal || 0, split: b.split || 0, camo: !!b.camo };
   }
 
   /* ---------------- ENTITIES / STATE ---------------- */
@@ -4451,7 +4469,9 @@
   ];
   const dayKey = (d) => { d = d || new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
   const dhash = (s2, salt) => { let h = (s2 * 2654435761 + salt * 40503) >>> 0; h ^= h >>> 15; h = Math.imul(h, 2246822519) >>> 0; h ^= h >>> 13; return h >>> 0; };
-  const dailyConfig = (d) => { const k = dayKey(d); return { key: k, map: dhash(k, 1) % MAPS.length, diff: (dhash(k, 2) % 3 === 0) ? "brutal" : "hard", mod: MODIFIERS[dhash(k, 3) % MODIFIERS.length] }; };
+  // day ordinal (UTC midnights since epoch) drives a round-robin so the Daily Op visits every map in turn
+  const dayNum = (d) => { d = d || new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000); };
+  const dailyConfig = (d) => { const k = dayKey(d); return { key: k, map: ((dayNum(d) % MAPS.length) + MAPS.length) % MAPS.length, diff: (dhash(k, 2) % 3 === 0) ? "brutal" : "hard", mod: MODIFIERS[dhash(k, 3) % MODIFIERS.length] }; };
   const Daily = {
     streak: Store.get("dstreak", 0), last: Store.get("dlast", 0), doneKey: Store.get("ddone", 0),
     isDoneToday() { return this.doneKey === dayKey(); },
@@ -4473,7 +4493,7 @@
     { id: "k1k",      name: "Exterminator",    desc: "1,000 total kills",                   test: (c) => c.kills >= 1000 },
     { id: "k10k",     name: "Annihilator",     desc: "10,000 total kills",                  test: (c) => c.kills >= 10000 },
     { id: "maps5",    name: "Cartographer",    desc: "Beat 5 different maps",               test: (c) => c.mapsBeat >= 5 },
-    { id: "maps10",   name: "Conqueror",       desc: "Beat all 10 maps",                    test: (c) => c.mapsBeat >= 10 },
+    { id: "maps10",   name: "Conqueror",       desc: "Beat every map",                      test: (c) => c.mapsBeat >= MAPS.length },
     { id: "campdone", name: "Grid Restored",   desc: "Complete the Campaign",               test: (c) => c.campaignDone },
     { id: "streak3",  name: "Daily Devotion",  desc: "Reach a 3-day Daily streak",          test: (c) => c.dailyStreak >= 3 },
     { id: "streak7",  name: "Daily Zealot",    desc: "Reach a 7-day Daily streak",          test: (c) => c.dailyStreak >= 7 },
@@ -4562,7 +4582,7 @@
     const dmg = 130 * (1 + S.wave * 0.06);
     for (let i = 0; i < 6; i++) { const a = Math.random() * 7, d = Math.random() * STRIKE_R * 0.8; explosion(wx + Math.cos(a) * d, wy + Math.sin(a) * d, 22 + Math.random() * 22, "#ffbf6a"); }
     explosion(wx, wy, STRIKE_R, "#ffe0a0");
-    for (const e of enemies) { if (e.alive && Math.hypot(e.x - wx, e.y - wy) <= STRIKE_R) { hurt(e, dmg, "explosive", true); e.stunT = Math.max(e.stunT || 0, 1.1); } }
+    for (const e of enemies) { if (e.alive && Math.hypot(e.x - wx, e.y - wy) <= STRIKE_R) { hurt(e, dmg, "explosive", true); e.stunT = Math.max(e.stunT || 0, 1.1); if (e.camo) e.revealed = 1.4; } }
     scorch(wx, wy, STRIKE_R * 0.7); puff(wx, wy, STRIKE_R * 0.6, "rgba(40,36,32,", 14);
     doShake(10, 0.5); screenFlash = 0.5; Sound.strike(); Sound.boom(); setTimeout(() => Sound.boom(), 110); vibrate([40, 30, 60, 30, 80]);
     S.strikeCd = strikeMax(); S.strikeArm = false; S.usedStrike = true;
@@ -4675,7 +4695,7 @@
       const s = S.queue.shift(), st = statsFor(s.type, S.wave);
       st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd"); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
       const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
-      enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6 }, st));
+      enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6, revealed: 0 }, st));
     }
     if (S.queue.length === 0 && enemies.length === 0 && S.waveActive) {
       // Wave resolved. Keep the player's build/upgrade selection (focus stays on the build menu
@@ -4720,6 +4740,7 @@
     for (const e of enemies) {
       if (!e.alive) continue;
       if (e.flying && !air) continue; // ground splash towers can't reach flyers
+      if (e.camo && !(e.revealed > 0)) continue; // stealth: untargetable until a detector reveals it
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > st.range * rangeMul()) continue;
       let s;
@@ -4729,6 +4750,19 @@
       if (s > score) { score = s; best = e; }
     }
     return best;
+  }
+  // V4.8 stealth counter: camo foes cloak over time; Rail-Tesla towers and the Hero act as
+  // detectors, re-revealing any camo enemy in range so every tower can then engage it.
+  function updDetection(dt) {
+    let anyCamo = false;
+    for (const e of enemies) { if (e.alive && e.camo) { anyCamo = true; if (e.revealed > 0) e.revealed -= dt; } }
+    if (!anyCamo) return;
+    for (const t of towers) {
+      if (t.type !== "tesla") continue;
+      const p = center(t.c, t.r), rng = tStats(t).range * rangeMul();
+      for (const e of enemies) if (e.alive && e.camo && Math.hypot(e.x - p.x, e.y - p.y) <= rng) e.revealed = 0.9;
+    }
+    if (hero) for (const e of enemies) if (e.alive && e.camo && Math.hypot(e.x - hero.x, e.y - hero.y) <= 150) e.revealed = 0.9;
   }
   function updTowers(dt, dtMs) {
     for (const t of towers) {
@@ -6042,7 +6076,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.6 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.8 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6096,7 +6130,7 @@
         turret: "reliable single-target; Gatling shreds swarms, Breacher pierces armor & air",
         cryo: "slows a cluster (ground only); Glacier near-freezes, Shatter crushes slowed foes",
         mortar: "explosive splash vs armor & packs; can't hit flyers; Carpet widens, Buster is siege",
-        tesla: "long-range energy, hits air, strips shields; Arc-Coil chains 3, Railgun snipes",
+        tesla: "long-range energy, hits air, strips shields, reveals camo; Arc-Coil chains 3, Railgun snipes",
         pyre: "cheap burn DoT over a cone (ground only); Inferno widens the flame, Plasma pierces armor",
       };
       const THREAT = {
@@ -6109,6 +6143,7 @@
         mender: "Heals nearby allies every few seconds. — Counter: focus it first with STRONGEST targeting.",
         splitter: "Bursts into 3 Spawnlings when killed. — Counter: kill it early, or let it leak (it only splits on death).",
         spawnling: "Fast fragment spawned by a dying Splitter. — Counter: mop up with rapid fire.",
+        phantom: "◆ CAMO — cloaked; towers cannot target it until it is revealed. — Counter: keep a Rail-Tesla or the Hero nearby (they reveal camo foes for every tower) — an airstrike reveals too.",
         juggernaut: "◆ BOSS · SHIELD 420 — the wave's anchor. — Counter: energy to strip the shield, then sustained fire.",
       };
       let body;
@@ -6118,7 +6153,7 @@
           return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">◆ ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
         }).join("");
       } else if (tab === "en") {
-        body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","juggernaut"].map((k) => { const e = ENEMIES[k];
+        body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","juggernaut"].map((k) => { const e = ENEMIES[k];
           return `<div class="tal" style="display:block;text-align:left"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div>`;
         }).join("");
       } else {
@@ -6919,6 +6954,7 @@
       bub.scale.setScalar(r * 1.4); bub.position.y = r * 0.6; bub.visible = false; g.add(bub);
       const healR = new T.Mesh(GEO.ring, add3("#8fe04a", 0.7)); healR.rotation.x = -Math.PI / 2; healR.position.y = 1.5; healR.visible = false; g.add(healR);
       let ao = null; if (!b.flying) { ao = aoDisc(r * 1.5); ao.material = aoMat(); g.add(ao); }
+      if (b.camo) for (const mt of mats) mt.transparent = true;
       return { g, mats, bub, healR, legs, ringSpin, ao, bodyH, type, base: mats.map((mt) => mt.color.clone()) };
     }
     const enemyObjs = new Map(), frostCol = new T.Color(0x9fd8ff), flashCol = new T.Color(0xffffff);
@@ -6958,6 +6994,7 @@
           if (fr > 0) m.color.lerp(frostCol, fr * 0.65);
           m.emissive.setRGB(fl, fl, fl);
         }
+        if (e.camo) { const op = e.revealed > 0 ? 1 : 0.2; for (const m of o.mats) m.opacity = op; }
         o.bub.visible = e.shield > 0;
         if (o.bub.visible) o.bub.material.opacity = 0.1 + 0.2 * (e.shield / (e.shieldMax || 1)) + (e.shieldHit > 0 ? 0.3 : 0);
         if (o.healR) {
@@ -7276,7 +7313,7 @@
   // one simulation tick (entity updates only); shared by the render loop and the headless sim hook
   function stepSim(stepMs) {
     const dt = stepMs / 1000;
-    updSpawns(stepMs); updTowers(dt, stepMs); updHero(dt, stepMs); updEnemies(dt); updProjs(dt); updParts(dt);
+    updSpawns(stepMs); updDetection(dt); updTowers(dt, stepMs); updHero(dt, stepMs); updEnemies(dt); updProjs(dt); updParts(dt);
   }
   let last = performance.now();
   function frame(now) {
@@ -7361,7 +7398,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse, onBack,
+    deployHero, doPulse, onBack, dailyConfig,
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
