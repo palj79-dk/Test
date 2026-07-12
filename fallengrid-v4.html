@@ -15,7 +15,8 @@
   #gl { position: absolute; left: 0; top: 0; z-index: 1; display: block; }
   #game { position: relative; z-index: 2; display: block; touch-action: none; background: transparent; }
   #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background: rgba(6,9,12,0.82); backdrop-filter: blur(4px); z-index: 10; padding: 20px; }
+    background: rgba(6,9,12,0.82); backdrop-filter: blur(4px); z-index: 10;
+    padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
   .panel { position: relative; width: min(336px, 90vw); text-align: center; color: #e8eef0;
     max-height: 92vh; overflow-y: auto; overflow-x: hidden;
     background: linear-gradient(165deg, #1a2228 0%, #10161a 100%);
@@ -4333,6 +4334,7 @@
       },
       stopMusic() { if (music) { music.stop(); music = null; } },
       resume() { ac(); },
+      suspend() { api.stopMusic(); if (ctx && ctx.state === "running") { try { ctx.suspend(); } catch (e) {} } },
       toggleSfx(v) { sfx = v; Store.set("sfx", v); },
       sfxOn: () => sfx,
       toggleMusic(v) { musc = v; Store.set("music", v); if (!v) api.stopMusic(); else if (S && S.screen === "playing") api.startMusic(); },
@@ -4345,7 +4347,12 @@
     let on = Store.get("haptics", true);
     return { isOn() { return on; }, toggle(v) { on = v; Store.set("haptics", v); } };
   })();
-  const vibrate = (ms) => { if (!Haptics.isOn()) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+  const vibrate = (ms) => {
+    if (!Haptics.isOn()) return;
+    const H = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Haptics;
+    if (H) { try { if (Array.isArray(ms)) H.vibrate({ duration: ms.reduce((a, b) => a + b, 0) }); else if (ms >= 40) H.vibrate({ duration: ms }); else H.impact({ style: ms >= 16 ? "Medium" : "Light" }); return; } catch (e) {} }
+    try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {}
+  };
 
   /* ---------------- WAVES ---------------- */
   // Counts are capped so deep endless waves stay performant/playable; statsFor keeps scaling HP.
@@ -6035,7 +6042,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.5 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.6 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -7312,6 +7319,35 @@
   render();
   requestAnimationFrame(frame);
 
+  /* ---------------- V4.6 platform integration (Android / Capacitor) ---------------- */
+  // Portrait lock — best-effort; silently ignored where the platform disallows it.
+  try { if (screen.orientation && screen.orientation.lock) { const pl = screen.orientation.lock("portrait"); if (pl && pl.catch) pl.catch(() => {}); } } catch (e) {}
+  // Lifecycle: pause a live run and park audio whenever the app leaves the foreground,
+  // so a backgrounded game never keeps simulating (and losing) or draining the battery.
+  function backgroundPause() {
+    try { Sound.suspend(); } catch (e) {}
+    if (S.screen === "playing") { S.screen = "paused"; render(); }
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden) backgroundPause(); });
+  window.addEventListener("blur", () => { if (S.screen === "playing") backgroundPause(); });
+  window.addEventListener("pagehide", backgroundPause);
+  // Hardware / gesture back button. Sub-screens step back one level, a live run pauses,
+  // the pause screen resumes; only the main menu lets the OS handle exit.
+  function onBack() {
+    const s = S.screen;
+    if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
+    if (s === "paused") { S.screen = "playing"; render(); return true; }
+    if (s === "howto" || s === "armory" || s === "ach" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
+    return false; // main menu → let the OS decide (exit)
+  }
+  const Cap = window.Capacitor;
+  if (Cap && Cap.Plugins && Cap.Plugins.App) {
+    try { Cap.Plugins.App.addListener("backButton", () => { if (!onBack()) { try { Cap.Plugins.App.exitApp(); } catch (e) {} } }); } catch (e) {}
+  } else {
+    // Browser / PWA fallback: trap the back gesture via a sentinel history entry.
+    try { history.pushState({ fg: 1 }, ""); window.addEventListener("popstate", () => { if (onBack()) history.pushState({ fg: 1 }, ""); }); } catch (e) {}
+  }
+
   // debug hooks (no-op in normal play)
   window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D,
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
@@ -7325,7 +7361,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse,
+    deployHero, doPulse, onBack,
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
