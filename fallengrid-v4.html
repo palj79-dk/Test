@@ -4432,6 +4432,58 @@
     complete() { const k = dayKey(); if (this.doneKey === k) return; const y = dayKey(new Date(Date.now() - 864e5)); this.streak = (this.last === y) ? this.streak + 1 : 1; this.last = k; this.doneKey = k; Store.set("dstreak", this.streak); Store.set("dlast", this.last); Store.set("ddone", this.doneKey); },
   };
   const diffMul = () => diffCfg().hp * modv("hp");
+  // ---- V4.2 Achievements: run-end + armory evaluation against cumulative + run stats ----
+  const ACH = [
+    { id: "win1",     name: "First Blood",     desc: "Win any run",                         test: (c) => c.won },
+    { id: "win10",    name: "Veteran",         desc: "Win 10 runs",                         test: (c) => c.wins >= 10 },
+    { id: "hard",     name: "Hardened",        desc: "Win on Hard",                         test: (c) => c.won && c.diff === "hard" },
+    { id: "brutal",   name: "Brutalized",      desc: "Win on Brutal",                       test: (c) => c.won && c.diff === "brutal" },
+    { id: "noleak",   name: "Flawless",        desc: "Win without losing a single Core",    test: (c) => c.won && c.noLeak },
+    { id: "nlbrutal", name: "Untouchable",     desc: "Flawless win on Brutal",              test: (c) => c.won && c.noLeak && c.diff === "brutal" },
+    { id: "e15",      name: "Survivor",        desc: "Reach Endless wave 15",               test: (c) => c.endlessBest >= 15 },
+    { id: "e25",      name: "Last Stand",      desc: "Reach Endless wave 25",               test: (c) => c.endlessBest >= 25 },
+    { id: "e40",      name: "Immortal",        desc: "Reach Endless wave 40",               test: (c) => c.endlessBest >= 40 },
+    { id: "k1k",      name: "Exterminator",    desc: "1,000 total kills",                   test: (c) => c.kills >= 1000 },
+    { id: "k10k",     name: "Annihilator",     desc: "10,000 total kills",                  test: (c) => c.kills >= 10000 },
+    { id: "maps5",    name: "Cartographer",    desc: "Beat 5 different maps",               test: (c) => c.mapsBeat >= 5 },
+    { id: "maps10",   name: "Conqueror",       desc: "Beat all 10 maps",                    test: (c) => c.mapsBeat >= 10 },
+    { id: "campdone", name: "Grid Restored",   desc: "Complete the Campaign",               test: (c) => c.campaignDone },
+    { id: "streak3",  name: "Daily Devotion",  desc: "Reach a 3-day Daily streak",          test: (c) => c.dailyStreak >= 3 },
+    { id: "streak7",  name: "Daily Zealot",    desc: "Reach a 7-day Daily streak",          test: (c) => c.dailyStreak >= 7 },
+    { id: "l3",       name: "Overcharged",     desc: "Upgrade a tower to its final tier",   test: (c) => c.maxTower },
+    { id: "arsenal",  name: "Full Arsenal",    desc: "Build all 4 tower types in one run",  test: (c) => c.builtCount >= 4 },
+    { id: "hero",     name: "Commander",       desc: "Deploy the Hero",                     test: (c) => c.heroLvl >= 1 },
+    { id: "herofull", name: "War Hero",        desc: "Level the Hero to max",               test: (c) => c.heroLvl >= 5 },
+    { id: "strike",   name: "Orbital",         desc: "Call in an airstrike",                test: (c) => c.usedStrike },
+    { id: "alloy1k",  name: "Industrialist",   desc: "Earn 1,000 total Alloy",              test: (c) => c.alloy >= 1000 },
+    { id: "talent1",  name: "Requisition",     desc: "Max an Armory talent",                test: (c) => c.talentsMaxed >= 1 },
+    { id: "talentall",name: "Enlightened",     desc: "Max every Armory talent",             test: (c) => c.talentsMaxed >= TALENT_ORDER.length },
+  ];
+  const Ach = {
+    got: Store.get("ach", {}), stat: Store.get("astat", {}),
+    has(id) { return !!this.got[id]; },
+    count() { return ACH.filter((a) => this.got[a.id]).length; },
+    unlock(id) { if (this.got[id]) return false; this.got[id] = 1; Store.set("ach", this.got); return true; },
+  };
+  function achCumulative() {
+    const st = Ach.stat;
+    return { kills: st.kills || 0, alloy: st.alloy || 0, wins: st.wins || 0,
+      mapsBeat: Object.keys(st.maps || {}).length, talentsMaxed: TALENT_ORDER.filter((id) => Meta.maxed(id)).length,
+      endlessBest: S.highEndless || 0, campaignDone: Store.get("camp", 0) >= MAPS.length - 1, dailyStreak: Daily.activeStreak() };
+  }
+  function evalAch(ctx) { const nw = []; for (const a of ACH) if (!Ach.has(a.id) && a.test(ctx)) { Ach.unlock(a.id); nw.push(a); } return nw; }
+  function runAchCheck(won) {
+    if (S.achChecked) return; S.achChecked = true;
+    const st = Ach.stat;
+    st.kills = (st.kills || 0) + S.kills; st.alloy = (st.alloy || 0) + (S.lastAlloy || 0);
+    if (won) { st.wins = (st.wins || 0) + 1; if (!S.endless) { st.maps = st.maps || {}; st.maps[S.mapIndex] = 1; } }
+    Store.set("astat", st);
+    const ctx = Object.assign(achCumulative(), {
+      won: won, diff: S.difficulty, noLeak: won && !S.leaked, endless: S.endless,
+      heroLvl: hero ? hero.lvl + 1 : 0, usedStrike: !!S.usedStrike,
+      builtCount: Object.keys(S.builtTypes || {}).length, maxTower: towers.some((t) => t.lvl === 2 && t.branch) });
+    S.newAch = evalAch(ctx);
+  }
   // convert a finished run into persistent Alloy (once per run)
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
@@ -4475,6 +4527,7 @@
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0;
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
+    S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = [];
     fitCamera();
   }
   // active ability: orbital airstrike. explosive + armor-piercing, hits air and ground, brief stun.
@@ -4485,7 +4538,7 @@
     for (const e of enemies) { if (e.alive && Math.hypot(e.x - wx, e.y - wy) <= STRIKE_R) { hurt(e, dmg, "explosive", true); e.stunT = Math.max(e.stunT || 0, 1.1); } }
     scorch(wx, wy, STRIKE_R * 0.7); puff(wx, wy, STRIKE_R * 0.6, "rgba(40,36,32,", 14);
     doShake(10, 0.5); screenFlash = 0.5; Sound.strike(); Sound.boom(); setTimeout(() => Sound.boom(), 110); vibrate([40, 30, 60, 30, 80]);
-    S.strikeCd = strikeMax(); S.strikeArm = false;
+    S.strikeCd = strikeMax(); S.strikeArm = false; S.usedStrike = true;
   }
   /* ---------------- HERO logic ---------------- */
   const heroStats = () => HERO.levels[hero.lvl];
@@ -4620,7 +4673,7 @@
       if (e.healFx > 0) e.healFx -= dt;
       if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
       const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = ROUTES[e.route][e.pi + 1];
-      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
+      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; S.leaked = true; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
       const dx = tgt.x - e.x, dy = tgt.y - e.y, d = Math.hypot(dx, dy);
       if (d > 0.001) { const want = Math.atan2(dy, dx); let diff = want - e.face; while (diff > Math.PI) diff -= 6.283; while (diff < -Math.PI) diff += 6.283; e.face += diff * Math.min(1, dt * 9); e.bank = clamp((e.bank || 0) + (diff - (e.bank || 0)) * Math.min(1, dt * 6), -0.5, 0.5); }
       const step = spd * dt;
@@ -5941,7 +5994,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.1 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.2 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -5951,6 +6004,7 @@
         <button class="btn" id="e">∞ Endless</button>
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">Field Manual</button>
+        <button class="btn" id="ach">🏆 Achievements · ${Ach.count()}/${ACH.length}</button>
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}">${DIFFS[d].label}</button>`).join("")}</div>
@@ -5963,6 +6017,7 @@
       byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; activeMod = null; reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
+      byId("ach").onclick = () => { S.screen = "ach"; render(); };
       byId("mapsel").onchange = (ev) => { const i = +ev.target.value; S.mapIndex = i; Store.set("map", i); selectMap(i); render(); };
       DIFF_ORDER.forEach((d) => { byId("df_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
       byId("mus").onclick = () => { Sound.toggleMusic(!Sound.musicOn()); render(); };
@@ -5985,7 +6040,7 @@
       show(`<div class="panel"><h2>Armory</h2><div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <p class="sub">Permanent upgrades · earned each run</p>${rows}
         <button class="btn primary" id="b">Back</button></div>`);
-      TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); render(); } else Sound.err(); }; });
+      TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); }; });
       byId("b").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "howto") {
       show(`<div class="panel"><h2>Field Manual</h2><ul class="how">
@@ -6006,22 +6061,28 @@
       byId("rs").onclick = () => { reset(); S.screen = "playing"; render(); };
       byId("m").onclick = () => { if (confirm("Abandon this run and return to the menu? Progress this run is lost.")) { S.screen = "menu"; render(); } };
     } else if (S.screen === "gameover") {
+      runAchCheck(false);
       const where = S.endless ? `Endless wave ${S.wave}${S.wave >= S.highEndless ? " · new best" : ""}` : `wave ${S.wave} of ${TOTAL_WAVES}`;
-      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div><button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}<button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       byId("r").onclick = () => { reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "victory") {
+      runAchCheck(true);
       const campNext = S.campaign && S.mapIndex < MAPS.length - 1;
       if (S.campaign) Store.set("camp", Math.min(S.mapIndex + 1, MAPS.length - 1));
       const missionBtn = campNext ? `<button class="btn primary" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
       const vTitle = S.isDaily ? "Daily Op Cleared" : (S.campaign ? "Mission " + (S.mapIndex + 1) + " Secured" : "Grid Secured");
       const vTag = S.isDaily ? `${dailyConfig().mod.name} · 🔥 streak ${Daily.activeStreak()} · ${S.kills} neutralized` : `All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized`;
-      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
       byId("r").onclick = () => { S.endless = false; S.isDaily = false; activeMod = null; reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
+      byId("m").onclick = () => { S.screen = "menu"; render(); };
+    } else if (S.screen === "ach") {
+      const rows = ACH.map((a) => { const got = Ach.has(a.id); return `<div class="tal" style="opacity:${got ? 1 : 0.5}"><div style="text-align:left"><b>${got ? "🏆" : "🔒"} ${a.name}</b><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">${a.desc}</div></div></div>`; }).join("");
+      show(`<div class="panel"><h2>Achievements</h2><div class="wallet">${Ach.count()} / ${ACH.length} unlocked</div><div style="max-height:58vh;overflow-y:auto">${rows}</div><button class="btn ghost" id="m">Back</button></div>`);
       byId("m").onclick = () => { S.screen = "menu"; render(); };
     }
   }
@@ -6116,6 +6177,7 @@
       if (!b.afford) { Sound.err(); vibrate(40); return; }
       const { c, r } = S.selTile, cost = TOWERS[b.tower].levels[0].cost; S.scrap -= cost;
       towers.push({ c, r, type: b.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
+      (S.builtTypes || (S.builtTypes = {}))[b.tower] = 1;
       S.selTile = null; Sound.place(); vibrate(18);
     } else if (b.action === "upgrade") {
       if (!b.afford) { Sound.err(); vibrate(40); return; }
@@ -7160,7 +7222,7 @@
 
   // debug hooks (no-op in normal play)
   window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D,
-    build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); return true; },
+    build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
       stepMs = stepMs || 40; maxIters = maxIters || 20000; let i = 0;
