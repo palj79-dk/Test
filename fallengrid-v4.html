@@ -4120,8 +4120,15 @@
     strike: { name: "Rapid Response", desc: "Airstrike Cooldown",  vals: [3, 6, 9],         costs: [55, 120, 200], fmt: (v) => "-" + v + "s" },
     waveb:  { name: "War Economy",    desc: "Wave-Clear Bonus",    vals: [0.25, 0.50, 0.75], costs: [45, 100, 170], fmt: (v) => "+" + Math.round(v * 100) + "%" },
     hero:   { name: "Command Core",   desc: "Commander Damage",    vals: [0.10, 0.20, 0.35], costs: [70, 150, 250], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    rate:   { name: "Fire Control",   desc: "Tower Fire Rate",     vals: [0.06, 0.12, 0.20], costs: [60, 130, 220], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    range:  { name: "Targeting Optics", desc: "Tower Range",       vals: [0.06, 0.12, 0.20], costs: [55, 120, 200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    splash: { name: "Warheads",       desc: "Splash Radius",       vals: [0.10, 0.20, 0.35], costs: [50, 110, 190], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    sell:   { name: "Salvage Refit",  desc: "Sell Refund",         vals: [0.05, 0.10, 0.15], costs: [40, 90, 150],   fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    alloyf: { name: "Contracts",      desc: "Alloy Earned",        vals: [0.10, 0.20, 0.35], costs: [60, 140, 240], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    hrate:  { name: "Battle Drills",  desc: "Commander Fire Rate", vals: [0.08, 0.15, 0.25], costs: [55, 120, 200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    pulse:  { name: "Overcharge",     desc: "Pulse Cooldown",      vals: [2, 4, 6],          costs: [50, 110, 190], fmt: (v) => "-" + v + "s" },
   };
-  const TALENT_ORDER = ["scrap", "core", "dmg", "reward", "strike", "waveb", "hero"];
+  const TALENT_ORDER = ["scrap", "core", "dmg", "rate", "range", "splash", "reward", "sell", "alloyf", "waveb", "strike", "hero", "hrate", "pulse"];
   const Meta = {
     alloy: Store.get("alloy", 0),
     talents: Store.get("talents", {}),
@@ -4138,6 +4145,13 @@
   const waveBonusMul = () => 1 + Meta.val("waveb");
   const strikeMax = () => STRIKE_CD - Meta.val("strike");
   const heroDmgMul = () => 1 + Meta.val("hero");
+  const rateMul = () => 1 - Meta.val("rate");
+  const rangeMul = () => 1 + Meta.val("range");
+  const splashMul = () => 1 + Meta.val("splash");
+  const sellRefund = () => SELL_REFUND + Meta.val("sell");
+  const alloyFindMul = () => 1 + Meta.val("alloyf");
+  const heroRateMul = () => 1 - Meta.val("hrate");
+  const heroAbilCd = () => HERO.abilityCd - Meta.val("pulse");
 
   /* ---------------- HASH ---------------- */
   function hash2(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; h ^= h >>> 16; return ((h >>> 0) % 10000) / 10000; }
@@ -4488,7 +4502,7 @@
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0) + (victory && S.isDaily ? 80 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy")));
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul()));
     Meta.add(S.lastAlloy);
     if (victory && S.isDaily) Daily.complete();
   }
@@ -4563,7 +4577,7 @@
     booms.push({ x: hero.x, y: hero.y, r: R, max: R, life: 0.4, mlife: 0.4, color: HERO.accent, ring: true });
     for (const e of enemies) { if (e.alive && Math.hypot(e.x - hero.x, e.y - hero.y) <= R) { hurt(e, dmg, "energy", false); e.stunT = Math.max(e.stunT || 0, 0.9); } }
     doShake(6, 0.35); screenFlash = 0.3; Sound.tesla(); setTimeout(() => Sound.boom(), 40); vibrate([25, 30, 40]);
-    hero.abil = HERO.abilityCd;
+    hero.abil = heroAbilCd();
   }
   function updHero(dt, dtMs) {
     if (!hero) return;
@@ -4578,7 +4592,7 @@
     hero.target = best;
     if (best) hero.angle = Math.atan2(best.y - (hero.y - 10), best.x - hero.x);
     if (hero.cool <= 0 && best) {
-      hero.cool = st.rate; hero.recoil = 0.12; hero.flash = 0.09;
+      hero.cool = st.rate * heroRateMul(); hero.recoil = 0.12; hero.flash = 0.09;
       const mx = hero.x + Math.cos(hero.angle) * 16, my = (hero.y - 10) + Math.sin(hero.angle) * 16;
       hurt(best, st.dmg * heroDmgMul(), "energy", false);
       beams.push({ x1: mx, y1: my, x2: best.x, y2: best.y, life: 0.1, mlife: 0.1, color: HERO.accent, w: 2.4, bolt: true });
@@ -4693,7 +4707,7 @@
       if (!e.alive) continue;
       if (e.flying && !air) continue; // ground splash towers can't reach flyers
       const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d > st.range) continue;
+      if (d > st.range * rangeMul()) continue;
       let s;
       if (t.mode === "strong") s = e.hp + e.shield;
       else if (t.mode === "close") s = -d;
@@ -4710,7 +4724,7 @@
       const st = tStats(t);
       t.target = findTarget(t, p);
       if (t.target) t.angle = Math.atan2(t.target.y - (p.y - 12), t.target.x - p.x);
-      if (t.cd <= 0 && t.target) { t.cd = st.rate; t.recoil = 0.12; t.flash = 0.09; fire(t, p, st); }
+      if (t.cd <= 0 && t.target) { t.cd = st.rate * rateMul(); t.recoil = 0.12; t.flash = 0.09; fire(t, p, st); }
     }
   }
   function fire(t, p, st) {
@@ -4721,8 +4735,8 @@
       // Arc-Coil branch: lightning chains to nearby foes (flyers included)
       if (st.chain) { let from = tg, hit = new Set([tg]); for (let i = 0; i < st.chain; i++) { let nx = null, nd = 120; for (const e of enemies) { if (!e.alive || hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < nd) { nd = d; nx = e; } } if (!nx) break; hurt(nx, dmg * 0.6, dtype, pierce); beams.push({ x1: from.x, y1: from.y, x2: nx.x, y2: nx.y, life: 0.12, mlife: 0.12, color: spec.accent, w: 2, bolt: true }); hit.add(nx); from = nx; } }
     }
-    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: dmg, splash: st.splash, slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4 }); Sound.cryo(); }
-    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: dmg, splash: st.splash, dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); Sound.gun(); }
+    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: dmg, splash: st.splash * splashMul(), slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4 }); Sound.cryo(); }
+    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: dmg, splash: st.splash * splashMul(), dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); Sound.gun(); }
   }
   function updProjs(dt) {
     for (const p of projs) {
@@ -5672,7 +5686,7 @@
     ctx.globalAlpha = 1;
   }
   function drawSelRange() {
-    if (S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r), range = tStats(t).range; ctx.fillStyle = C.range; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; ctx.beginPath(); ctx.arc(p.x, p.y, range, 0, 7); ctx.fill(); ctx.stroke(); }
+    if (S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r), range = tStats(t).range * rangeMul(); ctx.fillStyle = C.range; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; ctx.beginPath(); ctx.arc(p.x, p.y, range, 0, 7); ctx.fill(); ctx.stroke(); }
     if (S.selTile) { const cx = S.selTile.c * TILE, cy = S.selTile.r * TILE; ctx.fillStyle = "rgba(55,224,208,0.14)"; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; rr(cx + 4, cy + 4, TILE - 8, TILE - 8, 6); ctx.fill(); ctx.stroke(); }
   }
 
@@ -5948,7 +5962,7 @@
     ctx.fillStyle = C.neonC; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("TARGET ▸ " + TARGET_LABEL[t.mode], tmX + tmW / 2, tmY);
     trayBtns.push({ x: tmX, y: tmY - 9, w: tmW, h: tmH + 2, action: "target" });
 
-    const sell = Math.round(towerSpent(t) * SELL_REFUND);
+    const sell = Math.round(towerSpent(t) * sellRefund());
     const y = PLAY_BOTTOM + 66, bh = 40, ux = 12;
     if (t.lvl === 1) {
       // branch choice: two specialization buttons
@@ -5994,7 +6008,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.3 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.4 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6174,9 +6188,9 @@
     if (sy < PLAY_BOTTOM) return;
     for (const b of trayBtns) {
       if (!inBox(sx, sy, b)) continue;
-      if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range }; }
-      else if (b.action === "upgrade" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower]; if (t.lvl < 1) { const p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].levels[t.lvl + 1].range }; } }
-      else if (b.action === "branch" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].branches[b.branch].range }; }
+      if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range * rangeMul() }; }
+      else if (b.action === "upgrade" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower]; if (t.lvl < 1) { const p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].levels[t.lvl + 1].range * rangeMul() }; } }
+      else if (b.action === "branch" && S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[t.type].branches[b.branch].range * rangeMul() }; }
       return;
     }
   }
@@ -6225,7 +6239,7 @@
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
     } else if (b.action === "sell") {
       const t = towers[S.selTower];
-      S.scrap += Math.round(towerSpent(t) * SELL_REFUND);
+      S.scrap += Math.round(towerSpent(t) * sellRefund());
       towers.splice(S.selTower, 1); S.selTower = null; Sound.sell();
     } else if (b.action === "target") {
       const t = towers[S.selTower]; t.mode = TARGET_MODES[(TARGET_MODES.indexOf(t.mode) + 1) % TARGET_MODES.length]; Sound.place();
@@ -6966,7 +6980,7 @@
         preFill.position.set(pv.x, 1.3, pv.y); preFill.scale.setScalar(pv.range);
       }
       if (S.selTower != null && towers[S.selTower]) {
-        const t = towers[S.selTower], p = center(t.c, t.r), rng = tStats(t).range;
+        const t = towers[S.selTower], p = center(t.c, t.r), rng = tStats(t).range * rangeMul();
         selRing.visible = selFill.visible = true;
         selRing.material.opacity = 0.45 + 0.2 * Math.sin(S.time * 5);
         selRing.position.set(p.x, 1.2, p.y); selRing.scale.setScalar(rng);
