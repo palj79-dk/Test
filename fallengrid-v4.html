@@ -5994,7 +5994,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.2 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.3 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6003,7 +6003,7 @@
         ${Store.get("camp", 0) > 0 ? `<button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
         <button class="btn" id="e">∞ Endless</button>
         <button class="btn" id="a">⬡ Armory</button>
-        <button class="btn" id="h">Field Manual</button>
+        <button class="btn" id="h">📖 Codex</button>
         <button class="btn" id="ach">🏆 Achievements · ${Ach.count()}/${ACH.length}</button>
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
@@ -6043,16 +6043,52 @@
       TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); }; });
       byId("b").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "howto") {
-      show(`<div class="panel"><h2>Field Manual</h2><ul class="how">
+      const tab = S.codexTab || "guide";
+      const ROLE = {
+        turret: "reliable single-target; Gatling shreds swarms, Breacher pierces armor & air",
+        cryo: "slows a cluster (ground only); Glacier near-freezes, Shatter crushes slowed foes",
+        mortar: "explosive splash vs armor & packs; can't hit flyers; Carpet widens, Buster is siege",
+        tesla: "long-range energy, hits air, strips shields; Arc-Coil chains 3, Railgun snipes",
+      };
+      const THREAT = {
+        stalker: "Fast, fragile scout. — Counter: any rapid-fire tower (Gatling).",
+        raider: "Balanced infantry. — Counter: anything.",
+        brute: "Heavy, slow bruiser. — Counter: splash & high damage.",
+        sentinel: "◆ ARMOR — shrugs off kinetic. — Counter: Explosive (Mortar) or a Piercing branch.",
+        wraith: "◆ FLYING — hovers over the ground. — Counter: only Auto-Gun & Tesla can hit it.",
+        warden: "◆ SHIELD 60 — regenerating barrier. — Counter: energy (Cryo, Tesla) strips shields fast.",
+        mender: "Heals nearby allies every few seconds. — Counter: focus it first with STRONGEST targeting.",
+        splitter: "Bursts into 3 Spawnlings when killed. — Counter: kill it early, or let it leak (it only splits on death).",
+        spawnling: "Fast fragment spawned by a dying Splitter. — Counter: mop up with rapid fire.",
+        juggernaut: "◆ BOSS · SHIELD 420 — the wave's anchor. — Counter: energy to strip the shield, then sustained fire.",
+      };
+      let body;
+      if (tab === "tw") {
+        const tri = `<div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0;line-height:1.5">◆ <b>Kinetic</b> is weak vs armor · ◆ <b>Explosive</b> is strong vs armor · ◆ <b>Energy</b> strips shields · only <b>Auto-Gun</b> & <b>Tesla</b> hit flyers.</div>`;
+        body = tri + TOWER_ORDER.map((k) => { const t = TOWERS[k], l = t.levels[0], a = t.branches.a, b = t.branches.b;
+          return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">◆ ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
+        }).join("");
+      } else if (tab === "en") {
+        body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","juggernaut"].map((k) => { const e = ENEMIES[k];
+          return `<div class="tal" style="display:block;text-align:left"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div>`;
+        }).join("");
+      } else {
+        body = `<ul class="how">
         <li><b>Build</b> on open ground, then <b>upgrade</b> — level 3 splits into two <b>specializations</b>, so choose.</li>
-        <li><b>Menders</b> heal packs (focus them with STRONGEST targeting) and <b>Splitters</b> burst into spawnlings. <b>Campaign</b> plays all maps in sequence; progress is saved.</li>
-        <li><b>Counter their kind:</b> <b>armored</b> foes shrug off kinetic Auto-Gun (use Mortar or a Piercing branch); <b>shielded</b> foes melt to energy (Cryo, Tesla); <b>flyers</b> are hit only by Auto-Gun and Tesla.</li>
+        <li><b>Counter their kind</b> — see the <b>Towers</b> and <b>Threats</b> tabs for the full matchup chart.</li>
         <li><b>Airstrike:</b> tap <b>✷</b>, then a target zone, for armor-piercing burst damage on a cooldown.</li>
         <li><b>Commander:</b> tap <b>⚑</b> then a plot to deploy your hero — it auto-fires, levels up from the fight, and its <b>Pulse</b> stuns and blasts nearby foes.</li>
+        <li><b>Daily Op</b> is a fresh seeded challenge each day — build a streak. <b>Campaign</b> plays all maps in sequence.</li>
         <li><b>Camera:</b> pinch to zoom, drag to pan, or use the on-screen controls.</li>
         <li>Clear 20 waves to win, or push your luck in <b>Endless</b>. Each run earns <b>Alloy</b> for permanent <b>Armory</b> upgrades.</li>
         <li>Lose all <b>Core</b> integrity and the reactor falls.</li>
-      </ul><button class="btn primary" id="b">Back</button></div>`);
+      </ul>`;
+      }
+      const tb = (id, lbl) => `<button class="btn small ${tab === id ? "active" : ""}" id="cx_${id}" style="flex:1">${lbl}</button>`;
+      show(`<div class="panel"><h2>Codex</h2><div class="row" style="margin-bottom:10px">${tb("guide","Guide")}${tb("tw","Towers")}${tb("en","Threats")}</div><div style="max-height:54vh;overflow-y:auto">${body}</div><button class="btn primary" id="b">Back</button></div>`);
+      byId("cx_guide").onclick = () => { S.codexTab = "guide"; render(); };
+      byId("cx_tw").onclick = () => { S.codexTab = "tw"; render(); };
+      byId("cx_en").onclick = () => { S.codexTab = "en"; render(); };
       byId("b").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "playing") hide();
     else if (S.screen === "paused") {
