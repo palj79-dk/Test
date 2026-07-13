@@ -4116,7 +4116,9 @@
   const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
-  const NEXT_WAVE_COUNTDOWN = 6;
+  const NEXT_WAVE_COUNTDOWN = 12;
+  // deploy the next wave early → bonus scrap scaled by the countdown time you forfeit
+  const earlyCallBonus = () => Math.round(S.countdown * (2 + Math.min(S.wave, 15) * 0.5));
 
   /* ---------------- META-PROGRESSION ---------------- */
   // Persistent talents bought with Alloy earned each run (retention layer, via Store).
@@ -4571,7 +4573,7 @@
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
     S.scrap = Math.round((START_SCRAP + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
-    S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0;
+    S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null;
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = [];
@@ -4635,7 +4637,7 @@
   function startWave() {
     if (S.waveActive || (!S.endless && S.wave >= TOTAL_WAVES)) return;
     S.wave++; S.queue = waveComp(S.wave).map((e) => ({ ...e, t: e.delay })); spawnIdx = 0;
-    S.waveActive = true; S.countdown = 0; S.selTile = null; S.selTower = null;
+    S.waveActive = true; S.countdown = 0; S.selTile = null; S.selTower = null; S.pending = null;
     const final = !S.endless && S.wave === TOTAL_WAVES;
     S.banner = { text: final ? "FINAL WAVE" : "WAVE " + S.wave + " INCOMING", t: 1.9 };
     Sound.wave();
@@ -5883,7 +5885,7 @@
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
       ctx.save(); ctx.shadowColor = C.neonC; ctx.shadowBlur = 5 + pulse * 8; ctx.fillStyle = C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
       ctx.fillStyle = "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
-      ctx.fillText(S.countdown > 0 ? "▶ DEPLOY  " + Math.ceil(S.countdown) + "s" : "▶ START WAVE " + (S.wave + 1), nwX + nwW / 2, rowY);
+      ctx.fillText(S.countdown > 0 ? "▶ DEPLOY " + Math.ceil(S.countdown) + "s  +" + earlyCallBonus() : "▶ START WAVE " + (S.wave + 1), nwX + nwW / 2, rowY);
       hudBtns.push({ id: "nextwave", x: nwX - 6, y: nwY - 4, w: nwW + 12, h: nwH + 8 });
     } else if (S.waveActive) {
       ctx.fillStyle = "rgba(255,255,255,0.05)"; rr(nwX, nwY, nwW, nwH, 4); ctx.fill();
@@ -5965,6 +5967,54 @@
   }
 
   /* ---------- TRAY (bottom sheet) ---------- */
+  // resolve the before/after stats + cost + label for whatever is pending confirmation
+  function pendingInfo() {
+    const pd = S.pending; if (!pd) return null;
+    if (pd.kind === "build") { const sp = TOWERS[pd.tower]; return { sp, tp: pd.tower, lvl: 0, branch: null, cur: null, next: sp.levels[0], cost: sp.levels[0].cost, verb: "BUILD", name: sp.name }; }
+    const t = towers[pd.tower]; if (!t) return null; const sp = TOWERS[t.type];
+    if (pd.kind === "upgrade") { const next = t.lvl < 1 ? sp.levels[t.lvl + 1] : sp.branches[t.branch].t4; const cost = t.lvl < 1 ? sp.levels[t.lvl + 1].cost : sp.branches[t.branch].t4.cost; return { sp, tp: t.type, t, lvl: t.lvl + 1, branch: t.branch, cur: tStats(t), next, cost, verb: "UPGRADE → L" + (t.lvl + 2), name: t.branch ? sp.branches[t.branch].name : sp.name }; }
+    const br = sp.branches[pd.branch]; return { sp, tp: t.type, t, lvl: 2, branch: pd.branch, cur: tStats(t), next: br, cost: br.cost, verb: "SPECIALIZE", name: br.name };
+  }
+  const _dps = (x) => x && x.dmg && x.rate ? Math.round(x.dmg / (x.rate / 1000) * (x.splash ? 1.5 : 1)) : 0;
+  function specialTags(x) {
+    const out = []; if (x.pierce) out.push("PIERCE"); if (x.chain) out.push("CHAIN " + x.chain);
+    if (x.splash) out.push("SPLASH " + x.splash); if (x.slow) out.push("SLOW " + Math.round(x.slow * 100) + "%");
+    if (x.burn) out.push("BURN"); if (x.shatter) out.push("SHATTER"); return out.join(" · ");
+  }
+  function drawConfirm() {
+    trayBtns = [];
+    const info = pendingInfo();
+    if (!info) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
+    const sp = info.sp, cur = info.cur, nx = info.next, af = S.scrap >= info.cost;
+    // persistent range ring on the target plot
+    let pl = null;
+    if (S.pending.kind === "build" && S.selTile) pl = center(S.selTile.c, S.selTile.r);
+    else if (info.t) pl = center(info.t.c, info.t.r);
+    if (pl) S.rangePreview = { x: pl.x, y: pl.y, range: nx.range * rangeMul() };
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillStyle = sp.accent; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(info.verb, 12, PLAY_BOTTOM + 13);
+    drawTowerArt(30, PLAY_BOTTOM + 40, info.tp, info.lvl, -Math.PI / 2, 0, 0, false, 0.58, info.branch);
+    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(info.name, 54, PLAY_BOTTOM + 28);
+    const dtCol = sp.dmgType === "kinetic" ? "#f2b23a" : sp.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("◆ " + sp.dmgType.toUpperCase(), 54, PLAY_BOTTOM + 41);
+    // stat line — show cur→next deltas for upgrades, plain values for a fresh build
+    const rt = (x) => (x.rate / 1000).toFixed(1);
+    const seg = cur
+      ? "DMG " + cur.dmg + "→" + nx.dmg + "   RNG " + cur.range + "→" + nx.range + "   " + rt(cur) + "→" + rt(nx) + "s   DPS " + _dps(cur) + "→" + _dps(nx)
+      : "DMG " + nx.dmg + "    RNG " + nx.range + "    " + rt(nx) + "s    ~" + _dps(nx) + " DPS";
+    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText(seg, 54, PLAY_BOTTOM + 54);
+    const tags = specialTags(nx); if (tags) { ctx.fillStyle = sp.accent; ctx.font = "700 8px ui-monospace, monospace"; ctx.fillText(tags, 54, PLAY_BOTTOM + 65); }
+    // confirm / cancel
+    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
+    ctx.fillStyle = af ? C.neonC : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
+    ctx.textAlign = "center"; ctx.fillStyle = af ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
+    ctx.fillText((S.pending.kind === "build" ? "✓ BUILD  ⚙" : "✓ CONFIRM  ⚙") + info.cost, 12 + cw / 2, by + bh / 2);
+    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
+    const xx = 12 + cw + 8, xw = W - xx - 12;
+    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
+    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+  }
   function drawTray(dt) {
     // slide animation
     if (S.sheetAnim < 1) S.sheetAnim = Math.min(1, S.sheetAnim + dt * 6);
@@ -5972,7 +6022,8 @@
     ctx.fillStyle = C.tray; ctx.fillRect(0, PLAY_BOTTOM, W, TRAY_H);
     ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.4; ctx.fillRect(0, PLAY_BOTTOM, W, 2); ctx.globalAlpha = 1;
     ctx.save(); ctx.translate(0, off); ctx.globalAlpha = S.sheetAnim;
-    if (S.selTower != null && towers[S.selTower]) drawTowerMenu();
+    if (S.pending) drawConfirm();
+    else if (S.selTower != null && towers[S.selTower]) drawTowerMenu();
     else if (S.selTile) drawBuildMenu();
     else drawTrayIdle();
     ctx.restore();
@@ -6054,7 +6105,7 @@
       ctx.fillStyle = upAfford ? C.neonC : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
       ctx.textAlign = "center"; ctx.fillStyle = canUp ? (upAfford ? "#06181a" : C.textDim) : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
       ctx.fillText(canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL", ux + bw / 2, y + bh / 2);
-      trayBtns.push({ x: ux, y, w: bw, h: bh, action: "upgrade", afford: upAfford });
+      trayBtns.push({ x: ux, y, w: bw, h: bh, action: "upgrade", afford: upAfford, canUp });
       const sx2 = ux + bw + 8;
       ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
       ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
@@ -6076,7 +6127,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.8 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.9 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6254,6 +6305,7 @@
   const inBox = (x, y, b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   // range preview: while a tray build/upgrade/branch button is pressed, show the resulting range ring
   function previewFromPoint(sx, sy) {
+    if (S.pending) return;
     S.rangePreview = null;
     if (sy < PLAY_BOTTOM) return;
     for (const b of trayBtns) {
@@ -6266,13 +6318,13 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") startWave(); else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (!S.waveActive && S.countdown > 0) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
-    for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = null; Sound.place(); } else Sound.err(); return; }
+    for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
     for (const b of heroBtns) if (inBox(x, y, b)) {
       if (S.heroArm) S.heroArm = false;
-      else if (!hero) { S.heroArm = true; S.strikeArm = false; S.selTile = S.selTower = null; Sound.place(); }
+      else if (!hero) { S.heroArm = true; S.strikeArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); }
       else if (hero.abil <= 0) doPulse(); else Sound.err();
       return;
     }
@@ -6284,7 +6336,8 @@
       else S.heroArm = false; return;
     }
     if (y >= PLAY_BOTTOM) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; }
-    // world tap
+    // world tap — cancels any pending confirm first
+    if (S.pending) { S.pending = null; S.rangePreview = null; }
     const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
     if (c < 0 || c >= COLS || r < 0 || r >= ROWS) { S.selTile = null; S.selTower = null; return; }
     const ex = towers.find((t) => t.c === c && t.r === r);
@@ -6292,21 +6345,43 @@
     else if (buildable(c, r)) { if (S.selTile && S.selTile.c === c && S.selTile.r === r) { S.selTile = null; } else { S.selTower = null; S.selTile = { c, r }; S.sheetAnim = 0; } }
     else { S.selTile = null; S.selTower = null; }
   }
+  function doPending() {
+    const pd = S.pending; if (!pd) return;
+    if (pd.kind === "build") {
+      const spec = TOWERS[pd.tower], cost = spec.levels[0].cost;
+      if (!S.selTile || S.scrap < cost) { Sound.err(); vibrate(40); return; }
+      const { c, r } = S.selTile; S.scrap -= cost;
+      towers.push({ c, r, type: pd.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
+      (S.builtTypes || (S.builtTypes = {}))[pd.tower] = 1;
+      S.selTile = null; Sound.place(); vibrate(18);
+    } else if (pd.kind === "upgrade") {
+      const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
+      const cost = t.lvl < 1 ? TOWERS[t.type].levels[t.lvl + 1].cost : TOWERS[t.type].branches[t.branch].t4.cost;
+      if (S.scrap < cost) { Sound.err(); vibrate(40); return; }
+      S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18);
+      const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 9);
+    } else if (pd.kind === "branch") {
+      const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
+      const br = TOWERS[t.type].branches[pd.branch];
+      if (S.scrap < br.cost) { Sound.err(); vibrate(40); return; }
+      S.scrap -= br.cost; t.lvl = 2; t.branch = pd.branch; Sound.up(); vibrate([12, 30]);
+      const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
+    }
+    S.pending = null; S.rangePreview = null;
+  }
   function trayAction(b) {
     if (b.action === "build") {
-      if (!b.afford) { Sound.err(); vibrate(40); return; }
-      const { c, r } = S.selTile, cost = TOWERS[b.tower].levels[0].cost; S.scrap -= cost;
-      towers.push({ c, r, type: b.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
-      (S.builtTypes || (S.builtTypes = {}))[b.tower] = 1;
-      S.selTile = null; Sound.place(); vibrate(18);
+      if (b.banned) { Sound.err(); vibrate(40); return; }
+      S.pending = { kind: "build", tower: b.tower }; Sound.place(); vibrate(8);
     } else if (b.action === "upgrade") {
-      if (!b.afford) { Sound.err(); vibrate(40); return; }
-      const t = towers[S.selTower], cost = t.lvl < 1 ? TOWERS[t.type].levels[t.lvl + 1].cost : TOWERS[t.type].branches[t.branch].t4.cost; S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18);
-      const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 9);
+      if (!b.canUp) { Sound.err(); vibrate(40); return; }
+      S.pending = { kind: "upgrade", tower: S.selTower }; Sound.place(); vibrate(8);
     } else if (b.action === "branch") {
-      if (!b.afford) { Sound.err(); vibrate(40); return; }
-      const t = towers[S.selTower], br = TOWERS[t.type].branches[b.branch]; S.scrap -= br.cost; t.lvl = 2; t.branch = b.branch; Sound.up(); vibrate([12, 30]);
-      const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
+      S.pending = { kind: "branch", tower: S.selTower, branch: b.branch }; Sound.place(); vibrate(8);
+    } else if (b.action === "confirm") {
+      doPending();
+    } else if (b.action === "cancel") {
+      S.pending = null; S.rangePreview = null; Sound.place();
     } else if (b.action === "sell") {
       const t = towers[S.selTower];
       S.scrap += Math.round(towerSpent(t) * sellRefund());
@@ -7398,7 +7473,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse, onBack, dailyConfig,
+    deployHero, doPulse, onBack, dailyConfig, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
