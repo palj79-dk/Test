@@ -4116,8 +4116,8 @@
   const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
-  const NEXT_WAVE_COUNTDOWN = 12;
-  // deploy the next wave early → bonus scrap scaled by the countdown time you forfeit
+  const WAVE_GAP = 20; // seconds from one wave launching to the next auto-launching (waves overlap under pressure)
+  // send the next wave early → bonus scrap scaled by the countdown time you forfeit
   const earlyCallBonus = () => Math.round(S.countdown * (2 + Math.min(S.wave, 15) * 0.5));
 
   /* ---------------- META-PROGRESSION ---------------- */
@@ -4573,7 +4573,7 @@
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
     S.scrap = Math.round((START_SCRAP + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
-    S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null;
+    S.countdown = WAVE_GAP; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null;
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = [];
@@ -4635,9 +4635,13 @@
     }
   }
   function startWave() {
-    if (S.waveActive || (!S.endless && S.wave >= TOTAL_WAVES)) return;
-    S.wave++; S.queue = waveComp(S.wave).map((e) => ({ ...e, t: e.delay })); spawnIdx = 0;
-    S.waveActive = true; S.countdown = 0; S.selTile = null; S.selTower = null; S.pending = null;
+    if (!S.endless && S.wave >= TOTAL_WAVES) return;
+    S.wave++;
+    // append this wave's spawns to whatever is still in flight, so waves overlap when sent early / under pressure
+    S.queue = S.queue.concat(waveComp(S.wave).map((e) => ({ ...e, t: e.delay, w: S.wave })));
+    S.waveActive = true; S.countdown = WAVE_GAP;
+    // survival salvage: paid for having outlasted the previous wave (wave 1 launch earns nothing yet)
+    if (S.wave > 1) S.scrap += Math.round((20 + (S.wave - 1) * 3) * waveBonusMul());
     const final = !S.endless && S.wave === TOTAL_WAVES;
     S.banner = { text: final ? "FINAL WAVE" : "WAVE " + S.wave + " INCOMING", t: 1.9 };
     Sound.wave();
@@ -4691,21 +4695,18 @@
 
   /* ---------------- UPDATE ---------------- */
   function updSpawns(dtMs) {
-    if (!S.waveActive) return;
     for (const s of S.queue) s.t -= dtMs;
     while (S.queue.length && S.queue[0].t <= 0) {
-      const s = S.queue.shift(), st = statsFor(s.type, S.wave);
+      const s = S.queue.shift(), st = statsFor(s.type, s.w || S.wave);
       st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd"); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
       const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
       enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6, revealed: 0 }, st));
     }
-    if (S.queue.length === 0 && enemies.length === 0 && S.waveActive) {
-      // Wave resolved. Keep the player's build/upgrade selection (focus stays on the build menu
-      // through the between-wave countdown). Softlock is still impossible: the Deploy control lives
-      // in the persistent HUD (checked first on tap) and the countdown auto-advances regardless.
-      S.waveActive = false; S.scrap += Math.round((20 + S.wave * 3) * waveBonusMul());
-      if (!S.endless && S.wave >= TOTAL_WAVES) { S.screen = "victory"; if (S.wave > S.high) { S.high = S.wave; Store.set("high", S.high); } awardAlloy(true); Sound.win(); }
-      else S.countdown = NEXT_WAVE_COUNTDOWN;
+    // combat is "active" while anything is spawning or on the field; the between-wave timer runs independently
+    S.waveActive = S.wave > 0 && (S.queue.length > 0 || enemies.length > 0);
+    // victory: every wave has been launched and the field is clear
+    if (!S.waveActive && S.wave > 0 && !S.endless && S.wave >= TOTAL_WAVES && S.screen === "playing") {
+      S.screen = "victory"; if (S.wave > S.high) { S.high = S.wave; Store.set("high", S.high); } awardAlloy(true); Sound.win();
     }
   }
   function updEnemies(dt) {
@@ -5874,23 +5875,28 @@
     ctx.fillStyle = C.textDim; ctx.fillRect(pX + 9, rowY - 5, 3, 10); ctx.fillRect(pX + 16, rowY - 5, 3, 10);
     hudBtns.push({ id: "pause", x: pX, y: rowY - 11, w: 28, h: 22 });
 
-    // next-wave control (persistent)
-    const canStart = !S.waveActive && (S.endless || S.wave < TOTAL_WAVES);
+    // next-wave control — the timer runs continuously; the button sends the next wave early (even mid-wave) for a bonus
+    const moreWaves = S.endless || S.wave < TOTAL_WAVES;
     const nwW = 156, nwX = W - nwW - 10, nwY = rowY - 10, nwH = 20;
-    if (canStart) {
-      // incoming preview
-      const counts = waveCounts(S.wave + 1); let px = nwX - 8, shown = 0; ctx.textAlign = "right";
-      const order = ["juggernaut", "splitter", "mender", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
-      for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
+    if (moreWaves) {
+      ctx.textAlign = "right";
+      if (S.waveActive) { // hostiles remaining on the field
+        ctx.fillStyle = C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("\u2620 " + (enemies.length + S.queue.length), nwX - 10, rowY);
+      } else {            // incoming-wave preview
+        const counts = waveCounts(S.wave + 1); let px = nwX - 8, shown = 0;
+        const order = ["juggernaut", "splitter", "phantom", "mender", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
+        for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
+      }
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
       ctx.save(); ctx.shadowColor = C.neonC; ctx.shadowBlur = 5 + pulse * 8; ctx.fillStyle = C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
       ctx.fillStyle = "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
-      ctx.fillText(S.countdown > 0 ? "▶ DEPLOY " + Math.ceil(S.countdown) + "s  +" + earlyCallBonus() : "▶ START WAVE " + (S.wave + 1), nwX + nwW / 2, rowY);
+      const bonus = S.wave >= 1 ? earlyCallBonus() : 0;
+      ctx.fillText(S.countdown > 0 ? "\u25B6 NEXT " + Math.ceil(S.countdown) + "s" + (bonus > 0 ? "  +" + bonus : "") : "\u25B6 DEPLOY", nwX + nwW / 2, rowY);
       hudBtns.push({ id: "nextwave", x: nwX - 6, y: nwY - 4, w: nwW + 12, h: nwH + 8 });
-    } else if (S.waveActive) {
+    } else { // all waves committed — mop-up counter
       ctx.fillStyle = "rgba(255,255,255,0.05)"; rr(nwX, nwY, nwW, nwH, 4); ctx.fill();
       ctx.fillStyle = C.textDim; ctx.font = "700 10px ui-monospace, monospace"; ctx.textAlign = "center";
-      ctx.fillText("HOSTILES  " + (enemies.length + S.queue.length), nwX + nwW / 2, rowY);
+      ctx.fillText("FINAL WAVE · \u2620 " + (enemies.length + S.queue.length), nwX + nwW / 2, rowY);
     }
   }
 
@@ -6127,7 +6133,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.9 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.10 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6318,7 +6324,7 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (!S.waveActive && S.countdown > 0) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
@@ -7400,7 +7406,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
-      if (!S.waveActive && (S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
       if (S.screen !== "playing") render();
     }
 
@@ -7469,7 +7475,7 @@
       for (; i < maxIters && S.screen === "playing"; i++) {
         stepSim(stepMs); const d = stepMs / 1000;
         if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
-        if (!S.waveActive && (S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
