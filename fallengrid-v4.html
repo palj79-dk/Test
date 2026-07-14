@@ -4111,12 +4111,16 @@
     splitter:   { hp: 110, speed: 60, reward: 16, r: 23, body: "#9a4a8a", dark: "#5c2a52", eye: "#ff9ae0", shape: "splitter", split: 3 },
     spawnling:  { hp: 14, speed: 138, reward: 2, r: 11, body: "#b06ab0", dark: "#6a3a66", eye: "#ffd2f2", shape: "stalker" },
     phantom:    { hp: 46, speed: 116, reward: 9, r: 15, body: "#586a86", dark: "#28323f", eye: "#a8e6ff", shape: "stalker", camo: true },
+    cinder:     { hp: 58, speed: 128, reward: 10, r: 16, body: "#e0663a", dark: "#7a2f1a", eye: "#ffd24a", shape: "stalker", slowResist: 1 },
+    insulator:  { hp: 128, speed: 66, reward: 15, r: 21, body: "#556a54", dark: "#2a352a", eye: "#b6ff8f", shape: "brute", energyResist: 0.6 },
     juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut", shield: 420 },
   };
-  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", juggernaut: "Juggernaut" };
+  const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", cinder: "Cinder", insulator: "Insulator", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const WAVE_GAP = 20; // seconds from one wave launching to the next auto-launching (waves overlap under pressure)
+  const SLOW_FLOOR = 0.3;   // enemies can never be slowed below 30% speed — stacking slow past 1-2 towers is wasted
+  const CONGEST_CAP = 45;   // auto wave-launch pauses while this many hostiles are already on the field (anti-spiral)
   // send the next wave early → bonus scrap scaled by the countdown time you forfeit
   const earlyCallBonus = () => Math.round(S.countdown * (2 + Math.min(S.wave, 15) * 0.5));
 
@@ -4390,6 +4394,8 @@
     const md = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // menders heal packs: focus-fire them
     const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
     const ph = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;     // phantoms (camo) force detection (Tesla / Hero)
+    const cn = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0;     // cinders — freeze-immune rushers, punish slow-stacking
+    const iu = n >= 10 ? Math.min(Math.floor((n - 7) / 3), 5) : 0;    // insulators — energy-resistant, punish mono-Tesla
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
@@ -4400,10 +4406,12 @@
     for (let i = 0; i < md; i++) seq.push("mender");
     for (let i = 0; i < sl; i++) seq.push("splitter");
     for (let i = 0; i < ph; i++) seq.push("phantom");
+    for (let i = 0; i < cn; i++) seq.push("cinder");
+    for (let i = 0; i < iu; i++) seq.push("insulator");
     const cm = modCount(), extraN = Math.round(seq.length * (cm - 1));
     for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
     seq.sort(() => Math.random() - 0.4);
-    const slow = { brute: 560, sentinel: 560, warden: 460, mender: 500, splitter: 560 };
+    const slow = { brute: 560, sentinel: 560, warden: 460, mender: 500, splitter: 560, insulator: 520 };
     let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += slow[type] || 380; }
     return list;
   }
@@ -4416,7 +4424,7 @@
     const sh = b.shield ? Math.round(b.shield * (1 + 0.12 * w)) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
       hp: Math.round(b.hp * hpMul), maxHp: Math.round(b.hp * hpMul), speed: b.speed * spMul, reward: Math.round(b.reward * rwMul),
-      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0, heal: b.heal || 0, split: b.split || 0, camo: !!b.camo };
+      armor: !!b.armor, flying: !!b.flying, shield: sh, shieldMax: sh, shieldCd: 0, heal: b.heal || 0, split: b.split || 0, camo: !!b.camo, slowResist: b.slowResist || 0, energyResist: b.energyResist || 0 };
   }
 
   /* ---------------- ENTITIES / STATE ---------------- */
@@ -4659,6 +4667,7 @@
     if (!e.alive) return;
     type = type || "kinetic";
     if (e.armor && !pierce) dmg *= type === "explosive" ? 1.2 : type === "kinetic" ? 0.4 : 1;
+    if (e.energyResist && type === "energy") dmg *= 1 - e.energyResist;
     if (e.shieldMax) e.shieldCd = 0;
     // shield absorbs the hit; energy strips it fast, kinetic is inefficient against it
     if (e.shield > 0) {
@@ -4800,7 +4809,7 @@
       if (p.kind === "orb") {
         if (p.tx && p.tx.alive) { p.sx = p.tx.x; p.sy = p.tx.y; }
         const dx = p.sx - p.x, dy = p.sy - p.y, d = Math.hypot(dx, dy), step = p.speed * dt;
-        if (step >= d || d < 4) { explosion(p.sx, p.sy, p.splash, p.color); for (const e of enemies) { if (e.alive && !e.flying && Math.hypot(e.x - p.sx, e.y - p.sy) <= p.splash) { let dmg = p.dmg; if (p.shatter && (e.slowT > 0 || e.frost > 0.2)) dmg *= 1.9; hurt(e, dmg, p.dtype, p.pierce); e.slowT = 1.2; e.slowF = 1 - p.slow; } } p.life = 0; }
+        if (step >= d || d < 4) { explosion(p.sx, p.sy, p.splash, p.color); for (const e of enemies) { if (e.alive && !e.flying && Math.hypot(e.x - p.sx, e.y - p.sy) <= p.splash) { let dmg = p.dmg; if (p.shatter && (e.slowT > 0 || e.frost > 0.2)) dmg *= 1.9; hurt(e, dmg, p.dtype, p.pierce); const sl = p.slow * (1 - (e.slowResist || 0)); if (sl > 0.01) { e.slowT = 1.2; e.slowF = Math.max(SLOW_FLOOR, 1 - sl); } } } p.life = 0; }
         else { p.x += (dx / d) * step; p.y += (dy / d) * step; }
       } else if (p.kind === "lob") {
         p.t += dt / p.dur;
@@ -5884,7 +5893,7 @@
         ctx.fillStyle = C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("\u2620 " + (enemies.length + S.queue.length), nwX - 10, rowY);
       } else {            // incoming-wave preview
         const counts = waveCounts(S.wave + 1); let px = nwX - 8, shown = 0;
-        const order = ["juggernaut", "splitter", "phantom", "mender", "sentinel", "warden", "brute", "wraith", "raider", "stalker"];
+        const order = ["juggernaut", "splitter", "phantom", "insulator", "mender", "sentinel", "warden", "cinder", "brute", "wraith", "raider", "stalker"];
         for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
       }
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
@@ -6133,7 +6142,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V4.10 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.0 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6200,6 +6209,8 @@
         mender: "Heals nearby allies every few seconds. — Counter: focus it first with STRONGEST targeting.",
         splitter: "Bursts into 3 Spawnlings when killed. — Counter: kill it early, or let it leak (it only splits on death).",
         spawnling: "Fast fragment spawned by a dying Splitter. — Counter: mop up with rapid fire.",
+        cinder: "◆ FREEZE-IMMUNE — ignores all slow; Cryo/Glacier cannot touch its speed. — Counter: raw firepower & overlapping coverage, not stalling.",
+        insulator: "◆ ENERGY-RESIST — takes only ~40% from energy (Tesla, Cryo). — Counter: kinetic (Auto-Gun) or explosive (Mortar, Pyre).",
         phantom: "◆ CAMO — cloaked; towers cannot target it until it is revealed. — Counter: keep a Rail-Tesla or the Hero nearby (they reveal camo foes for every tower) — an airstrike reveals too.",
         juggernaut: "◆ BOSS · SHIELD 420 — the wave's anchor. — Counter: energy to strip the shield, then sustained fire.",
       };
@@ -6210,7 +6221,7 @@
           return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">◆ ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
         }).join("");
       } else if (tab === "en") {
-        body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","juggernaut"].map((k) => { const e = ENEMIES[k];
+        body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","cinder","insulator","juggernaut"].map((k) => { const e = ENEMIES[k];
           return `<div class="tal" style="display:block;text-align:left"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div>`;
         }).join("");
       } else {
@@ -7361,7 +7372,9 @@
         const o = enemyObjs.get(e); if (!o) continue;
         const p = project(e.x, (e._gy || 0) + (e.flying ? FLY_H : 0) + o.bodyH + 3, e.y);
         if (p.y < PLAY_TOP + 4 || p.y > PLAY_BOTTOM || p.x < -20 || p.x > W + 20) continue;
-        const w = Math.max(14, e.r * 2 * cam.zoom * 0.8), ratio = Math.max(0, e.hp / e.maxHp);
+        const ratio = Math.max(0, e.hp / e.maxHp), shieldPartial = e.shieldMax && e.shield < e.shieldMax;
+        if (ratio >= 1 && !shieldPartial) continue;  // undamaged foes show no bar → no growing "green wall" at crowded gates
+        const w = Math.max(14, e.r * 2 * cam.zoom * 0.8);
         ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(p.x - w / 2 - 1, p.y - 1, w + 2, 5);
         ctx.fillStyle = ratio > 0.5 ? C.hpGood : ratio > 0.25 ? C.hpMid : C.hpLow; ctx.fillRect(p.x - w / 2, p.y, w * ratio, 3);
         if (e.shieldMax) { const sf = Math.max(0, e.shield / e.shieldMax); ctx.fillStyle = "rgba(159,232,255,0.9)"; ctx.fillRect(p.x - w / 2, p.y - 3.5, w * sf, 2); }
@@ -7406,7 +7419,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
-      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
       if (S.screen !== "playing") render();
     }
 
@@ -7475,7 +7488,7 @@
       for (; i < maxIters && S.screen === "playing"; i++) {
         stepSim(stepMs); const d = stepMs / 1000;
         if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
-        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
