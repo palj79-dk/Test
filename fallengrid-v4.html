@@ -4452,7 +4452,7 @@
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
     strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0,
-    mapIndex: Store.get("map", 0), endless: false, campaign: false, isDaily: false,
+    mapIndex: Store.get("map", 0), endless: false, campaign: false, isDaily: false, isLab: false,
     highEndless: Store.get("highEndless", 0),
   };
   // three difficulty tiers: hp/speed multipliers, starting core, and the Alloy payout scale
@@ -4530,9 +4530,9 @@
     if (m.alloy) out.push(pct(m.alloy) + " Alloy");
     return out;
   }
-  function startChallenge(mod, mapIdx, diff, isDaily) {
+  function startChallenge(mod, mapIdx, diff, isDaily, isLab) {
     activeMod = mod || null;
-    S.isDaily = !!isDaily; S.endless = false; S.campaign = false;
+    S.isDaily = !!isDaily; S.isLab = !!isLab; S.endless = false; S.campaign = false;
     if (diff) { S.difficulty = diff; Store.set("difficulty", diff); }
     S.mapIndex = mapIdx; selectMap(mapIdx);
     reset(); S.screen = "playing"; render();
@@ -4594,7 +4594,7 @@
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0) + (victory && S.isDaily ? 80 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul()));
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1)));
     Meta.add(S.lastAlloy);
     if (victory && S.isDaily) Daily.complete();
   }
@@ -6215,7 +6215,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.2 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.3 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6223,6 +6223,7 @@
         <button class="btn" id="cp">⚔ Campaign · Mission ${Math.min(Store.get("camp", 0), MAPS.length - 1) + 1}/${MAPS.length}</button>
         ${Store.get("camp", 0) > 0 ? `<button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
         <button class="btn" id="e">∞ Endless</button>
+        <button class="btn" id="lab">🧪 Challenge Lab</button>
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">📖 Codex</button>
         <button class="btn" id="ach">🏆 Achievements · ${Ach.count()}/${ACH.length}</button>
@@ -6243,10 +6244,11 @@
         <div class="row"><button class="btn small ghost" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ghost" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
         <div class="row"><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
-      byId("p").onclick = () => { S.endless = false; S.campaign = false; S.isDaily = false; activeMod = null; reset(); S.screen = "playing"; render(); };
+      byId("p").onclick = () => { S.endless = false; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
       byId("dl").onclick = () => { S.dailyDiff = null; S.screen = "daily"; render(); };
-      byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; activeMod = null; S.mapIndex = Math.min(Store.get("camp", 0), MAPS.length - 1); selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
-      byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; activeMod = null; reset(); S.screen = "playing"; render(); };
+      byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; S.mapIndex = Math.min(Store.get("camp", 0), MAPS.length - 1); selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
+      byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
+      byId("lab").onclick = () => { S.screen = "lab"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       byId("ach").onclick = () => { S.screen = "ach"; render(); };
@@ -6354,8 +6356,8 @@
       const vTag = S.isDaily ? `${dailyConfig().mod.name} · 🔥 streak ${Daily.activeStreak()} · ${S.kills} neutralized` : `All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized`;
       show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
-      byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
-      byId("r").onclick = () => { S.endless = false; S.isDaily = false; activeMod = null; reset(); S.screen = "playing"; render(); };
+      byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
+      byId("r").onclick = () => { S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "ach") {
@@ -6379,6 +6381,31 @@
         <button class="btn ghost" id="bk">Back</button></div>`);
       DIFF_ORDER.forEach((d) => { const el = byId("dd_" + d); if (el) el.onclick = () => { S.dailyDiff = d; render(); }; });
       byId("go").onclick = () => { startChallenge(mod, c.map, S.dailyDiff, true); };
+      byId("bk").onclick = () => { S.screen = "menu"; render(); };
+    } else if (S.screen === "lab") {
+      if (S.labMod === undefined) S.labMod = "none";
+      if (S.labMap == null) S.labMap = S.mapIndex;
+      if (!S.labDiff) S.labDiff = S.difficulty || "normal";
+      const mod = S.labMod === "none" ? null : MODIFIERS.find((m) => m.id === S.labMod);
+      const effs = mod ? modEffects(mod).map((e) => `<li>${e}</li>`).join("") : "<li>Standard rules — no modifier</li>";
+      const modOpts = `<option value="none" ${S.labMod === "none" ? "selected" : ""}>Standard (no modifier)</option>` + MODIFIERS.map((m) => `<option value="${m.id}" ${S.labMod === m.id ? "selected" : ""}>${m.name}</option>`).join("");
+      const mapOpts = MAPS.map((m, i) => `<option value="${i}" ${S.labMap === i ? "selected" : ""}>${m.name}  ${"\u2605".repeat(m.diff)}</option>`).join("");
+      show(`<div class="panel"><h2>Challenge Lab</h2>
+        <div class="sub" style="margin-bottom:8px">Any modifier · map · difficulty — 50% Alloy · no streak</div>
+        <div class="sub" style="margin:6px 0 2px;text-align:left">Modifier</div>
+        <select id="lab_mod" class="mapsel">${modOpts}</select>
+        <div style="border:1px solid #2c3a42;border-radius:4px;padding:9px 11px;margin:6px 0;background:#12181d;text-align:left"><ul class="how" style="margin:0 0 0 2px">${effs}</ul></div>
+        <div class="sub" style="margin:4px 0 2px;text-align:left">Map</div>
+        <select id="lab_map" class="mapsel">${mapOpts}</select>
+        <div class="sub" style="margin:8px 0 4px">Difficulty</div>
+        <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.labDiff === d ? "active" : ""}" id="ld_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
+        ${S.labDiff === "custom" ? `<div class="sub" style="margin:2px 0 0">uses your Custom sliders (set on the main menu)</div>` : ""}
+        <button class="btn primary" id="go">\u25b6 Deploy</button>
+        <button class="btn ghost" id="bk">Back</button></div>`);
+      byId("lab_mod").onchange = (ev) => { S.labMod = ev.target.value; render(); };
+      byId("lab_map").onchange = (ev) => { S.labMap = +ev.target.value; render(); };
+      DIFF_ORDER.forEach((d) => { const el = byId("ld_" + d); if (el) el.onclick = () => { S.labDiff = d; render(); }; });
+      byId("go").onclick = () => { startChallenge(mod, S.labMap, S.labDiff, false, true); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
     }
   }
@@ -7576,7 +7603,7 @@
     const s = S.screen;
     if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
     if (s === "paused") { S.screen = "playing"; render(); return true; }
-    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
+    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
     return false; // main menu → let the OS decide (exit)
   }
   const Cap = window.Capacitor;
