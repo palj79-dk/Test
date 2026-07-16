@@ -296,6 +296,14 @@ Copied from `fallengrid-v3.html` (V3.6 art baseline) as **V4.0**; each solution 
 
 **How to use the log for balancing:** have the user play, open Play Log → Export JSON, and share the file. Key signals: per-wave `scrap`/`towers`/`core` curves (economy pacing & where core erodes), `byType`/`board` (which towers/branches dominate → mono-strategy check), `earlySends`/`overlapSends` (does the player use the tempo lever?), `leaks` vs `wave` (difficulty spikes), `custom` (what settings they gravitate to). Compare across `map`/`diff`/`mod` to spot outliers.
 
+**V5.6 — Late-game scrap sink + run summary + accessibility (Roadmap Iter 6 — completes the V5 line).**
+- **Core repair (scrap sink + comeback):** a HUD button (2nd row, next to pause) appears only while `S.core < S.coreMax` (max = starting core, captured in `reset()`); tap spends scrap to restore 1 core at a **rising price** `repairCost() = 50 + repairs·25 + floor(wave·3)`. Gives surplus late-game scrap a use and a comeback lever; logged to telemetry (`repairs`/`repairScrap`). New `Sound.repair()` chime + `+CORE` float.
+- **Run summary:** the victory/gameover panels now show a tempo line under the tag — `N towers · X early / Y overlap sends · Z leaks · [R repairs] · Ts` — read from the just-logged `Telemetry.runs[last]` (surfaces the early/overlap-send playstyle).
+- **Colour-blind cue:** damage type is now a distinct **glyph per type** (`DMG_SYM` — kinetic ◉, explosive ✸, energy ✦) on the tower menu, build/upgrade confirm, and Codex tags, so the counter-triangle reads by shape, not colour alone.
+- Verified (`verify56.py` + full `verify_core.py`): repair button hidden at full core, appears after damage, restores +1 core for the exact rising cost (65 then 90), telemetry counts it, hides again at max; run summary present on the victory panel with early/overlap/leaks; all three damage glyphs render in the Codex; regression all green, 0 page errors.
+
+**V5 "Balance & Challenge" line complete (Iters 1–6 shipped): V5.0 anti-slow/anti-mono + 2 foes; V5.0.1 diminishing frost; V5.1 frost on-hit + custom difficulty + alloy coupling + anti-snowball; V5.2 challenge modes + daily briefing; V5.3 challenge lab; V5.4 wave-1 manual + onboarding + frost readability; V5.5 telemetry; V5.6 scrap sink + summary + accessibility.** Backlog remaining: mid-run save/restore, expert-mode (skip build-confirm), second hero, full colour-blind toggle, GLTF art. Awaiting the player's exported play-log for data-driven tuning.
+
 ## 2.1 Where things are
 
 ```
@@ -508,7 +516,7 @@ Approved plan from player playtest feedback (mono Tesla-wall + Glacier-slow triv
 - **Iter 3 — V5.2 Challenge Modes engine + real Daily. ✅ SHIPPED** (see Part 5 V5.2 entry). Data-driven rule-changing modes (extend `activeMod` with `waveGap`/`income`/`allowedTowers`/`core`/`dmg` fields): Sudden Death, Fortress (high scrap, little income), Specialist (1–2 tower types), Glass Cannon, Deep Freeze / No Freeze, etc., each combinable with any map. **Daily shows a briefing screen** describing exactly what the mode changes *before* the run, and the **player picks the difficulty** (incl. Custom). Streak rule: a clear counts on any difficulty; alloy scales with the chosen difficulty via the Iter-2 score. A daily is never a random map played standard.
 - **Iter 4 — V5.3 Challenge Lab. ✅ SHIPPED** (see Part 5 V5.3 entry). Menu entry where the **player freely picks mode + map + difficulty** and plays it. Lab runs pay **50% alloy and no streak credit** (not a farm route). Mode descriptions shared with the daily briefing.
 - **Iter 5 — V5.4 Wave pacing + onboarding + slow readability. ✅ SHIPPED** (see Part 5 V5.4 entry). Wave 1 waits for manual deploy; refreshed coach-marks (early-send bonus, build-confirm, camo→Tesla/Hero, freeze-immune/energy-resist foes, on-hit frost); frost impact visuals that read as "slow landed"; Codex/stat wording updated to the on-hit + diminishing-stack semantics.
-- **Iter 6 — V5.5 Late-game scrap sink + polish.** Core-repair with rising price (also a comeback mechanic) and/or in-run overclock; run-summary screen incl. tempo stats ("sent X waves early, +Y scrap"); colour-blind-friendly damage-type cues; more SFX variety.
+- **Iter 6 — V5.6 Late-game scrap sink + polish. ✅ SHIPPED** (see Part 5 V5.6 entry). Core-repair with rising price (also a comeback mechanic) and/or in-run overclock; run-summary screen incl. tempo stats ("sent X waves early, +Y scrap"); colour-blind-friendly damage-type cues; more SFX variety.
 
 **Backlog (outside the V5 line):** mid-run save/restore (mobile sessions), "expert mode" toggle that skips the build-confirm, second hero.
 

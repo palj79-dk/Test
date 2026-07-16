@@ -4077,6 +4077,8 @@
       } },
   };
   const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla", "pyre"];
+  const DMG_SYM = { kinetic: "\u25c9", explosive: "\u2738", energy: "\u2726" }; // colour-blind: a distinct glyph per damage type
+  const repairCost = () => 50 + (S.repairs || 0) * 25 + Math.floor(S.wave * 3);
   const SELL_REFUND = 0.7;
   const TARGET_MODES = ["first", "strong", "close"];
   const TARGET_LABEL = { first: "FIRST", strong: "STRONGEST", close: "CLOSEST" };
@@ -4336,6 +4338,7 @@
       place: () => { osc(360, 0.1, "sine", 0.05, 620); osc(540, 0.1, "sine", 0.03, 900); },
       up: () => { osc(420, 0.1, "triangle", 0.05, 640); setTimeout(() => osc(660, 0.14, "triangle", 0.05, 900), 90); },
       sell: () => osc(420, 0.12, "sine", 0.05, 180),
+      repair: () => { osc(520, 0.13, "sine", 0.05, 900); osc(820, 0.16, "triangle", 0.03, 1200); },
       err: () => { osc(150, 0.14, "square", 0.05, 90); nz(0.08, 0.02, "lowpass", 600); },
       leak: () => { osc(300, 0.22, "sawtooth", 0.07, 150); nz(0.2, 0.05, "lowpass", 800); },
       shield: () => { osc(1400, 0.12, "sine", 0.04, 700); nz(0.1, 0.03, "bandpass", 5000, 4); },
@@ -4638,7 +4641,7 @@
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
         coreStart: S.core,
-        builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0,
+        builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
         earlySends: 0, overlapSends: 0, autoLaunches: 0, leaks: 0,
         waves: [], _t0: performance.now(),
       };
@@ -4675,7 +4678,7 @@
   function reset() {
     selectMap(S.mapIndex); // rebuilds path/decor/terrain only if the map changed
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
-    S.scrap = Math.round((baseStartScrap() + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.wave = 0; S.kills = 0;
+    S.scrap = Math.round((baseStartScrap() + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
@@ -6033,6 +6036,15 @@
     ctx.fillStyle = "rgba(255,255,255,0.05)"; rr(pX, rowY - 9, 28, 18, 4); ctx.fill();
     ctx.fillStyle = C.textDim; ctx.fillRect(pX + 9, rowY - 5, 3, 10); ctx.fillRect(pX + 16, rowY - 5, 3, 10);
     hudBtns.push({ id: "pause", x: pX, y: rowY - 11, w: 28, h: 22 });
+    // core repair — spend surplus scrap to restore integrity (rising price); only below the run's max
+    if (S.screen === "playing" && S.core < (S.coreMax || S.core)) {
+      const rcost = repairCost(), rx = pX + 36, rw = 74, afford = S.scrap >= rcost;
+      ctx.fillStyle = afford ? "rgba(143,224,74,0.18)" : "rgba(255,255,255,0.05)"; rr(rx, rowY - 9, rw, 18, 4); ctx.fill();
+      ctx.strokeStyle = afford ? "rgba(143,224,74,0.45)" : "rgba(255,255,255,0.08)"; ctx.lineWidth = 1; rr(rx, rowY - 9, rw, 18, 4); ctx.stroke();
+      coreIcon(rx + 11, rowY, 5, afford ? "#8fe04a" : C.textDim);
+      ctx.fillStyle = afford ? "#8fe04a" : C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.fillText("+ \u2699" + rcost, rx + 19, rowY);
+      hudBtns.push({ id: "repair", x: rx - 2, y: rowY - 11, w: rw + 4, h: 22 });
+    }
 
     // next-wave control — the timer runs continuously; the button sends the next wave early (even mid-wave) for a bonus
     const moreWaves = S.endless || S.wave < TOTAL_WAVES;
@@ -6161,7 +6173,7 @@
     drawTowerArt(30, PLAY_BOTTOM + 40, info.tp, info.lvl, -Math.PI / 2, 0, 0, false, 0.58, info.branch);
     ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(info.name, 54, PLAY_BOTTOM + 28);
     const dtCol = sp.dmgType === "kinetic" ? "#f2b23a" : sp.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
-    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("◆ " + sp.dmgType.toUpperCase(), 54, PLAY_BOTTOM + 41);
+    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[sp.dmgType] + " " + sp.dmgType.toUpperCase(), 54, PLAY_BOTTOM + 41);
     // stat line — show cur→next deltas for upgrades, plain values for a fresh build
     const rt = (x) => (x.rate / 1000).toFixed(1);
     const seg = cur
@@ -6238,7 +6250,7 @@
     ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, PLAY_BOTTOM + 28);
     // damage-type tag (teaches the counterplay triangle)
     const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
-    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("◆ " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, PLAY_BOTTOM + 40);
+    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, PLAY_BOTTOM + 40);
     // target mode toggle
     const tmX = 168, tmY = PLAY_BOTTOM + 34, tmW = 128, tmH = 16;
     ctx.fillStyle = "rgba(55,224,208,0.12)"; rr(tmX, tmY - 8, tmW, tmH, 3); ctx.fill();
@@ -6283,6 +6295,13 @@
   const show = (h) => { overlay.innerHTML = h; overlay.style.display = "flex"; };
   const hide = () => { overlay.style.display = "none"; overlay.innerHTML = ""; };
   const byId = (id) => document.getElementById(id);
+  function runSummary() {
+    const r = Telemetry.runs[Telemetry.runs.length - 1]; if (!r) return "";
+    const parts = [(r.board ? r.board.length : 0) + " towers", (r.earlySends || 0) + " early / " + (r.overlapSends || 0) + " overlap", (r.leaks || 0) + " leaks"];
+    if (r.repairs) parts.push(r.repairs + " repairs");
+    parts.push(Math.round((r.durationMs || 0) / 1000) + "s");
+    return `<div class="sub" style="margin:0 0 12px;text-transform:none;letter-spacing:0.4px;line-height:1.5">${parts.join(" \u00b7 ")}</div>`;
+  }
   function render() {
     if (S.screen === "playing") Sound.startMusic(); else Sound.stopMusic();
     if (S.screen === "menu") {
@@ -6292,7 +6311,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.5 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.6 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6389,7 +6408,7 @@
       if (tab === "tw") {
         const tri = `<div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0;line-height:1.5">◆ <b>Kinetic</b> is weak vs armor · ◆ <b>Explosive</b> is strong vs armor · ◆ <b>Energy</b> strips shields · only <b>Auto-Gun</b> & <b>Tesla</b> hit flyers.</div>`;
         body = tri + TOWER_ORDER.map((k) => { const t = TOWERS[k], l = t.levels[0], a = t.branches.a, b = t.branches.b;
-          return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">◆ ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
+          return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">${DMG_SYM[t.dmgType]} ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
         }).join("");
       } else if (tab === "en") {
         body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","cinder","insulator","juggernaut"].map((k) => { const e = ENEMIES[k];
@@ -6424,7 +6443,7 @@
     } else if (S.screen === "gameover") {
       runAchCheck(false);
       const where = S.endless ? `Endless wave ${S.wave}${S.wave >= S.highEndless ? " · new best" : ""}` : `wave ${S.wave} of ${TOTAL_WAVES}`;
-      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}<button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}<button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       byId("r").onclick = () => { reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
@@ -6435,7 +6454,7 @@
       const missionBtn = campNext ? `<button class="btn primary" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
       const vTitle = S.isDaily ? "Daily Op Cleared" : (S.campaign ? "Mission " + (S.mapIndex + 1) + " Secured" : "Grid Secured");
       const vTag = S.isDaily ? `${dailyConfig().mod.name} · 🔥 streak ${Daily.activeStreak()} · ${S.kills} neutralized` : `All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized`;
-      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p><div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
       byId("r").onclick = () => { S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
@@ -6567,7 +6586,7 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
