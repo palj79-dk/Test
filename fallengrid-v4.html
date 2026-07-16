@@ -4625,6 +4625,53 @@
     clampCam();
   }
 
+  // ---- Local play telemetry: one record per run in localStorage, exportable as JSON ----
+  const Telemetry = {
+    runs: Store.get("telemetry", []),
+    cur: null,
+    begin() {
+      const m = MAPS[S.mapIndex] || {};
+      this.cur = {
+        ts: Date.now(), ver: "5.5",
+        mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
+        mod: activeMod ? activeMod.id : null,
+        map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
+        diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
+        coreStart: S.core,
+        builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0,
+        earlySends: 0, overlapSends: 0, autoLaunches: 0, leaks: 0,
+        waves: [], _t0: performance.now(),
+      };
+    },
+    ev(k, n) { if (this.cur) this.cur[k] = (this.cur[k] || 0) + (n || 1); },
+    waveSnap() { if (!this.cur) return; this.cur.waves.push({ w: S.wave, scrap: S.scrap, towers: towers.length, core: S.core, hostiles: enemies.length + S.queue.length, kills: S.kills }); },
+    end(result) {
+      const c = this.cur; if (!c) return; this.cur = null;
+      c.result = result; c.wave = S.wave; c.kills = S.kills; c.coreEnd = S.core;
+      c.finalScrap = S.scrap; c.alloy = S.lastAlloy || 0; c.heroLvl = hero ? hero.lvl + 1 : 0;
+      c.durationMs = Math.round(performance.now() - c._t0); delete c._t0;
+      c.peakScrap = c.waves.reduce((mx, w) => Math.max(mx, w.scrap), S.scrap);
+      const byType = {}; c.board = towers.map((t) => { byType[t.type] = (byType[t.type] || 0) + 1; return { type: t.type, lvl: t.lvl, branch: t.branch || null, c: t.c, r: t.r }; });
+      c.byType = byType;
+      this.runs.push(c); if (this.runs.length > 60) this.runs = this.runs.slice(-60);
+      Store.set("telemetry", this.runs);
+    },
+    clear() { this.runs = []; this.cur = null; Store.set("telemetry", this.runs); },
+    summary() {
+      const r = this.runs, n = r.length, wins = r.filter((x) => x.result === "victory").length;
+      const avgWave = n ? Math.round(r.reduce((a, x) => a + (x.wave || 0), 0) / n * 10) / 10 : 0;
+      return { n, wins, winPct: n ? Math.round(wins / n * 100) : 0, avgWave };
+    },
+    exportJSON() {
+      try {
+        const blob = new Blob([JSON.stringify(this.runs, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob), a = document.createElement("a");
+        a.href = url; a.download = "fallengrid-playlog-" + new Date().toISOString().slice(0, 10) + ".json";
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 200);
+      } catch (e) {}
+    },
+  };
   function reset() {
     selectMap(S.mapIndex); // rebuilds path/decor/terrain only if the map changed
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
@@ -4633,6 +4680,7 @@
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
+    Telemetry.begin();
     S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = [];
     fitCamera();
   }
@@ -4702,6 +4750,7 @@
     const final = !S.endless && S.wave === TOTAL_WAVES;
     S.banner = { text: final ? "FINAL WAVE" : "WAVE " + S.wave + " INCOMING", t: 1.9 };
     Sound.wave();
+    Telemetry.waveSnap();
   }
 
   /* ---------------- FX ---------------- */
@@ -4765,7 +4814,7 @@
     S.waveActive = S.wave > 0 && (S.queue.length > 0 || enemies.length > 0);
     // victory: every wave has been launched and the field is clear
     if (!S.waveActive && S.wave > 0 && !S.endless && S.wave >= TOTAL_WAVES && S.screen === "playing") {
-      S.screen = "victory"; if (S.wave > S.high) { S.high = S.wave; Store.set("high", S.high); } awardAlloy(true); Sound.win();
+      S.screen = "victory"; if (S.wave > S.high) { S.high = S.wave; Store.set("high", S.high); } awardAlloy(true); Telemetry.end("victory"); Sound.win();
     }
   }
   // V5.1 frost rework (player feedback): slow requires the SHOT to land — no passive aura.
@@ -4807,7 +4856,7 @@
       if (e.burn) { e.burn.t -= dt; if (e.burn.t <= 0) e.burn = null; else { hurt(e, e.burn.dps * dt, e.burn.dtype || "explosive", e.burn.pierce); if (Math.random() < dt * 5) burst(e.x, e.y - 4, "#ff7a34", 1); if (!e.alive) continue; } }
       if (e.stunT > 0) { e.stunT -= dt; continue; } // airstrike stun: hold position
       const slowed = e.slowT > 0, spd = e.speed * (slowed ? e.slowF : 1), tgt = ROUTES[e.route][e.pi + 1];
-      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; S.leaked = true; Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
+      if (!tgt) { e.alive = false; S.core -= e.type === "juggernaut" ? 6 : (e.type === "brute" || e.type === "sentinel" || e.type === "warden") ? 2 : 1; S.leaked = true; Telemetry.ev("leaks"); Sound.leak(); vibrate(55); doShake(e.type === "juggernaut" ? 8 : 3, 0.25); screenFlash = 0.5; continue; }
       const dx = tgt.x - e.x, dy = tgt.y - e.y, d = Math.hypot(dx, dy);
       if (d > 0.001) { const want = Math.atan2(dy, dx); let diff = want - e.face; while (diff > Math.PI) diff -= 6.283; while (diff < -Math.PI) diff += 6.283; e.face += diff * Math.min(1, dt * 9); e.bank = clamp((e.bank || 0) + (diff - (e.bank || 0)) * Math.min(1, dt * 6), -0.5, 0.5); }
       const step = spd * dt;
@@ -4817,7 +4866,7 @@
       if (step >= d) { e.x = tgt.x; e.y = tgt.y; e.pi++; } else { e.x += (dx / d) * step; e.y += (dy / d) * step; }
     }
     enemies = enemies.filter((e) => e.alive);
-    if (S.core <= 0) { S.core = 0; S.screen = "gameover"; if (S.endless && S.wave > S.highEndless) { S.highEndless = S.wave; Store.set("highEndless", S.highEndless); } awardAlloy(false); Sound.lose(); vibrate([80, 60, 80]); doShake(11, 0.5); }
+    if (S.core <= 0) { S.core = 0; S.screen = "gameover"; if (S.endless && S.wave > S.highEndless) { S.highEndless = S.wave; Store.set("highEndless", S.highEndless); } awardAlloy(false); Telemetry.end("gameover"); Sound.lose(); vibrate([80, 60, 80]); doShake(11, 0.5); }
   }
   // L3 stats come from the chosen branch; levels[2] is a fallback if somehow unbranched
   const tStats = (t) => { const sp = TOWERS[t.type]; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; return (t.lvl >= 3 && br.t4) ? br.t4 : br; } return sp.levels[t.lvl]; };
@@ -6243,7 +6292,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.4 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.5 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
@@ -6255,6 +6304,7 @@
         <button class="btn" id="a">⬡ Armory</button>
         <button class="btn" id="h">📖 Codex</button>
         <button class="btn" id="ach">🏆 Achievements · ${Ach.count()}/${ACH.length}</button>
+        <button class="btn" id="log">📊 Play Log · ${Telemetry.runs.length}</button>
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
@@ -6280,6 +6330,7 @@
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       byId("ach").onclick = () => { S.screen = "ach"; render(); };
+      byId("log").onclick = () => { S.screen = "log"; render(); };
       byId("mapsel").onchange = (ev) => { const i = +ev.target.value; S.mapIndex = i; Store.set("map", i); selectMap(i); render(); };
       DIFF_ORDER.forEach((d) => { byId("df_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
       if (S.difficulty === "custom") {
@@ -6437,6 +6488,22 @@
       DIFF_ORDER.forEach((d) => { const el = byId("ld_" + d); if (el) el.onclick = () => { S.labDiff = d; render(); }; });
       byId("go").onclick = () => { startChallenge(mod, S.labMap, S.labDiff, false, true); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
+    } else if (S.screen === "log") {
+      const sm = Telemetry.summary();
+      const rows = Telemetry.runs.slice(-14).reverse().map((r) => {
+        const res = r.result === "victory" ? "\u2726" : "\u2622";
+        const tw = r.board ? r.board.length : 0;
+        return `<div class="tal" style="display:block;text-align:left"><b>${res} ${r.map} · ${r.diff}${r.mod ? " · " + r.mod : ""}</b><div class="sub" style="margin:2px 0 0;text-transform:none;letter-spacing:0">wave ${r.wave || 0} · ${r.kills || 0} kills · ${tw} towers · \u2b21${r.alloy || 0} · early ${r.earlySends || 0}/overlap ${r.overlapSends || 0} · ${Math.round((r.durationMs || 0) / 1000)}s</div></div>`;
+      }).join("") || `<div class="sub" style="margin:16px 0">No runs logged yet — play a round.</div>`;
+      show(`<div class="panel"><h2>Play Log</h2>
+        <div class="wallet">${sm.n} runs · ${sm.winPct}% win · avg wave ${sm.avgWave}</div>
+        <div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0">Stored locally on this device. Export the JSON to share it.</div>
+        <div style="max-height:44vh;overflow-y:auto">${rows}</div>
+        <button class="btn primary" id="exp">\u2913 Export JSON</button>
+        <div class="row"><button class="btn small ghost" id="clr">Clear Log</button><button class="btn small ghost" id="m">Back</button></div></div>`);
+      byId("exp").onclick = () => Telemetry.exportJSON();
+      byId("clr").onclick = () => { if (confirm("Clear the local play log?")) { Telemetry.clear(); render(); } };
+      byId("m").onclick = () => { S.screen = "menu"; render(); };
     }
   }
 
@@ -6500,7 +6567,7 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
@@ -6532,7 +6599,7 @@
     if (pd.kind === "build") {
       const spec = TOWERS[pd.tower], cost = spec.levels[0].cost;
       if (!S.selTile || S.scrap < cost) { Sound.err(); vibrate(40); return; }
-      const { c, r } = S.selTile; S.scrap -= cost;
+      const { c, r } = S.selTile; S.scrap -= cost; Telemetry.ev("builds"); Telemetry.ev("scrapSpent", cost);
       towers.push({ c, r, type: pd.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
       (S.builtTypes || (S.builtTypes = {}))[pd.tower] = 1;
       S.selTile = null; Sound.place(); vibrate(18);
@@ -6540,13 +6607,13 @@
       const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
       const cost = t.lvl < 1 ? TOWERS[t.type].levels[t.lvl + 1].cost : TOWERS[t.type].branches[t.branch].t4.cost;
       if (S.scrap < cost) { Sound.err(); vibrate(40); return; }
-      S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18);
+      S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18); Telemetry.ev("upgrades"); Telemetry.ev("scrapSpent", cost);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 9);
     } else if (pd.kind === "branch") {
       const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
       const br = TOWERS[t.type].branches[pd.branch];
       if (S.scrap < br.cost) { Sound.err(); vibrate(40); return; }
-      S.scrap -= br.cost; t.lvl = 2; t.branch = pd.branch; Sound.up(); vibrate([12, 30]);
+      S.scrap -= br.cost; t.lvl = 2; t.branch = pd.branch; Sound.up(); vibrate([12, 30]); Telemetry.ev("branches"); Telemetry.ev("scrapSpent", br.cost);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
     }
     S.pending = null; S.rangePreview = null;
@@ -6566,7 +6633,7 @@
       S.pending = null; S.rangePreview = null; Sound.place();
     } else if (b.action === "sell") {
       const t = towers[S.selTower];
-      S.scrap += Math.round(towerSpent(t) * sellRefund());
+      S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells");
       towers.splice(S.selTower, 1); S.selTower = null; Sound.sell();
     } else if (b.action === "target") {
       const t = towers[S.selTower]; t.mode = TARGET_MODES[(TARGET_MODES.indexOf(t.mode) + 1) % TARGET_MODES.length]; Sound.place();
@@ -7584,7 +7651,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
-      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       if (S.screen !== "playing") render();
     }
 
@@ -7634,7 +7701,7 @@
     const s = S.screen;
     if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
     if (s === "paused") { S.screen = "playing"; render(); return true; }
-    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
+    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "log" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
     return false; // main menu → let the OS decide (exit)
   }
   const Cap = window.Capacitor;
@@ -7654,11 +7721,11 @@
       for (; i < maxIters && S.screen === "playing"; i++) {
         stepSim(stepMs); const d = stepMs / 1000;
         if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
-        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; startWave(); } }
+        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
+    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
