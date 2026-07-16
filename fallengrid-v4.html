@@ -4156,6 +4156,12 @@
     buy(id) { if (this.maxed(id)) return false; const c = this.nextCost(id); if (this.alloy < c) return false; this.alloy -= c; this.talents[id] = this.lvl(id) + 1; this.save(); return true; },
     add(n) { this.alloy += n; this.save(); },
   };
+  // V6.0 dynamic scaling: enemies scale with how much permanent power you've bought, so a maxed
+  // account stays challenged (0 for a fresh account = no change). 0..1 = fraction of talent levels owned.
+  const THREAT_HP = 0.85, THREAT_SPD = 0.12;   // at full threat: +85% enemy HP, +12% speed
+  const threatLevel = () => Math.min(1, TALENT_ORDER.reduce((a, id) => a + Meta.lvl(id), 0) / (TALENT_ORDER.length * 3));
+  const threatHpMul = () => 1 + threatLevel() * THREAT_HP;
+  const threatSpdMul = () => 1 + threatLevel() * THREAT_SPD;
   const dmgMul = () => (1 + Meta.val("dmg")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
   const rewardMul = () => 1 + Meta.val("reward");
   const waveBonusMul = () => 1 + Meta.val("waveb");
@@ -4540,7 +4546,7 @@
     S.mapIndex = mapIdx; selectMap(mapIdx);
     reset(); S.screen = "playing"; render();
   }
-  const diffMul = () => diffCfg().hp * modv("hp");
+  const diffMul = () => diffCfg().hp * modv("hp") * threatHpMul();
   // ---- V4.2 Achievements: run-end + armory evaluation against cumulative + run stats ----
   const ACH = [
     { id: "win1",     name: "First Blood",     desc: "Win any run",                         test: (c) => c.won },
@@ -4597,7 +4603,7 @@
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0) + (victory && S.isDaily ? 80 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1)));
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1) * (1 + threatLevel() * 0.4)));
     Meta.add(S.lastAlloy);
     if (victory && S.isDaily) Daily.complete();
   }
@@ -4808,7 +4814,7 @@
     for (const s of S.queue) s.t -= dtMs;
     while (S.queue.length && S.queue[0].t <= 0) {
       const s = S.queue.shift(), st = statsFor(s.type, s.w || S.wave);
-      st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd"); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
+      st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd") * threatSpdMul(); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
       const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
       enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6, revealed: 0 }, st));
       queueTip(s.type);
@@ -6021,6 +6027,7 @@
     ctx.fillStyle = C.textDim; ctx.font = "700 8px system-ui"; ctx.fillText("CORE", 122, 30);
     ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "700 8px system-ui"; ctx.fillText(S.endless ? "ENDLESS" : "WAVE", W - 14, 11);
     ctx.fillStyle = C.text; ctx.font = "800 16px ui-monospace, Menlo, monospace"; ctx.fillText(S.endless ? String(S.wave) : S.wave + " / " + TOTAL_WAVES, W - 14, 24);
+    if (threatLevel() > 0) { ctx.textAlign = "center"; ctx.fillStyle = "#f2643a"; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("\u26a0 +" + Math.round(threatLevel() * THREAT_HP * 100) + "%", 190, 13); ctx.fillStyle = C.textDim; ctx.font = "700 7px system-ui"; ctx.fillText("THREAT", 190, 23); }
 
     // second row
     hudBtns = [];
@@ -6311,9 +6318,10 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V5.6 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.0 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
+        ${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 10px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
         <button class="btn" id="dl">◈ Daily Op · ${MAPS[dcfg.map].name} · ${dcfg.mod.name}${dDone ? " ✓" : ""}${dStk ? " · 🔥" + dStk : ""}</button>
         <button class="btn" id="cp">⚔ Campaign · Mission ${Math.min(Store.get("camp", 0), MAPS.length - 1) + 1}/${MAPS.length}</button>
@@ -6475,6 +6483,7 @@
           <div class="sub" style="margin:4px 0 8px;text-transform:none;letter-spacing:0">${mod.desc}</div>
           <ul class="how" style="margin:0 0 0 2px">${effs}</ul>
         </div>
+        ${threatLevel() > 0 ? `<div class="sub" style="margin:2px 0 6px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP (your Armory)</div>` : ""}
         <div class="sub" style="margin:8px 0 4px">Choose Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.dailyDiff === d ? "active" : ""}" id="dd_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
         <button class="btn primary" id="go">\u25b6 Deploy Daily</button>
@@ -7744,7 +7753,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
+    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, threatLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
