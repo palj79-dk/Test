@@ -6302,6 +6302,24 @@
   const show = (h) => { overlay.innerHTML = h; overlay.style.display = "flex"; };
   const hide = () => { overlay.style.display = "none"; overlay.innerHTML = ""; };
   const byId = (id) => document.getElementById(id);
+  // ---- Codex art: render towers via drawTowerArt to a data-URL; reuse the baked enemy body sprites ----
+  const THUMBS = {};
+  function towerThumb(type, lvl, branch) {
+    const key = "tw" + type + lvl + (branch || "");
+    if (THUMBS[key]) return THUMBS[key];
+    const cv = document.createElement("canvas"); cv.width = 96; cv.height = 96;
+    const g = cv.getContext("2d"), old = ctx; ctx = g;
+    try { drawTowerArt(48, 62, type, lvl, -Math.PI / 2, 0, 0, false, 1.12, branch); } catch (e) {} finally { ctx = old; }
+    return (THUMBS[key] = cv.toDataURL());
+  }
+  function enemyThumb(type) {
+    const key = "en" + type; if (THUMBS[key]) return THUMBS[key];
+    const sp = SPRITES.get("en_" + type);
+    return (THUMBS[key] = sp ? sp.cv.toDataURL() : "");
+  }
+  const cxDps = (x) => (x && x.dmg && x.rate) ? Math.round(x.dmg / (x.rate / 1000) * (x.splash ? 1.5 : 1)) : 0;
+  function cxSpec(x) { const o = []; if (x.pierce) o.push("PIERCE"); if (x.chain) o.push("CHAIN " + x.chain); if (x.splash) o.push("SPL " + x.splash); if (x.slow) o.push("SLOW " + Math.round(x.slow * 100) + "%"); if (x.burn) o.push("BURN"); if (x.shatter) o.push("SHATTER"); return o.join(" \u00b7 "); }
+  function cxStat(x) { const sp = cxSpec(x); return "DMG " + x.dmg + " \u00b7 RNG " + x.range + " \u00b7 " + (x.rate / 1000).toFixed(1) + "s \u00b7 ~" + cxDps(x) + " DPS" + (sp ? " \u00b7 " + sp : ""); }
   function runSummary() {
     const r = Telemetry.runs[Telemetry.runs.length - 1]; if (!r) return "";
     const parts = [(r.board ? r.board.length : 0) + " towers", (r.earlySends || 0) + " early / " + (r.overlapSends || 0) + " overlap", (r.leaks || 0) + " leaks"];
@@ -6318,7 +6336,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.0 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.1 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 10px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}
@@ -6415,12 +6433,14 @@
       let body;
       if (tab === "tw") {
         const tri = `<div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0;line-height:1.5">◆ <b>Kinetic</b> is weak vs armor · ◆ <b>Explosive</b> is strong vs armor · ◆ <b>Energy</b> strips shields · only <b>Auto-Gun</b> & <b>Tesla</b> hit flyers.</div>`;
-        body = tri + TOWER_ORDER.map((k) => { const t = TOWERS[k], l = t.levels[0], a = t.branches.a, b = t.branches.b;
-          return `<div class="tal" style="display:block;text-align:left"><b style="color:${t.accent}">${t.name}</b> <span class="sub" style="text-transform:uppercase">${DMG_SYM[t.dmgType]} ${t.dmgType}</span><div class="sub" style="margin:3px 0;text-transform:none;letter-spacing:0">DMG ${l.dmg} · RNG ${l.range} · ${(l.rate / 1000).toFixed(1)}s — ${ROLE[k]}</div><div class="sub" style="margin:0;text-transform:none;letter-spacing:0">↳ <b>${a.name}</b> (⚙${a.cost}): ${a.desc}  ·  ↳ <b>${b.name}</b> (⚙${b.cost}): ${b.desc}</div></div>`;
+        body = tri + TOWER_ORDER.map((k) => { const t = TOWERS[k], L = t.levels, a = t.branches.a, b = t.branches.b;
+          const img = (lvl, br, sz) => `<img src="${towerThumb(k, lvl, br)}" width="${sz}" height="${sz}" style="flex:0 0 auto">`;
+          const brBlk = (br, bk) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">${img(2, bk, 46)}<div style="min-width:0;flex:1"><b style="color:${t.accent}">${br.name}</b> <span class="sub" style="margin:0">L3 ⚙${br.cost}${br.t4 ? " · L4 ⚙" + br.t4.cost : ""}</span><div class="sub" style="margin:2px 0 0;text-transform:none;letter-spacing:0">${br.desc}</div><div class="sub" style="margin:2px 0 0;text-transform:none;letter-spacing:0">L3 · ${cxStat(br)}</div>${br.t4 ? `<div class="sub" style="margin:1px 0 0;text-transform:none;letter-spacing:0">L4 · ${cxStat(br.t4)}</div>` : ""}</div></div>`;
+          return `<div class="tal" style="display:block;text-align:left"><div style="display:flex;gap:10px;align-items:center">${img(0, null, 54)}<div style="min-width:0;flex:1"><b style="color:${t.accent};font-size:14px">${t.name}</b> <span class="sub" style="text-transform:uppercase">${DMG_SYM[t.dmgType]} ${t.dmgType}</span><div class="sub" style="margin:2px 0 0;text-transform:none;letter-spacing:0">${ROLE[k]}</div></div></div><div class="sub" style="margin:6px 0 0;text-transform:none;letter-spacing:0">L1 · ${cxStat(L[0])} (⚙${L[0].cost})</div><div class="sub" style="margin:1px 0 0;text-transform:none;letter-spacing:0">L2 · ${cxStat(L[1])} (⚙${L[1].cost})</div><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;color:#8a969c">▸ L3 specialises — choose one:</div>${brBlk(a, "a")}${brBlk(b, "b")}</div>`;
         }).join("");
       } else if (tab === "en") {
         body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","cinder","insulator","juggernaut"].map((k) => { const e = ENEMIES[k];
-          return `<div class="tal" style="display:block;text-align:left"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div>`;
+          return `<div class="tal" style="display:flex;gap:10px;align-items:flex-start;text-align:left"><img src="${enemyThumb(k)}" width="46" height="46" style="flex:0 0 auto"><div style="min-width:0;flex:1"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div></div>`;
         }).join("");
       } else {
         body = `<ul class="how">
