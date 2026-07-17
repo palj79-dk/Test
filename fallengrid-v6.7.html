@@ -6577,7 +6577,7 @@
         const tier = medalTier(), perfect = !S.leaked;
         if (tier) {
           const up = Medals.record(S.mapIndex, tier, perfect), g = Medals.get(S.mapIndex);
-          if (up.newTier) { const bonus = [0, 100, 250, 500][tier]; Meta.add(bonus); S.medalMsg = MEDAL_GLYPH[tier] + " " + MEDAL_NAME[tier] + " medal earned! +" + bonus + " ⬡" + (perfect ? " ✦" : ""); }
+          if (up.newTier) { const bonus = [0, 100, 250, 500][tier]; Meta.add(bonus); S.lastAlloy += bonus; S.medalMsg = MEDAL_GLYPH[tier] + " " + MEDAL_NAME[tier] + " medal earned! +" + bonus + " ⬡" + (perfect ? " ✦" : ""); }
           else if (up.newPerfect) S.medalMsg = MEDAL_GLYPH[tier] + "✦ Perfect " + MEDAL_NAME[tier] + " clear!";
           else S.medalMsg = MEDAL_GLYPH[g.t] + " " + MEDAL_NAME[g.t] + (g.p >= g.t ? " ✦" : "") + " (best kept)";
         }
