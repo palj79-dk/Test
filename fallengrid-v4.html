@@ -4145,15 +4145,27 @@
     pulse:  { name: "Overcharge",     desc: "Pulse Cooldown",      vals: [2, 4, 6],          costs: [50, 110, 190], fmt: (v) => "-" + v + "s" },
   };
   const TALENT_ORDER = ["scrap", "core", "dmg", "rate", "range", "splash", "reward", "sell", "alloyf", "waveb", "strike", "hero", "hrate", "pulse"];
+  // V6.1.1 DEV: force the Armory to 0% / 50% / 100% to test balance without touching the saved
+  // account. Overrides Meta.lvl - so all talent power AND the Threat Level follow - and locks buys.
+  let devTalents = null, devArmory = null;
+  function setDevArmory(f) {
+    devArmory = f; Store.set("devArmory", f);
+    if (f == null) { devTalents = null; return; }
+    const o = {}; TALENT_ORDER.forEach((id) => { o[id] = 0; });
+    let left = Math.round(TALENT_ORDER.length * 3 * f);
+    for (let l = 0; l < 3 && left > 0; l++) for (const id of TALENT_ORDER) { if (left <= 0) break; if (o[id] <= l) { o[id]++; left--; } }
+    devTalents = o;
+  }
+  setDevArmory(Store.get("devArmory", null));
   const Meta = {
     alloy: Store.get("alloy", 0),
     talents: Store.get("talents", {}),
-    lvl(id) { return this.talents[id] || 0; },
+    lvl(id) { return devTalents ? devTalents[id] : (this.talents[id] || 0); },
     val(id) { const l = this.lvl(id); return l > 0 ? TALENTS[id].vals[l - 1] : 0; },
     maxed(id) { return this.lvl(id) >= TALENTS[id].vals.length; },
     nextCost(id) { return this.maxed(id) ? null : TALENTS[id].costs[this.lvl(id)]; },
     save() { Store.set("alloy", this.alloy); Store.set("talents", this.talents); },
-    buy(id) { if (this.maxed(id)) return false; const c = this.nextCost(id); if (this.alloy < c) return false; this.alloy -= c; this.talents[id] = this.lvl(id) + 1; this.save(); return true; },
+    buy(id) { if (devTalents) return false; if (this.maxed(id)) return false; const c = this.nextCost(id); if (this.alloy < c) return false; this.alloy -= c; this.talents[id] = this.lvl(id) + 1; this.save(); return true; },
     add(n) { this.alloy += n; this.save(); },
   };
   // V6.0 dynamic scaling: enemies scale with how much permanent power you've bought, so a maxed
@@ -4641,12 +4653,12 @@
     begin() {
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "5.5",
+        ts: Date.now(), ver: "6.1.1",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
-        coreStart: S.core,
+        coreStart: S.core, dev: devArmory, threat: Math.round(threatLevel() * 100) / 100,
         builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
         earlySends: 0, overlapSends: 0, autoLaunches: 0, leaks: 0,
         waves: [], _t0: performance.now(),
@@ -6336,9 +6348,10 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.1 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.1.1 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
+        ${devArmory != null ? `<div class="sub" style="margin:-6px 0 10px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV \u00b7 Armory forced to ${Math.round(devArmory * 100)}% \u2014 purchases locked</div>` : ""}
         ${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 10px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}
         <button class="btn primary" id="p">Deploy · 20 Waves</button>
         <button class="btn" id="dl">◈ Daily Op · ${MAPS[dcfg.map].name} · ${dcfg.mod.name}${dDone ? " ✓" : ""}${dStk ? " · 🔥" + dStk : ""}</button>
@@ -6366,6 +6379,8 @@
           </div>`; })() : ""}
         <div class="row"><button class="btn small ghost" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ghost" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
         <div class="row"><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
+        <div class="sub" style="margin:10px 0 4px">Dev \u00b7 Armory Override</div>
+        <div class="row">${[["OFF", null], ["0%", 0], ["50%", 0.5], ["100%", 1]].map(([lb, v], i) => `<button class="btn small ${devArmory === v ? "active" : "ghost"}" id="dv_${i}" style="padding:8px 2px;font-size:10.5px;letter-spacing:1px">${lb}</button>`).join("")}</div>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
       byId("p").onclick = () => { S.endless = false; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
       byId("dl").onclick = () => { S.dailyDiff = null; S.screen = "daily"; render(); };
@@ -6389,6 +6404,7 @@
       byId("v").onclick = () => { const nv = !Haptics.isOn(); Haptics.toggle(nv); if (nv) vibrate(35); render(); };
       const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
       byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
+      [null, 0, 0.5, 1].forEach((v, i) => { byId("dv_" + i).onclick = () => { setDevArmory(v); render(); }; });
     } else if (S.screen === "armory") {
       const rows = TALENT_ORDER.map((id) => {
         const t = TALENTS[id], lvl = Meta.lvl(id), maxed = Meta.maxed(id), cost = Meta.nextCost(id);
@@ -6402,7 +6418,7 @@
           <button class="btn buy" id="b_${id}" ${dis}>${label}</button></div>`;
       }).join("");
       show(`<div class="panel"><h2>Armory</h2><div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
-        <p class="sub">Permanent upgrades · earned each run</p>${rows}
+        ${devArmory != null ? `<p class="sub" style="color:#f2b23a">\u{1F6E0} DEV override ${Math.round(devArmory * 100)}% \u2014 forced levels shown, buying locked</p>` : `<p class="sub">Permanent upgrades \u00b7 earned each run</p>`}${rows}
         <button class="btn primary" id="b">Back</button></div>`);
       TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); }; });
       byId("b").onclick = () => { S.screen = "menu"; render(); };
@@ -7761,7 +7777,7 @@
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D,
+  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
