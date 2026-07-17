@@ -4591,6 +4591,10 @@
     { id: "alloy1k",  name: "Industrialist",   desc: "Earn 1,000 total Alloy",              test: (c) => c.alloy >= 1000 },
     { id: "talent1",  name: "Requisition",     desc: "Max an Armory talent",                test: (c) => c.talentsMaxed >= 1 },
     { id: "talentall",name: "Enlightened",     desc: "Max every Armory talent",             test: (c) => c.talentsMaxed >= TALENT_ORDER.length },
+    { id: "medgold",  name: "Gold Standard",   desc: "Earn a Gold medal (clear a mission on Brutal)", test: (c) => c.campGold >= 1 },
+    { id: "medsilver",name: "Silver Grid",     desc: "Silver medal or better on every mission",       test: (c) => c.campMinTier >= 2 },
+    { id: "medgoldall",name: "Grid Master",    desc: "Gold medal on every mission",                   test: (c) => c.campMinTier >= 3 },
+    { id: "medperfect",name: "Untarnished",    desc: "Perfect Gold (no Core lost) on every mission",  test: (c) => c.campMinPerfect >= 3 },
   ];
   const Ach = {
     got: Store.get("ach", {}), stat: Store.get("astat", {}),
@@ -4598,11 +4602,30 @@
     count() { return ACH.filter((a) => this.got[a.id]).length; },
     unlock(id) { if (this.got[id]) return false; this.got[id] = 1; Store.set("ach", this.got); return true; },
   };
+  // V6.7 Campaign Mastery Medals: tier 1 Bronze (Normal) / 2 Silver (Hard) / 3 Gold (Brutal); a "perfect"
+  // (no-Core-lost) clear adds the ✦ mark. Per mission we keep the best tier (t) and the best perfect tier (p).
+  const MEDAL_GLYPH = ["", "🥉", "🥈", "🥇"], MEDAL_NAME = ["", "Bronze", "Silver", "Gold"];
+  const medalTier = (d) => ({ normal: 1, hard: 2, brutal: 3 })[d || S.difficulty] || 0;
+  const Medals = {
+    data: Store.get("medals", {}),
+    get(i) { return this.data[i] || { t: 0, p: 0 }; },
+    record(i, tier, perfect) {
+      const m = this.get(i), up = { newTier: tier > m.t, newPerfect: perfect && tier > m.p };
+      this.data[i] = { t: Math.max(m.t, tier), p: Math.max(m.p, perfect ? tier : 0) };
+      Store.set("medals", this.data); return up;
+    },
+    label(i) { const g = this.get(i); return g.t ? MEDAL_GLYPH[g.t] + (g.p >= g.t ? "✦" : "") : ""; },
+    goldCount() { let n = 0; for (const k in this.data) if (this.data[k].t >= 3) n++; return n; },
+    count() { let n = 0; for (const k in this.data) if (this.data[k].t >= 1) n++; return n; },
+    minTier() { let m = 3; for (let i = 0; i < MAPS.length; i++) m = Math.min(m, this.get(i).t); return m; },
+    minPerfect() { let m = 3; for (let i = 0; i < MAPS.length; i++) m = Math.min(m, this.get(i).p); return m; },
+  };
   function achCumulative() {
     const st = Ach.stat;
     return { kills: st.kills || 0, alloy: st.alloy || 0, wins: st.wins || 0,
       mapsBeat: Object.keys(st.maps || {}).length, talentsMaxed: TALENT_ORDER.filter((id) => Meta.maxed(id)).length,
-      endlessBest: S.highEndless || 0, campaignDone: Store.get("camp", 0) >= MAPS.length - 1, dailyStreak: Daily.activeStreak() };
+      endlessBest: S.highEndless || 0, campaignDone: Store.get("camp", 0) >= MAPS.length - 1, dailyStreak: Daily.activeStreak(),
+      campGold: Medals.goldCount(), campMinTier: Medals.minTier(), campMinPerfect: Medals.minPerfect() };
   }
   function evalAch(ctx) { const nw = []; for (const a of ACH) if (!Ach.has(a.id) && a.test(ctx)) { Ach.unlock(a.id); nw.push(a); } return nw; }
   function runAchCheck(won) {
@@ -4659,7 +4682,7 @@
     begin() {
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.1.1",
+        ts: Date.now(), ver: "6.7",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -4708,7 +4731,7 @@
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     Telemetry.begin();
-    S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = [];
+    S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = []; S.medalChecked = false; S.medalMsg = "";
     fitCamera();
   }
   // active ability: orbital airstrike. explosive + armor-piercing, hits air and ground, brief stun.
@@ -6355,11 +6378,11 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.6 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.7 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
-        <button class="btn primary" id="cp">⚔ Campaign · Mission ${campProg + 1}/${MAPS.length}</button>
+        <button class="btn primary" id="cp">⚔ Campaign · Mission ${campProg + 1}/${MAPS.length}${Medals.goldCount() ? " · 🥇" + Medals.goldCount() : ""}</button>
         <button class="btn" id="free">\u{1F5FA}️ Free Play</button>
         <button class="btn" id="dl">◈ Daily Op · ${MAPS[dcfg.map].name} · ${dcfg.mod.name}${dDone ? " ✓" : ""}${dStk ? " · \u{1F525}" + dStk : ""}</button>
         <button class="btn" id="lab">\u{1F9EA} Challenge Lab</button>
@@ -6367,7 +6390,7 @@
         <div class="row"><button class="btn small" id="ach">\u{1F3C6} ${Ach.count()}/${ACH.length}</button><button class="btn small" id="log">\u{1F4CA} Log · ${Telemetry.runs.length}</button></div>
         <button class="btn small ghost" id="set" style="margin-top:6px">⚙ Settings</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
-      byId("cp").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; S.mapIndex = campProg; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
+      byId("cp").onclick = () => { S.campSel = campProg; S.screen = "campaign"; render(); };
       byId("free").onclick = () => { S.screen = "freeplay"; render(); };
       byId("dl").onclick = () => { S.dailyDiff = null; S.screen = "daily"; render(); };
       byId("lab").onclick = () => { S.screen = "lab"; render(); };
@@ -6434,6 +6457,31 @@
       byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
       const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
       [null, 0, 0.5, 1].forEach((v, i) => { byId("dv_" + i).onclick = () => { setDevArmory(v); render(); }; });
+      byId("bk").onclick = () => { S.screen = "menu"; render(); };
+    } else if (S.screen === "campaign") {
+      const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
+      if (S.campSel == null || S.campSel > campProg) S.campSel = campProg;
+      if (S.difficulty === "custom") S.difficulty = "normal";
+      const sel = S.campSel, m = Medals.get(sel);
+      const rows = MAPS.map((mp, i) => {
+        const locked = i > campProg, g = Medals.get(i);
+        const med = g.t ? MEDAL_GLYPH[g.t] + (g.p >= g.t ? "✦" : "") : (locked ? "🔒" : "—");
+        return `<button class="btn small ${i === sel ? "active" : ""}" id="cm_${i}" ${locked ? "disabled" : ""} style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:9px 12px;${locked ? "opacity:0.45" : ""}"><span>${i + 1}. ${mp.name}</span><span style="font-size:14px">${med}</span></button>`;
+      }).join("");
+      show(`<div class="panel"><h2>Campaign</h2>
+        <div class="sub" style="margin:2px 0 8px;text-transform:none;letter-spacing:0.3px">${Medals.count()}/${MAPS.length} missions · 🥇${Medals.goldCount()}${Medals.count() === MAPS.length && Medals.minPerfect() >= 3 ? " · ✦ ALL PERFECT" : ""}</div>
+        <div style="max-height:36vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px">${rows}</div>
+        <div style="border-top:1px solid #2c3a42;margin:10px 0 0;padding-top:8px">
+          <div class="sub" style="margin:0 0 2px">Mission ${sel + 1} · ${MAPS[sel].name}</div>
+          <div class="sub" style="margin:0 0 6px;text-transform:none;letter-spacing:0.3px">Best: ${m.t ? MEDAL_GLYPH[m.t] + " " + MEDAL_NAME[m.t] + (m.p >= m.t ? " ✦ perfect" : "") : "not cleared"}</div>
+          <div class="row">${["normal", "hard", "brutal"].map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="cd_${d}" style="padding:10px 2px;font-size:10px;letter-spacing:0.5px">${DIFFS[d].label} ${MEDAL_GLYPH[medalTier(d)]}</button>`).join("")}</div>
+          ${(() => { const rec = { hard: 0.3, brutal: 0.7 }[S.difficulty]; if (rec == null) return ""; const cur = threatLevel(), ok = cur >= rec - 1e-9; return `<div class="sub" style="margin:4px 0 0;color:${ok ? "#37e0d0" : "#f2b23a"};text-transform:none;letter-spacing:0.3px">◇ ${ok ? DIFFS[S.difficulty].label + " — Armory " + Math.round(cur * 100) + "% ready" : DIFFS[S.difficulty].label + " tuned for ~" + Math.round(rec * 100) + "%+ Armory (you: " + Math.round(cur * 100) + "%)"}</div>`; })()}
+          <button class="btn primary" id="cgo" style="margin-top:8px">▶ Deploy Mission ${sel + 1}</button>
+        </div>
+        <button class="btn" id="bk">Back</button></div>`);
+      MAPS.forEach((mp, i) => { const el = byId("cm_" + i); if (el) el.onclick = () => { S.campSel = i; render(); }; });
+      ["normal", "hard", "brutal"].forEach((d) => { byId("cd_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
+      byId("cgo").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; S.mapIndex = S.campSel; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "armory") {
       const rows = TALENT_ORDER.map((id) => {
@@ -6522,13 +6570,23 @@
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "victory") {
-      runAchCheck(true);
       const campNext = S.campaign && S.mapIndex < MAPS.length - 1;
-      if (S.campaign) Store.set("camp", Math.min(S.mapIndex + 1, MAPS.length - 1));
+      if (S.campaign && !S.medalChecked) {
+        S.medalChecked = true;
+        Store.set("camp", Math.min(S.mapIndex + 1, MAPS.length - 1));
+        const tier = medalTier(), perfect = !S.leaked;
+        if (tier) {
+          const up = Medals.record(S.mapIndex, tier, perfect), g = Medals.get(S.mapIndex);
+          if (up.newTier) { const bonus = [0, 100, 250, 500][tier]; Meta.add(bonus); S.medalMsg = MEDAL_GLYPH[tier] + " " + MEDAL_NAME[tier] + " medal earned! +" + bonus + " ⬡" + (perfect ? " ✦" : ""); }
+          else if (up.newPerfect) S.medalMsg = MEDAL_GLYPH[tier] + "✦ Perfect " + MEDAL_NAME[tier] + " clear!";
+          else S.medalMsg = MEDAL_GLYPH[g.t] + " " + MEDAL_NAME[g.t] + (g.p >= g.t ? " ✦" : "") + " (best kept)";
+        }
+      }
+      runAchCheck(true);
       const missionBtn = campNext ? `<button class="btn primary" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
       const vTitle = S.isDaily ? "Daily Op Cleared" : (S.campaign ? "Mission " + (S.mapIndex + 1) + " Secured" : "Grid Secured");
       const vTag = S.isDaily ? `${dailyConfig().mod.name} · 🔥 streak ${Daily.activeStreak()} · ${S.kills} neutralized` : `All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized`;
-      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${S.medalMsg ? `<div class="wallet" style="color:#f2b23a">${S.medalMsg}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
       byId("r").onclick = () => { S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
@@ -7795,7 +7853,7 @@
     const s = S.screen;
     if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
     if (s === "paused") { S.screen = "playing"; render(); return true; }
-    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "log" || s === "freeplay" || s === "settings" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
+    if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "log" || s === "freeplay" || s === "settings" || s === "campaign" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
     return false; // main menu → let the OS decide (exit)
   }
   const Cap = window.Capacitor;
