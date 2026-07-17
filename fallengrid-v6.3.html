@@ -4122,7 +4122,9 @@
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const WAVE_GAP = 20; // seconds from one wave launching to the next auto-launching (waves overlap under pressure)
   const SLOW_ASYMPTOTE = 0.28, SLOW_STACK_K = 0.35; // landed frost hits stack with DIMINISHING returns toward this speed floor — each extra frost tower adds only a little
-  const CONGEST_CAP = 45;   // auto wave-launch pauses while this many hostiles are already on the field (anti-spiral)
+  const CONGEST_CAP = 45;   // wave launches (auto AND manual) pause while this many hostiles are already on the field (anti-spiral)
+  // V6.3 aggression risk: a wave sent BEFORE its timer expires arrives tougher, scaled by the fraction of the gap skipped.
+  const RUSH_HP = 0.35, RUSH_SPD = 0.10;   // at a full-timer send: +35% HP, +10% speed on that wave's spawns
   // send the next wave early → bonus scrap scaled by the countdown time you forfeit
   const earlyCallBonus = () => Math.round(S.countdown * (2 + Math.min(S.wave, 15) * 0.5) * Math.max(0, 1 - enemies.length / CONGEST_CAP) * modv("income"));
 
@@ -4660,7 +4662,7 @@
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
         coreStart: S.core, dev: devArmory, threat: Math.round(threatLevel() * 100) / 100,
         builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
-        earlySends: 0, overlapSends: 0, autoLaunches: 0, leaks: 0,
+        earlySends: 0, overlapSends: 0, autoLaunches: 0, satBlocks: 0, leaks: 0,
         waves: [], _t0: performance.now(),
       };
     },
@@ -4762,9 +4764,10 @@
   }
   function startWave() {
     if (!S.endless && S.wave >= TOTAL_WAVES) return;
+    const rush = Math.max(0, Math.min(1, S.countdown / waveGap()));   // >0 only when sent before the timer expired (0 for auto-launch / wave 1)
     S.wave++;
     // append this wave's spawns to whatever is still in flight, so waves overlap when sent early / under pressure
-    S.queue = S.queue.concat(waveComp(S.wave).map((e) => ({ ...e, t: e.delay, w: S.wave })));
+    S.queue = S.queue.concat(waveComp(S.wave).map((e) => ({ ...e, t: e.delay, w: S.wave, rush })));
     S.waveActive = true; S.countdown = waveGap(); if (S.wave === 1) queueTip("timer");
     // survival salvage: paid for having outlasted the previous wave (wave 1 launch earns nothing yet)
     if (S.wave > 1) S.scrap += Math.round((20 + (S.wave - 1) * 3) * waveBonusMul() * modv("income"));
@@ -4825,8 +4828,8 @@
   function updSpawns(dtMs) {
     for (const s of S.queue) s.t -= dtMs;
     while (S.queue.length && S.queue[0].t <= 0) {
-      const s = S.queue.shift(), st = statsFor(s.type, s.w || S.wave);
-      st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd") * threatSpdMul(); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
+      const s = S.queue.shift(), st = statsFor(s.type, s.w || S.wave), rush = s.rush || 0, rHp = 1 + rush * RUSH_HP, rSpd = 1 + rush * RUSH_SPD;
+      st.hp = Math.round(st.hp * diffMul() * rHp); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd") * threatSpdMul() * rSpd; if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul() * rHp); st.shieldMax = st.shield; }
       const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
       enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6, revealed: 0 }, st));
       queueTip(s.type);
@@ -6078,10 +6081,12 @@
         for (const tp of order) { if (!counts[tp] || shown >= 4) continue; const col = ENEMIES[tp].body; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px - 4, rowY, 4, 0, 7); ctx.fill(); ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("x" + counts[tp], px - 10, rowY); px -= 30; shown++; }
       }
       const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
-      ctx.save(); ctx.shadowColor = C.neonC; ctx.shadowBlur = 5 + pulse * 8; ctx.fillStyle = C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
-      ctx.fillStyle = "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
+      const saturated = enemies.length >= CONGEST_CAP && S.wave >= 1;
+      ctx.save(); ctx.shadowColor = saturated ? "transparent" : C.neonC; ctx.shadowBlur = saturated ? 0 : 5 + pulse * 8; ctx.fillStyle = saturated ? "#5a2a2a" : C.neonC; rr(nwX, nwY, nwW, nwH, 4); ctx.fill(); ctx.restore();
+      ctx.fillStyle = saturated ? "#ffd0d0" : "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
       const bonus = S.wave >= 1 ? earlyCallBonus() : 0;
-      ctx.fillText(S.countdown > 0 ? "\u25B6 NEXT " + Math.ceil(S.countdown) + "s" + (bonus > 0 ? "  +" + bonus : "") : "\u25B6 DEPLOY", nwX + nwW / 2, rowY);
+      const rushPct = (!saturated && S.countdown > 0 && S.wave >= 1) ? Math.round((S.countdown / waveGap()) * RUSH_HP * 100) : 0;
+      ctx.fillText(saturated ? "\u26A0 FIELD FULL" : (S.countdown > 0 ? "\u25B6 " + Math.ceil(S.countdown) + "s" + (bonus > 0 ? " +" + bonus : "") + (rushPct > 0 ? " \u26A0" + rushPct + "%" : "") : "\u25B6 DEPLOY"), nwX + nwW / 2, rowY);
       hudBtns.push({ id: "nextwave", x: nwX - 6, y: nwY - 4, w: nwW + 12, h: nwH + 8 });
     } else { // all waves committed — mop-up counter
       ctx.fillStyle = "rgba(255,255,255,0.05)"; rr(nwX, nwY, nwW, nwH, 4); ctx.fill();
@@ -6348,7 +6353,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.1.1 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.3 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${devArmory != null ? `<div class="sub" style="margin:-6px 0 10px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV \u00b7 Armory forced to ${Math.round(devArmory * 100)}% \u2014 purchases locked</div>` : ""}
@@ -6631,7 +6636,7 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
-    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
+    for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (enemies.length >= CONGEST_CAP && S.wave >= 1 && (S.endless || S.wave < TOTAL_WAVES)) { S.banner = { text: "FIELD SATURATED", t: 1.4 }; Telemetry.ev("satBlocks"); Sound.err(); vibrate(40); } else { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
