@@ -4067,7 +4067,7 @@
       levels: [ { cost: 95, dmg: 40, range: 215, rate: 1250 }, { cost: 85, dmg: 64, range: 235, rate: 1150 }, { cost: 130, dmg: 100, range: 258, rate: 980 } ],
       branches: {
         a: { name: "Arc-Coil", short: "ARC-COIL", desc: "chains + hits air", cost: 115, dmg: 58, range: 250, rate: 860, chain: 3, t4: { name: "Tempest", cost: 180, dmg: 96, range: 272, rate: 800, chain: 4 } },
-        b: { name: "Railgun", short: "RAILGUN", desc: "sniper nuke", cost: 155, dmg: 205, range: 320, rate: 1320, t4: { name: "Annihilator", cost: 240, dmg: 340, range: 352, rate: 1250 } },
+        b: { name: "Railgun", short: "RAILGUN", desc: "sniper nuke", cost: 155, dmg: 205, range: 320, rate: 1320, t4: { name: "Annihilator", cost: 275, dmg: 280, range: 352, rate: 1250 } },
       } },
     pyre:   { name: "Pyre", short: "PYRE", kind: "burn", dmgType: "explosive", metal: "#6a3a30", metalLt: "#8a5040", accent: "#ff7a34", desc: "burns clusters",
       levels: [ { cost: 80, dmg: 5, range: 96, rate: 260, burn: 3.0, burnT: 1.8 }, { cost: 70, dmg: 8, range: 104, rate: 240, burn: 3.6, burnT: 2.0 }, { cost: 95, dmg: 12, range: 112, rate: 220, burn: 4.4, burnT: 2.2 } ],
@@ -4114,14 +4114,14 @@
     spawnling:  { hp: 14, speed: 138, reward: 2, r: 11, body: "#b06ab0", dark: "#6a3a66", eye: "#ffd2f2", shape: "stalker" },
     phantom:    { hp: 46, speed: 116, reward: 9, r: 15, body: "#586a86", dark: "#28323f", eye: "#a8e6ff", shape: "stalker", camo: true },
     cinder:     { hp: 58, speed: 128, reward: 10, r: 16, body: "#e0663a", dark: "#7a2f1a", eye: "#ffd24a", shape: "stalker", slowResist: 1 },
-    insulator:  { hp: 128, speed: 66, reward: 15, r: 21, body: "#556a54", dark: "#2a352a", eye: "#b6ff8f", shape: "brute", energyResist: 0.6 },
+    insulator:  { hp: 128, speed: 66, reward: 15, r: 21, body: "#556a54", dark: "#2a352a", eye: "#b6ff8f", shape: "brute", energyResist: 0.65 },
     juggernaut: { hp: 1150, speed: 42, reward: 130, r: 34, body: "#4a4e56", dark: "#26292e", eye: "#e0479a", shape: "juggernaut", shield: 420 },
   };
   const ENEMY_LABEL = { stalker: "Stalker", raider: "Raider", brute: "Brute", sentinel: "Sentinel", wraith: "Wraith", warden: "Warden", mender: "Mender", splitter: "Splitter", spawnling: "Spawnling", phantom: "Phantom", cinder: "Cinder", insulator: "Insulator", juggernaut: "Juggernaut" };
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const WAVE_GAP = 20; // seconds from one wave launching to the next auto-launching (waves overlap under pressure)
-  const SLOW_ASYMPTOTE = 0.28, SLOW_STACK_K = 0.35; // landed frost hits stack with DIMINISHING returns toward this speed floor — each extra frost tower adds only a little
+  const SLOW_ASYMPTOTE = 0.34, SLOW_STACK_K = 0.35; // landed frost hits stack with DIMINISHING returns toward this speed floor — each extra frost tower adds only a little
   const CONGEST_CAP = 45;   // wave launches (auto AND manual) pause while this many hostiles are already on the field (anti-spiral)
   // V6.3 aggression risk: a wave sent BEFORE its timer expires arrives tougher, scaled by the fraction of the gap skipped.
   const RUSH_HP = 0.35, RUSH_SPD = 0.10;   // at a full-timer send: +35% HP, +10% speed on that wave's spawns
@@ -4178,6 +4178,8 @@
   const threatSpdMul = () => 1 + threatLevel() * THREAT_SPD;
   const dmgMul = () => (1 + Meta.val("dmg")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
   const rewardMul = () => 1 + Meta.val("reward");
+  const EARN_TAPER_W = 12;  // V6.5: past this wave, per-kill scrap fades so late game stops printing money
+  const earnTaper = () => S.wave <= EARN_TAPER_W ? 1 : Math.max(0.5, 1 - (S.wave - EARN_TAPER_W) * 0.05);
   const waveBonusMul = () => 1 + Meta.val("waveb");
   const strikeMax = () => STRIKE_CD - Meta.val("strike");
   const heroDmgMul = () => (1 + Meta.val("hero")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
@@ -4418,7 +4420,7 @@
     const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
     const ph = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;     // phantoms (camo) force detection (Tesla / Hero)
     const cn = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0;     // cinders — freeze-immune rushers, punish slow-stacking
-    const iu = n >= 10 ? Math.min(Math.floor((n - 7) / 3), 5) : 0;    // insulators — energy-resistant, punish mono-Tesla
+    const iu = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // insulators — energy-resistant, punish mono-Tesla (V6.5: arrive w9, cap 6)
     const el = n >= 15 ? Math.min(2 + Math.floor((n - 15) / 2), 5) : 0; // V6.4 anti-conveyor escort: freeze-immune Cinder + energy-resist Insulator pairs at 15+
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
@@ -4619,7 +4621,7 @@
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0) + (victory && S.isDaily ? 80 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1) * (1 + threatLevel() * 0.4)));
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1) * (1 + threatLevel() * 0.4) / 1.5)); // V6.5: /1.5 slows Armory fill
     Meta.add(S.lastAlloy);
     if (victory && S.isDaily) Daily.complete();
   }
@@ -4805,7 +4807,7 @@
     const big = e.type === "juggernaut", heavy = e.type === "brute" || e.type === "sentinel";
     sparks(e.x, e.y - e.r * 0.2, e.armor ? "#cfd6de" : "#ffd27a", big ? 5 : 2, null, 6);
     if (e.hp <= 0 && e.alive) {
-      e.alive = false; const rw = Math.max(1, Math.round(e.reward * rewardMul() * (diffCfg().reward || 1) * modv("income"))); S.scrap += rw; S.kills++; heroXp(e);
+      e.alive = false; const rw = Math.max(1, Math.round(e.reward * rewardMul() * (diffCfg().reward || 1) * modv("income") * earnTaper())); S.scrap += rw; S.kills++; heroXp(e);
       floats.push({ x: e.x, y: e.y - e.r, text: "+" + rw, life: 0.9, vy: -42, color: C.scrap, big });
       scorch(e.x, e.y + e.r * 0.4, e.r * (big ? 1.3 : 0.85));
       // splitter: bursts into spawnlings that continue along its route
@@ -6355,7 +6357,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.4 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.5 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${devArmory != null ? `<div class="sub" style="margin:-6px 0 10px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV \u00b7 Armory forced to ${Math.round(devArmory * 100)}% \u2014 purchases locked</div>` : ""}
@@ -6450,7 +6452,7 @@
         splitter: "Bursts into 3 Spawnlings when killed. — Counter: kill it early, or let it leak (it only splits on death).",
         spawnling: "Fast fragment spawned by a dying Splitter. — Counter: mop up with rapid fire.",
         cinder: "◆ FREEZE-IMMUNE — ignores all slow; Cryo/Glacier cannot touch its speed. — Counter: raw firepower & overlapping coverage, not stalling.",
-        insulator: "◆ ENERGY-RESIST — takes only ~40% from energy (Tesla, Cryo). — Counter: kinetic (Auto-Gun) or explosive (Mortar, Pyre).",
+        insulator: "◆ ENERGY-RESIST — takes only ~35% from energy (Tesla, Cryo). — Counter: kinetic (Auto-Gun) or explosive (Mortar, Pyre).",
         phantom: "◆ CAMO — cloaked; towers cannot target it until it is revealed. — Counter: keep a Rail-Tesla or the Hero nearby (they reveal camo foes for every tower) — an airstrike reveals too.",
         juggernaut: "◆ BOSS · SHIELD 420 — the wave's anchor. — Counter: energy to strip the shield, then sustained fire.",
       };
@@ -7785,7 +7787,7 @@
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, get devArmory() { return devArmory; },
+  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
