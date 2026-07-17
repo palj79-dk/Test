@@ -4419,6 +4419,7 @@
     const ph = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;     // phantoms (camo) force detection (Tesla / Hero)
     const cn = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0;     // cinders — freeze-immune rushers, punish slow-stacking
     const iu = n >= 10 ? Math.min(Math.floor((n - 7) / 3), 5) : 0;    // insulators — energy-resistant, punish mono-Tesla
+    const el = n >= 15 ? Math.min(2 + Math.floor((n - 15) / 2), 5) : 0; // V6.4 anti-conveyor escort: freeze-immune Cinder + energy-resist Insulator pairs at 15+
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
     for (let i = 0; i < rd; i++) seq.push("raider");
@@ -4431,6 +4432,7 @@
     for (let i = 0; i < ph; i++) seq.push("phantom");
     for (let i = 0; i < cn; i++) seq.push("cinder");
     for (let i = 0; i < iu; i++) seq.push("insulator");
+    for (let i = 0; i < el; i++) { seq.push("cinder"); seq.push("insulator"); }  // the Railgun/frost wall must diversify to hold the late waves
     const cm = modCount(), extraN = Math.round(seq.length * (cm - 1));
     for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
     seq.sort(() => Math.random() - 0.4);
@@ -4481,8 +4483,8 @@
   // three difficulty tiers: hp/speed multipliers, starting core, and the Alloy payout scale
   const DIFFS = {
     normal: { label: "Normal", hp: 1.0, spd: 1.0, core: 20, alloy: 1.0, count: 1.0, reward: 1.0 },
-    hard:   { label: "Hard",   hp: 1.7, spd: 1.1,  core: 18, alloy: 1.5, count: 1.25, reward: 0.92 },
-    brutal: { label: "Brutal", hp: 2.6, spd: 1.2,  core: 15, alloy: 2.0, count: 1.6, reward: 0.85 },
+    hard:   { label: "Hard",   hp: 2.0, spd: 1.1,  core: 18, alloy: 1.5, count: 1.25, reward: 0.80 },
+    brutal: { label: "Brutal", hp: 2.6, spd: 1.2,  core: 15, alloy: 2.0, count: 1.6, reward: 0.62 },
   };
   const DIFF_ORDER = ["normal", "hard", "brutal", "custom"];
   // V5.1 Custom difficulty: player-tuned sliders, persisted. The alloy reward scales with a
@@ -6353,7 +6355,7 @@
       }).join("")}</select>`;
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.3 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.4 · REAL 3D</div>
         <p class="tag">The grid has fallen. Raiders and war-machines march on your last reactor. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${devArmory != null ? `<div class="sub" style="margin:-6px 0 10px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV \u00b7 Armory forced to ${Math.round(devArmory * 100)}% \u2014 purchases locked</div>` : ""}
@@ -6371,6 +6373,7 @@
         <div class="sub" style="margin:8px 0 4px">Map</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
+        ${(() => { const rec = { hard: 0.3, brutal: 0.7 }[S.difficulty]; if (rec == null) return ""; const cur = threatLevel(), ok = cur >= rec - 1e-9; return `<div class="sub" style="margin:4px 0 6px;color:${ok ? "#37e0d0" : "#f2b23a"};text-transform:none;letter-spacing:0.3px">\u25c7 ${ok ? DIFFS[S.difficulty].label + " \u2014 your Armory (" + Math.round(cur * 100) + "%) is ready" : DIFFS[S.difficulty].label + " is tuned for ~" + Math.round(rec * 100) + "%+ Armory \u2014 you\u2019re at " + Math.round(cur * 100) + "%"}</div>`; })()}
         ${S.difficulty === "custom" ? (() => { const c = CustomDiff.get();
           const row = (id, lbl, min, max, step, val, fv) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span class="sub" style="margin:0;flex:0 0 96px;text-align:left">${lbl}</span><input type="range" id="cs_${id}" min="${min}" max="${max}" step="${step}" value="${val}" style="flex:1;accent-color:#37e0d0"><b id="cv_${id}" style="flex:0 0 44px;font-size:11px;color:#37e0d0;text-align:right">${fv}</b></div>`;
           return `<div style="border:1px solid #2c3a42;border-radius:4px;padding:8px 10px;margin:6px 0;background:#12181d;text-align:left">
