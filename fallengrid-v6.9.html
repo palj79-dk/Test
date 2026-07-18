@@ -4257,8 +4257,30 @@
   const center = (c, r) => ({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 });
   // per-map state (rebuilt by loadMap); referenced by name everywhere so reassignment is safe
   let ROUTES = [], PATH_SET = new Set(), PATH_PTS = [], DECOR = [], POOLS = [], currentMap = -1;
+  let BLOCKED_SET = new Set(); // V6.9 obstacles: buildable-terrain tiles blocked by rubble (count scales with difficulty)
   let CROSS_MAP = new Map(), BRIDGES = []; // true route crossings (perpendicular overlap) render as bridges
-  const buildable = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS && !PATH_SET.has(c + "," + r);
+  const buildableBase = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS && !PATH_SET.has(c + "," + r);
+  const buildable = (c, r) => buildableBase(c, r) && !BLOCKED_SET.has(c + "," + r);
+  // V6.9: obstacles sit on buildable ground and block placement, breaking up dense tower walls.
+  // Count scales with difficulty; seeded per (map, difficulty) so it's deterministic; biased next to
+  // the path (where players cram towers). Capped so a map is never walled off.
+  const OBST_BY_DIFF = { normal: 2, hard: 4, brutal: 7 };
+  function computeObstacles() {
+    BLOCKED_SET = new Set();
+    const want = (OBST_BY_DIFF[S.difficulty] != null ? OBST_BY_DIFF[S.difficulty] : 3);
+    if (want <= 0 || currentMap < 0) return;
+    const seed = (MAPS[currentMap] ? MAPS[currentMap].seed : 1) * 31 + ({ normal: 0, hard: 1, brutal: 2 }[S.difficulty] != null ? { normal: 0, hard: 1, brutal: 2 }[S.difficulty] : 3) * 137;
+    const cand = [];
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (!buildableBase(c, r)) continue;
+      if (c === TUT_PLOT.c && r === TUT_PLOT.r) continue; // keep the onboarding plot free
+      const adj = PATH_SET.has((c + 1) + "," + r) || PATH_SET.has((c - 1) + "," + r) || PATH_SET.has(c + "," + (r + 1)) || PATH_SET.has(c + "," + (r - 1));
+      cand.push({ c, r, adj: adj ? 1 : 0, h: hash2(c * 13 + seed, r * 17 + seed) });
+    }
+    const cap = Math.min(want, Math.floor(cand.length * 0.22)); // never eat more than ~22% of buildable ground
+    cand.sort((a, b) => (b.adj - a.adj) || (a.h - b.h)); // path-adjacent first, then hashed order
+    for (let i = 0; i < cand.length && BLOCKED_SET.size < cap; i++) BLOCKED_SET.add(cand[i].c + "," + cand[i].r);
+  }
   function buildDecor(seed) {
     DECOR = []; POOLS = []; const s1 = seed * 101, s2 = seed * 211;
     // authored set-pieces first (composed landmarks); hash decor fills around them
@@ -4691,7 +4713,7 @@
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
-        coreStart: S.core, dev: devArmory, threat: Math.round(threatLevel() * 100) / 100,
+        coreStart: S.core, dev: devArmory, threat: Math.round(threatLevel() * 100) / 100, obstacles: BLOCKED_SET.size,
         builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
         earlySends: 0, overlapSends: 0, autoLaunches: 0, satBlocks: 0, leaks: 0,
         waves: [], _t0: performance.now(),
@@ -4728,6 +4750,7 @@
   };
   function reset() {
     selectMap(S.mapIndex); // rebuilds path/decor/terrain only if the map changed
+    computeObstacles();          // V6.9: (re)seed obstacles for the current map + difficulty
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
     S.scrap = Math.round((baseStartScrap() + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
@@ -5942,6 +5965,21 @@
     for (const f of floats) { ctx.save(); uprightAt(f.y); ctx.globalAlpha = Math.max(0, f.life / 0.85); ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(f.text, f.x, f.y); ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y); ctx.restore(); }
     ctx.globalAlpha = 1;
   }
+  function drawObstacles() {
+    for (const k of BLOCKED_SET) {
+      const ci = k.indexOf(","), c = +k.slice(0, ci), r = +k.slice(ci + 1);
+      const p0 = worldToScreen(c * TILE + 5, r * TILE + 5), p1 = worldToScreen((c + 1) * TILE - 5, r * TILE + 5),
+            p2 = worldToScreen((c + 1) * TILE - 5, (r + 1) * TILE - 5), p3 = worldToScreen(c * TILE + 5, (r + 1) * TILE - 5);
+      if (p2.y < PLAY_TOP || p0.y > PLAY_BOTTOM) continue;
+      ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.closePath();
+      ctx.fillStyle = "rgba(26,22,18,0.82)"; ctx.fill();
+      ctx.strokeStyle = "rgba(122,90,58,0.75)"; ctx.lineWidth = 1.5; ctx.stroke();
+      const cx = (p0.x + p1.x + p2.x + p3.x) / 4, cy = (p0.y + p1.y + p2.y + p3.y) / 4, sz = Math.max(4, Math.abs(p1.x - p0.x) * 0.3);
+      ctx.fillStyle = "#4a4038"; ctx.beginPath(); ctx.arc(cx, cy - sz * 0.35, sz, 0, 7); ctx.fill();
+      ctx.fillStyle = "#615446"; ctx.beginPath(); ctx.arc(cx - sz * 0.35, cy - sz * 0.6, sz * 0.55, 0, 7); ctx.fill();
+      ctx.fillStyle = "#37312b"; ctx.beginPath(); ctx.arc(cx + sz * 0.4, cy - sz * 0.15, sz * 0.45, 0, 7); ctx.fill();
+    }
+  }
   function drawSelRange() {
     if (S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r), range = tStats(t).range * rangeMul(); ctx.fillStyle = C.range; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; ctx.beginPath(); ctx.arc(p.x, p.y, range, 0, 7); ctx.fill(); ctx.stroke(); }
     if (S.selTile) { const cx = S.selTile.c * TILE, cy = S.selTile.r * TILE; ctx.fillStyle = "rgba(55,224,208,0.14)"; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; rr(cx + 4, cy + 4, TILE - 8, TILE - 8, 6); ctx.fill(); ctx.stroke(); }
@@ -6382,7 +6420,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.8 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.9 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6762,7 +6800,7 @@
     const ex = towers.find((t) => t.c === c && t.r === r);
     if (ex) { S.selTile = null; S.selTower = towers.indexOf(ex); S.sheetAnim = 0; }
     else if (buildable(c, r)) { if (S.selTile && S.selTile.c === c && S.selTile.r === r) { S.selTile = null; } else { S.selTower = null; S.selTile = { c, r }; S.sheetAnim = 0; } }
-    else { S.selTile = null; S.selTower = null; }
+    else { S.selTile = null; S.selTower = null; if (buildableBase(c, r) && BLOCKED_SET.has(c + "," + r)) { Sound.err(); vibrate(30); S.banner = { text: "\u26D4 OBSTRUCTED", t: 1.0 }; } }
   }
   function doPending() {
     const pd = S.pending; if (!pd) return;
@@ -7830,6 +7868,7 @@
     ctx.clearRect(0, 0, W, H);
     G3D.frame(so, raw, dtMs);
     G3D.overlay();
+    if ((S.screen === "playing" || S.screen === "paused") && BLOCKED_SET.size) drawObstacles();
 
     // screen layer
     drawScreenFlash(); drawLowCore();
@@ -7883,7 +7922,7 @@
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, get devArmory() { return devArmory; },
+  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
