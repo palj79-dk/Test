@@ -4121,12 +4121,16 @@
 
   const START_SCRAP = 150, START_CORE = 20, TOTAL_WAVES = 20;
   const WAVE_GAP = 20; // seconds from one wave launching to the next auto-launching (waves overlap under pressure)
+  // V6.10: once the field is fully clear the between-wave timer runs fast, so there is no dead downtime
+  // waiting for the next wave. While you are still fighting (enemies or spawns pending) it ticks normally.
+  const GAP_FASTFWD = 5;
+  const gapRate = () => (enemies.length === 0 && S.queue.length === 0) ? GAP_FASTFWD : 1;
   const SLOW_ASYMPTOTE = 0.34, SLOW_STACK_K = 0.35; // landed frost hits stack with DIMINISHING returns toward this speed floor — each extra frost tower adds only a little
   const CONGEST_CAP = 45;   // wave launches (auto AND manual) pause while this many hostiles are already on the field (anti-spiral)
   // V6.3 aggression risk: a wave sent BEFORE its timer expires arrives tougher, scaled by the fraction of the gap skipped.
-  const RUSH_HP = 0.35, RUSH_SPD = 0.10;   // at a full-timer send: +35% HP, +10% speed on that wave's spawns
+  const RUSH_HP = 0.15, RUSH_SPD = 0.05;   // at a full-timer send: +15% HP, +5% speed on that wave's spawns
   // send the next wave early → bonus scrap scaled by the countdown time you forfeit
-  const earlyCallBonus = () => Math.round(S.countdown * (2 + Math.min(S.wave, 15) * 0.5) * Math.max(0, 1 - enemies.length / CONGEST_CAP) * modv("income"));
+  const earlyCallBonus = () => Math.round(S.countdown * (0.5 + Math.min(S.wave, 15) * 0.1) * Math.max(0, 1 - enemies.length / CONGEST_CAP) * modv("income"));
 
   /* ---------------- META-PROGRESSION ---------------- */
   // Persistent talents bought with Alloy earned each run (retention layer, via Store).
@@ -6420,7 +6424,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.9 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.10 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7859,7 +7863,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
-      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw; if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
+      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       if (S.screen !== "playing") render();
     }
 
@@ -7930,7 +7934,7 @@
       for (; i < maxIters && S.screen === "playing"; i++) {
         stepSim(stepMs); const d = stepMs / 1000;
         if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
-        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d; if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
+        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
