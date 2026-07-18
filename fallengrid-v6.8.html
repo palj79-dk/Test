@@ -4676,10 +4676,14 @@
   }
 
   // ---- Local play telemetry: one record per run in localStorage, exportable as JSON ----
+  const DEV_BUILD = true; // set to false for the Google Play release build (play-log defaults OFF in production)
   const Telemetry = {
     runs: Store.get("telemetry", []),
     cur: null,
+    enabled: Store.get("logEnabled", DEV_BUILD),
+    setEnabled(v) { this.enabled = !!v; Store.set("logEnabled", this.enabled); },
     begin() {
+      if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
         ts: Date.now(), ver: "6.7",
@@ -6378,7 +6382,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.7 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.8 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6387,17 +6391,16 @@
         <button class="btn" id="dl">◈ Daily Op · ${MAPS[dcfg.map].name} · ${dcfg.mod.name}${dDone ? " ✓" : ""}${dStk ? " · \u{1F525}" + dStk : ""}</button>
         <button class="btn" id="lab">\u{1F9EA} Challenge Lab</button>
         <div class="row" style="margin-top:6px"><button class="btn small" id="a">⬡ Armory</button><button class="btn small" id="h">\u{1F4D6} Codex</button></div>
-        <div class="row"><button class="btn small" id="ach">\u{1F3C6} ${Ach.count()}/${ACH.length}</button><button class="btn small" id="log">\u{1F4CA} Log · ${Telemetry.runs.length}</button></div>
+        <div class="row"><button class="btn small" id="ach">\u{1F3C6} Achievements · ${Ach.count()}/${ACH.length}</button></div>
         <button class="btn small ghost" id="set" style="margin-top:6px">⚙ Settings</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
-      byId("cp").onclick = () => { S.campSel = campProg; S.screen = "campaign"; render(); };
+      byId("cp").onclick = () => { S.campSel = campProg; S.campLockMsg = ""; S.screen = "campaign"; render(); };
       byId("free").onclick = () => { S.screen = "freeplay"; render(); };
       byId("dl").onclick = () => { S.dailyDiff = null; S.screen = "daily"; render(); };
       byId("lab").onclick = () => { S.screen = "lab"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("h").onclick = () => { S.screen = "howto"; render(); };
       byId("ach").onclick = () => { S.screen = "ach"; render(); };
-      byId("log").onclick = () => { S.screen = "log"; render(); };
       byId("set").onclick = () => { S.screen = "settings"; render(); };
     } else if (S.screen === "freeplay") {
       S.difficulty = Store.get("difficulty", "normal");
@@ -6447,6 +6450,8 @@
         <div class="row"><button class="btn small ghost" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ghost" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
         <div class="sub" style="margin:10px 0 4px">Device</div>
         <div class="row"><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
+        <div class="sub" style="margin:10px 0 4px">Play Log</div>
+        <div class="row"><button class="btn small ghost" id="logtog">${Telemetry.enabled ? "◉ Logging On" : "○ Logging Off"}</button><button class="btn small ghost" id="logview">📊 View · ${Telemetry.runs.length}</button></div>
         ${Store.get("camp", 0) > 0 ? `<div class="sub" style="margin:10px 0 4px">Campaign</div><button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
         <div class="sub" style="margin:10px 0 4px">Dev · Armory Override</div>
         <div class="row">${[["OFF", null], ["0%", 0], ["50%", 0.5], ["100%", 1]].map(([lb, v], i) => `<button class="btn small ${devArmory === v ? "active" : "ghost"}" id="dv_${i}" style="padding:8px 2px;font-size:10.5px;letter-spacing:1px">${lb}</button>`).join("")}</div>
@@ -6457,6 +6462,8 @@
       byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
       const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
       [null, 0, 0.5, 1].forEach((v, i) => { byId("dv_" + i).onclick = () => { setDevArmory(v); render(); }; });
+      byId("logtog").onclick = () => { Telemetry.setEnabled(!Telemetry.enabled); render(); };
+      byId("logview").onclick = () => { S.screen = "log"; render(); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "campaign") {
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
@@ -6466,11 +6473,12 @@
       const rows = MAPS.map((mp, i) => {
         const locked = i > campProg, g = Medals.get(i);
         const med = g.t ? MEDAL_GLYPH[g.t] + (g.p >= g.t ? "✦" : "") : (locked ? "🔒" : "—");
-        return `<button class="btn small ${i === sel ? "active" : ""}" id="cm_${i}" ${locked ? "disabled" : ""} style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:9px 12px;${locked ? "opacity:0.45" : ""}"><span>${i + 1}. ${mp.name}</span><span style="font-size:14px">${med}</span></button>`;
+        return `<button class="btn small ${i === sel ? "active" : ""}" id="cm_${i}" style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:9px 12px;${locked ? "opacity:0.5" : ""}"><span>${i + 1}. ${mp.name}</span><span style="font-size:14px">${med}</span></button>`;
       }).join("");
       show(`<div class="panel"><h2>Campaign</h2>
         <div class="sub" style="margin:2px 0 8px;text-transform:none;letter-spacing:0.3px">${Medals.count()}/${MAPS.length} missions · 🥇${Medals.goldCount()}${Medals.count() === MAPS.length && Medals.minPerfect() >= 3 ? " · ✦ ALL PERFECT" : ""}</div>
-        <div style="max-height:36vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px">${rows}</div>
+        <div style="max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px">${rows}</div>
+        ${S.campLockMsg ? `<div class="sub" style="margin:6px 0 0;color:#f2b23a;text-transform:none;letter-spacing:0.3px">${S.campLockMsg}</div>` : `<div class="sub" style="margin:6px 0 0;text-transform:none;letter-spacing:0.3px;color:#8a969c">🔒 missions unlock as you clear the campaign in order</div>`}
         <div style="border-top:1px solid #2c3a42;margin:10px 0 0;padding-top:8px">
           <div class="sub" style="margin:0 0 2px">Mission ${sel + 1} · ${MAPS[sel].name}</div>
           <div class="sub" style="margin:0 0 6px;text-transform:none;letter-spacing:0.3px">Best: ${m.t ? MEDAL_GLYPH[m.t] + " " + MEDAL_NAME[m.t] + (m.p >= m.t ? " ✦ perfect" : "") : "not cleared"}</div>
@@ -6479,7 +6487,7 @@
           <button class="btn primary" id="cgo" style="margin-top:8px">▶ Deploy Mission ${sel + 1}</button>
         </div>
         <button class="btn" id="bk">Back</button></div>`);
-      MAPS.forEach((mp, i) => { const el = byId("cm_" + i); if (el) el.onclick = () => { S.campSel = i; render(); }; });
+      MAPS.forEach((mp, i) => { const el = byId("cm_" + i); if (!el) return; const lk = i > campProg; el.onclick = () => { if (lk) { S.campLockMsg = "🔒 Mission " + (i + 1) + " is locked — clear Mission " + (campProg + 1) + " first."; } else { S.campLockMsg = ""; S.campSel = i; } render(); }; });
       ["normal", "hard", "brutal"].forEach((d) => { byId("cd_" + d).onclick = () => { S.difficulty = d; Store.set("difficulty", d); render(); }; });
       byId("cgo").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; S.mapIndex = S.campSel; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
@@ -6536,6 +6544,15 @@
         body = ["stalker","raider","brute","sentinel","wraith","warden","mender","splitter","spawnling","phantom","cinder","insulator","juggernaut"].map((k) => { const e = ENEMIES[k];
           return `<div class="tal" style="display:flex;gap:10px;align-items:flex-start;text-align:left"><img src="${enemyThumb(k)}" width="46" height="46" style="flex:0 0 auto"><div style="min-width:0;flex:1"><b>${ENEMY_LABEL[k]}</b> <span class="sub">HP ${e.hp} · SPD ${e.speed} · ⬡${e.reward}</span><div class="sub" style="margin:3px 0 0;text-transform:none;letter-spacing:0;line-height:1.4">${THREAT[k]}</div></div></div>`;
         }).join("");
+      } else if (tab === "story") {
+        body = `<div style="text-align:left;line-height:1.55">
+          <div style="color:#37e0d0;font:800 14px ui-monospace,monospace;margin-bottom:8px">THE GRID HAS FALLEN</div>
+          <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">For a century the <b>Grid</b> — the planetary defense lattice — held back the <b>Scourge</b>: self-replicating war-machines and the raider clans that worship them. Then, without warning, the Grid went dark.</p>
+          <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">You are a <b>Warden</b>, one of the last, woken from cryo-sleep as the old reactors flicker back to life. Each reactor <b>Core</b> is a shard of the fallen network — and the one thing the Scourge wants even more than your death.</p>
+          <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">Fourteen sectors still guard a living Core. Hold the line at each one: raise towers from salvaged <b>alloy</b>, read the enemy, and never let a machine reach the Core. Reclaim the sectors, relight the Grid, and the wastes may yet be ours again.</p>
+          <div style="color:#f2b23a;font:800 11px ui-monospace,monospace;margin-top:10px">YOUR MISSION</div>
+          <p class="sub" style="text-transform:none;letter-spacing:0;margin:2px 0 0">Survive <b>20 waves</b> in each sector. Earn <b>Alloy</b> to upgrade your <b>Armory</b> between deployments. Lose all Core integrity and the reactor — and the Grid — falls for good.</p>
+        </div>`;
       } else {
         body = `<ul class="how">
         <li><b>Build</b> on open ground, then <b>upgrade</b> — level 3 splits into two <b>specializations</b>, so choose.</li>
@@ -6551,7 +6568,8 @@
       </ul>`;
       }
       const tb = (id, lbl) => `<button class="btn small ${tab === id ? "active" : ""}" id="cx_${id}" style="flex:1">${lbl}</button>`;
-      show(`<div class="panel"><h2>Codex</h2><div class="row" style="margin-bottom:10px">${tb("guide","Guide")}${tb("tw","Towers")}${tb("en","Threats")}</div><div style="max-height:54vh;overflow-y:auto">${body}</div><button class="btn primary" id="b">Back</button></div>`);
+      show(`<div class="panel"><h2>Codex</h2><div class="row" style="margin-bottom:10px">${tb("story","Story")}${tb("guide","Guide")}${tb("tw","Towers")}${tb("en","Threats")}</div><div style="max-height:54vh;overflow-y:auto">${body}</div><button class="btn primary" id="b">Back</button></div>`);
+      byId("cx_story").onclick = () => { S.codexTab = "story"; render(); };
       byId("cx_guide").onclick = () => { S.codexTab = "guide"; render(); };
       byId("cx_tw").onclick = () => { S.codexTab = "tw"; render(); };
       byId("cx_en").onclick = () => { S.codexTab = "en"; render(); };
@@ -6655,7 +6673,7 @@
         <div class="row"><button class="btn small ghost" id="clr">Clear Log</button><button class="btn small ghost" id="m">Back</button></div></div>`);
       byId("exp").onclick = () => Telemetry.exportJSON();
       byId("clr").onclick = () => { if (confirm("Clear the local play log?")) { Telemetry.clear(); render(); } };
-      byId("m").onclick = () => { S.screen = "menu"; render(); };
+      byId("m").onclick = () => { S.screen = "settings"; render(); };
     }
   }
 
