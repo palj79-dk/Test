@@ -4191,6 +4191,11 @@
   const rangeMul = () => 1 + Meta.val("range");
   const splashMul = () => 1 + Meta.val("splash");
   const sellRefund = () => SELL_REFUND + Meta.val("sell");
+  // V6.13 scrap sinks (soak the late-game surplus): Overclock repeatedly buffs a maxed tower (+10% dmg per
+  // stack, rising cost); Excavate clears a rubble obstacle to open a build plot (rising cost).
+  const OC_DMG = 0.10;
+  const overclockCost = (t) => Math.round(200 * Math.pow(1.5, t.oc || 0));
+  const excavateCost = () => Math.round(140 * Math.pow(1.4, S.excavated || 0));
   const alloyFindMul = () => 1 + Meta.val("alloyf");
   const heroRateMul = () => 1 - Meta.val("hrate");
   const heroAbilCd = () => HERO.abilityCd - Meta.val("pulse");
@@ -4268,7 +4273,7 @@
   // V6.9: obstacles sit on buildable ground and block placement, breaking up dense tower walls.
   // Count scales with difficulty; seeded per (map, difficulty) so it's deterministic; biased next to
   // the path (where players cram towers). Capped so a map is never walled off.
-  const OBST_BY_DIFF = { normal: 2, hard: 4, brutal: 7 };
+  const OBST_BY_DIFF = { normal: 3, hard: 6, brutal: 9 }; // V6.13: more, since Excavate turns them into a sink + build room
   function computeObstacles() {
     BLOCKED_SET = new Set();
     const want = (OBST_BY_DIFF[S.difficulty] != null ? OBST_BY_DIFF[S.difficulty] : 3);
@@ -4728,7 +4733,7 @@
       };
     },
     ev(k, n) { if (this.cur) this.cur[k] = (this.cur[k] || 0) + (n || 1); },
-    waveSnap() { if (!this.cur) return; this.cur.waves.push({ w: S.wave, scrap: S.scrap, towers: towers.length, core: S.core, hostiles: enemies.length + S.queue.length, kills: S.kills }); },
+    waveSnap() { if (!this.cur) return; this.cur.waves.push({ w: S.wave, scrap: S.scrap, towers: towers.length, maxed: towers.filter((t) => t.lvl >= 3).length, oc: towers.reduce((a, t) => a + (t.oc || 0), 0), spent: this.cur.scrapSpent, core: S.core, hostiles: enemies.length + S.queue.length, kills: S.kills }); },
     end(result) {
       const c = this.cur; if (!c) return; this.cur = null;
       c.result = result; c.wave = S.wave; c.kills = S.kills; c.coreEnd = S.core;
@@ -4766,7 +4771,7 @@
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     Telemetry.begin();
-    S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = []; S.medalChecked = false; S.medalMsg = "";
+    S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = []; S.medalChecked = false; S.medalMsg = ""; S.excavated = 0;
     fitCamera();
   }
   // active ability: orbital airstrike. explosive + armor-piercing, hits air and ground, brief stun.
@@ -4964,7 +4969,7 @@
     if (S.core <= 0) { S.core = 0; S.screen = "gameover"; if (S.endless && S.wave > S.highEndless) { S.highEndless = S.wave; Store.set("highEndless", S.highEndless); } awardAlloy(false); Telemetry.end("gameover"); Sound.lose(); vibrate([80, 60, 80]); doShake(11, 0.5); }
   }
   // L3 stats come from the chosen branch; levels[2] is a fallback if somehow unbranched
-  const tStats = (t) => { const sp = TOWERS[t.type]; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; return (t.lvl >= 3 && br.t4) ? br.t4 : br; } return sp.levels[t.lvl]; };
+  const tStats = (t) => { const sp = TOWERS[t.type]; let base; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; base = (t.lvl >= 3 && br.t4) ? br.t4 : br; } else base = sp.levels[t.lvl]; return t.oc ? Object.assign({}, base, { dmg: Math.round(base.dmg * (1 + t.oc * OC_DMG)) }) : base; };
   function findTarget(t, p) {
     const st = tStats(t), air = canHitAir(TOWERS[t.type].kind); let best = null, score = -Infinity;
     for (const e of enemies) {
@@ -6287,9 +6292,26 @@
     ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("\u2717", xx + xw / 2, by + bh / 2);
     trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
   }
+  function drawExcavateConfirm() {
+    const cost = excavateCost(), af = S.scrap >= cost, pl = center(S.pending.c, S.pending.r);
+    S.rangePreview = { x: pl.x, y: pl.y, range: 0 };
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#c9a06a"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("EXCAVATE RUBBLE", 12, PLAY_BOTTOM + 13);
+    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("Clear the debris \u2192 build plot", 12, PLAY_BOTTOM + 32);
+    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Opens this tile for building", 12, PLAY_BOTTOM + 48);
+    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
+    ctx.fillStyle = af ? "#b98a3a" : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
+    ctx.textAlign = "center"; ctx.fillStyle = af ? "#1a1206" : C.textDim; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("\u26CF EXCAVATE  \u2699" + cost, 12 + cw / 2, by + bh / 2);
+    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
+    const xx = 12 + cw + 8, xw = W - xx - 12;
+    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("\u2717", xx + xw / 2, by + bh / 2);
+    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+  }
   function drawConfirm() {
     trayBtns = [];
     if (S.pending.kind === "sell") { drawSellConfirm(); return; }
+    if (S.pending.kind === "excavate") { drawExcavateConfirm(); return; }
     const info = pendingInfo();
     if (!info) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
     const sp = info.sp, cur = info.cur, nx = info.next, af = S.scrap >= info.cost;
@@ -6375,7 +6397,7 @@
     const title = branched ? spec.branches[t.branch].name : spec.name;
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     drawTowerArt(30, PLAY_BOTTOM + 28, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.66, t.branch);
-    ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1), 54, PLAY_BOTTOM + 14);
+    ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1) + (t.oc ? "  \u26A1" + t.oc : ""), 54, PLAY_BOTTOM + 14);
     ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
     ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, PLAY_BOTTOM + 28);
     // damage-type tag (teaches the counterplay triangle)
@@ -6408,11 +6430,12 @@
     } else {
       const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
       const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
-      const bw = 152;
-      ctx.fillStyle = upAfford ? C.neonC : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
-      ctx.textAlign = "center"; ctx.fillStyle = canUp ? (upAfford ? "#06181a" : C.textDim) : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
-      ctx.fillText(canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL", ux + bw / 2, y + bh / 2);
-      trayBtns.push({ x: ux, y, w: bw, h: bh, action: "upgrade", afford: upAfford, canUp });
+      const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
+      const bw = 152, act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
+      ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
+      ctx.fillText(ocAvail ? "\u26A1 OVERCLOCK ⚙" + ocCost : (canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL"), ux + bw / 2, y + bh / 2);
+      trayBtns.push({ x: ux, y, w: bw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
       const sx2 = ux + bw + 8;
       ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
       ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
@@ -6457,7 +6480,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.12 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.13 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6837,7 +6860,7 @@
     const ex = towers.find((t) => t.c === c && t.r === r);
     if (ex) { S.selTile = null; S.selTower = towers.indexOf(ex); S.sheetAnim = 0; }
     else if (buildable(c, r)) { if (S.selTile && S.selTile.c === c && S.selTile.r === r) { S.selTile = null; } else { S.selTower = null; S.selTile = { c, r }; S.sheetAnim = 0; } }
-    else { S.selTile = null; S.selTower = null; if (buildableBase(c, r) && BLOCKED_SET.has(c + "," + r)) { Sound.err(); vibrate(30); S.banner = { text: "\u26D4 OBSTRUCTED", t: 1.0 }; } }
+    else { S.selTile = null; S.selTower = null; if (buildableBase(c, r) && BLOCKED_SET.has(c + "," + r)) { S.pending = { kind: "excavate", c, r }; Sound.place(); vibrate(8); } }
   }
   function doPending() {
     const pd = S.pending; if (!pd) return;
@@ -6863,6 +6886,10 @@
     } else if (pd.kind === "sell") {
       const t = towers[pd.tower];
       if (t) { S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells"); towers.splice(pd.tower, 1); S.selTower = null; Sound.sell(); vibrate(18); }
+    } else if (pd.kind === "excavate") {
+      const cost = excavateCost();
+      if (S.scrap >= cost) { S.scrap -= cost; BLOCKED_SET.delete(pd.c + "," + pd.r); S.excavated = (S.excavated || 0) + 1; Telemetry.ev("scrapSpent", cost); Telemetry.ev("excavations"); const p = center(pd.c, pd.r); burst(p.x, p.y, "#c9a06a", 12); Sound.place(); vibrate(18); }
+      else { Sound.err(); vibrate(40); }
     }
     S.pending = null; S.rangePreview = null;
   }
@@ -6873,6 +6900,12 @@
     } else if (b.action === "upgrade") {
       if (!b.canUp) { Sound.err(); vibrate(40); return; }
       S.pending = { kind: "upgrade", tower: S.selTower }; Sound.place(); vibrate(8);
+    } else if (b.action === "overclock") {
+      const t = towers[S.selTower]; if (!t) return;
+      const c = overclockCost(t);
+      if (S.scrap < c) { Sound.err(); vibrate(40); return; }
+      S.scrap -= c; t.oc = (t.oc || 0) + 1; Telemetry.ev("upgrades"); Telemetry.ev("scrapSpent", c); Telemetry.ev("overclocks");
+      const p = center(t.c, t.r); burst(p.x, p.y - 12, "#ffd27a", 10); floats.push({ x: p.x, y: p.y - 22, text: "\u26A1OC " + t.oc, life: 1, vy: -28, color: "#ffd27a" }); Sound.up(); vibrate(12);
     } else if (b.action === "branch") {
       S.pending = { kind: "branch", tower: S.selTower, branch: b.branch }; Sound.place(); vibrate(8);
     } else if (b.action === "confirm") {
@@ -7960,7 +7993,7 @@
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
+  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, worldToScreen, tStats, overclockCost, excavateCost, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
