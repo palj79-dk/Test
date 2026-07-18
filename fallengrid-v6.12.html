@@ -4472,7 +4472,11 @@
   function statsFor(type, wave) {
     // HP grows with a quadratic term so late waves outpace fully-upgraded towers; speed creeps up to +25%
     const w = wave - 1, b = ENEMIES[type];
-    const hpMul = 1 + 0.14 * w + 0.013 * w * w, rwMul = 1 + 0.035 * w;
+    // V6.12 late-game HP accelerator (from wave 13). Dividing by diffCfg().hp makes the bump a FLAT absolute
+    // amount after diffMul re-multiplies it — a big % on Normal (soaks the unspent late-game scrap, forcing
+    // continued building) but only a small % on Hard/Brutal (already stretched).
+    const lateW = Math.max(0, w - 11);
+    const hpMul = 1 + 0.14 * w + 0.013 * w * w + 0.04 * lateW * lateW / Math.max(1, diffCfg().hp), rwMul = 1 + 0.035 * w;
     const spMul = 1 + Math.min(0.25, 0.011 * w);
     const sh = b.shield ? Math.round(b.shield * (1 + 0.12 * w)) : 0;
     return { type, r: b.r, body: b.body, dark: b.dark, eye: b.eye, shape: b.shape,
@@ -4712,7 +4716,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.7",
+        ts: Date.now(), ver: "6.12",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6264,8 +6268,28 @@
     if (x.splash) out.push("SPLASH " + x.splash); if (x.slow) out.push("SLOW " + Math.round(x.slow * 100) + "%");
     if (x.burn) out.push("BURN"); if (x.shatter) out.push("SHATTER"); return out.join(" · ");
   }
+  function drawSellConfirm() {
+    const t = towers[S.pending.tower];
+    if (!t) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
+    const sp = TOWERS[t.type], refund = Math.round(towerSpent(t) * sellRefund()), pl = center(t.c, t.r);
+    S.rangePreview = { x: pl.x, y: pl.y, range: tStats(t).range * rangeMul() };
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f0a090"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("SELL TOWER", 12, PLAY_BOTTOM + 13);
+    drawTowerArt(30, PLAY_BOTTOM + 40, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.58, t.branch);
+    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(t.branch ? sp.branches[t.branch].name : sp.name, 54, PLAY_BOTTOM + 30);
+    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Refund \u2699" + refund + "  \u00b7  cannot be undone", 54, PLAY_BOTTOM + 48);
+    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
+    ctx.fillStyle = "#c25a4a"; rr(12, by, cw, bh, 4); ctx.fill();
+    ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("\u2713 SELL  \u2699" + refund, 12 + cw / 2, by + bh / 2);
+    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: true });
+    const xx = 12 + cw + 8, xw = W - xx - 12;
+    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("\u2717", xx + xw / 2, by + bh / 2);
+    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+  }
   function drawConfirm() {
     trayBtns = [];
+    if (S.pending.kind === "sell") { drawSellConfirm(); return; }
     const info = pendingInfo();
     if (!info) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
     const sp = info.sp, cur = info.cur, nx = info.next, af = S.scrap >= info.cost;
@@ -6433,7 +6457,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.11 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.12 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6836,6 +6860,9 @@
       if (S.scrap < br.cost) { Sound.err(); vibrate(40); return; }
       S.scrap -= br.cost; t.lvl = 2; t.branch = pd.branch; Sound.up(); vibrate([12, 30]); Telemetry.ev("branches"); Telemetry.ev("scrapSpent", br.cost);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
+    } else if (pd.kind === "sell") {
+      const t = towers[pd.tower];
+      if (t) { S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells"); towers.splice(pd.tower, 1); S.selTower = null; Sound.sell(); vibrate(18); }
     }
     S.pending = null; S.rangePreview = null;
   }
@@ -6853,9 +6880,7 @@
     } else if (b.action === "cancel") {
       S.pending = null; S.rangePreview = null; Sound.place();
     } else if (b.action === "sell") {
-      const t = towers[S.selTower];
-      S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells");
-      towers.splice(S.selTower, 1); S.selTower = null; Sound.sell();
+      if (S.selTower != null && towers[S.selTower]) { S.pending = { kind: "sell", tower: S.selTower }; Sound.place(); vibrate(8); }
     } else if (b.action === "target") {
       const t = towers[S.selTower]; t.mode = TARGET_MODES[(TARGET_MODES.indexOf(t.mode) + 1) % TARGET_MODES.length]; Sound.place();
     }
