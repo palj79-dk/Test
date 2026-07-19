@@ -4135,20 +4135,20 @@
   /* ---------------- META-PROGRESSION ---------------- */
   // Persistent talents bought with Alloy earned each run (retention layer, via Store).
   const TALENTS = {
-    scrap:  { name: "Reserves",       desc: "Starting Scrap",      vals: [25, 50, 75],      costs: [40, 90, 160],  fmt: (v) => "+" + v },
-    core:   { name: "Reinforced Core", desc: "Starting Core",      vals: [5, 10, 15],       costs: [50, 110, 190], fmt: (v) => "+" + v },
-    dmg:    { name: "Munitions",      desc: "Tower Damage",        vals: [0.05, 0.10, 0.15], costs: [60, 130, 220], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    reward: { name: "Salvage Rigs",   desc: "Scrap per Kill",      vals: [0.08, 0.16, 0.25], costs: [50, 110, 190], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    strike: { name: "Rapid Response", desc: "Airstrike Cooldown",  vals: [3, 6, 9],         costs: [55, 120, 200], fmt: (v) => "-" + v + "s" },
-    waveb:  { name: "War Economy",    desc: "Wave-Clear Bonus",    vals: [0.25, 0.50, 0.75], costs: [45, 100, 170], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    hero:   { name: "Command Core",   desc: "Commander Damage",    vals: [0.10, 0.20, 0.35], costs: [70, 150, 250], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    rate:   { name: "Fire Control",   desc: "Tower Fire Rate",     vals: [0.06, 0.12, 0.20], costs: [60, 130, 220], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    range:  { name: "Targeting Optics", desc: "Tower Range",       vals: [0.06, 0.12, 0.20], costs: [55, 120, 200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    splash: { name: "Warheads",       desc: "Splash Radius",       vals: [0.10, 0.20, 0.35], costs: [50, 110, 190], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    sell:   { name: "Salvage Refit",  desc: "Sell Refund",         vals: [0.05, 0.10, 0.15], costs: [40, 90, 150],   fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    alloyf: { name: "Contracts",      desc: "Alloy Earned",        vals: [0.10, 0.20, 0.35], costs: [60, 140, 240], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    hrate:  { name: "Battle Drills",  desc: "Commander Fire Rate", vals: [0.08, 0.15, 0.25], costs: [55, 120, 200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    pulse:  { name: "Overcharge",     desc: "Pulse Cooldown",      vals: [2, 4, 6],          costs: [50, 110, 190], fmt: (v) => "-" + v + "s" },
+    scrap:  { name: "Reserves",       desc: "Starting Scrap",      vals: [25, 50, 75],      costs: [200, 450, 800],  fmt: (v) => "+" + v },
+    core:   { name: "Reinforced Core", desc: "Starting Core",      vals: [5, 10, 15],       costs: [250, 550, 950], fmt: (v) => "+" + v },
+    dmg:    { name: "Munitions",      desc: "Tower Damage",        vals: [0.05, 0.10, 0.15], costs: [300, 650, 1100], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    reward: { name: "Salvage Rigs",   desc: "Scrap per Kill",      vals: [0.08, 0.16, 0.25], costs: [250, 550, 950], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    strike: { name: "Rapid Response", desc: "Airstrike Cooldown",  vals: [3, 6, 9],         costs: [275, 600, 1000], fmt: (v) => "-" + v + "s" },
+    waveb:  { name: "War Economy",    desc: "Wave-Clear Bonus",    vals: [0.25, 0.50, 0.75], costs: [225, 500, 850], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    hero:   { name: "Command Core",   desc: "Commander Damage",    vals: [0.10, 0.20, 0.35], costs: [350, 750, 1250], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    rate:   { name: "Fire Control",   desc: "Tower Fire Rate",     vals: [0.06, 0.12, 0.20], costs: [300, 650, 1100], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    range:  { name: "Targeting Optics", desc: "Tower Range",       vals: [0.06, 0.12, 0.20], costs: [275, 600, 1000], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    splash: { name: "Warheads",       desc: "Splash Radius",       vals: [0.10, 0.20, 0.35], costs: [250, 550, 950], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    sell:   { name: "Salvage Refit",  desc: "Sell Refund",         vals: [0.05, 0.10, 0.15], costs: [200, 450, 750],   fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    alloyf: { name: "Contracts",      desc: "Alloy Earned",        vals: [0.10, 0.20, 0.35], costs: [300, 700, 1200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    hrate:  { name: "Battle Drills",  desc: "Commander Fire Rate", vals: [0.08, 0.15, 0.25], costs: [275, 600, 1000], fmt: (v) => "+" + Math.round(v * 100) + "%" },
+    pulse:  { name: "Overcharge",     desc: "Pulse Cooldown",      vals: [2, 4, 6],          costs: [250, 550, 950], fmt: (v) => "-" + v + "s" },
   };
   const TALENT_ORDER = ["scrap", "core", "dmg", "rate", "range", "splash", "reward", "sell", "alloyf", "waveb", "strike", "hero", "hrate", "pulse"];
   // V6.1.1 DEV: force the Armory to 0% / 50% / 100% to test balance without touching the saved
@@ -4174,12 +4174,9 @@
     buy(id) { if (devTalents) return false; if (this.maxed(id)) return false; const c = this.nextCost(id); if (this.alloy < c) return false; this.alloy -= c; this.talents[id] = this.lvl(id) + 1; this.save(); return true; },
     add(n) { this.alloy += n; this.save(); },
   };
-  // V6.0 dynamic scaling: enemies scale with how much permanent power you've bought, so a maxed
-  // account stays challenged (0 for a fresh account = no change). 0..1 = fraction of talent levels owned.
-  const THREAT_HP = 0.85, THREAT_SPD = 0.12;   // at full threat: +85% enemy HP, +12% speed
-  const threatLevel = () => Math.min(1, TALENT_ORDER.reduce((a, id) => a + Meta.lvl(id), 0) / (TALENT_ORDER.length * 3));
-  const threatHpMul = () => 1 + threatLevel() * THREAT_HP;
-  const threatSpdMul = () => 1 + threatLevel() * THREAT_SPD;
+  // V6.17: Threat retired. The Armory is pure, honest power now -- the wall lives in the WORLD
+  // instead (per-map hpMul by star tier), so harder maps genuinely need a built-up Armory.
+  const armoryLevel = () => Math.min(1, TALENT_ORDER.reduce((a, id) => a + Meta.lvl(id), 0) / (TALENT_ORDER.length * 3));
   const dmgMul = () => (1 + Meta.val("dmg")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
   const rewardMul = () => 1 + Meta.val("reward");
   const EARN_TAPER_W = 12;  // V6.5: past this wave, per-kill scrap fades so late game stops printing money
@@ -4670,7 +4667,9 @@
     S.mapIndex = mapIdx; selectMap(mapIdx);
     reset(); S.screen = "playing"; render();
   }
-  const diffMul = () => diffCfg().hp * modv("hp") * threatHpMul();
+  const MAP_HP_BY_DIFF = { 1: 1, 2: 1, 3: 1.15, 4: 1.35, 5: 1.6 }; // V6.17: star rating is now mechanical
+  const mapHpMul = () => { const m = MAPS[currentMap]; return m ? (m.hpMul || MAP_HP_BY_DIFF[m.diff] || 1) : 1; };
+  const diffMul = () => diffCfg().hp * modv("hp") * mapHpMul();
   // ---- V4.2 Achievements: run-end + armory evaluation against cumulative + run stats ----
   const ACH = [
     { id: "win1",     name: "First Blood",     desc: "Win any run",                         test: (c) => c.won },
@@ -4750,7 +4749,7 @@
   function awardAlloy(victory) {
     if (S.alloyAwarded) return; S.alloyAwarded = true;
     const base = S.kills + S.wave * 4 + (victory ? 120 : 0) + (victory && S.isDaily ? 80 : 0);
-    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1) * (1 + threatLevel() * 0.4) / 1.5)); // V6.5: /1.5 slows Armory fill
+    S.lastAlloy = Math.max(1, Math.round(base * diffCfg().alloy * modv("alloy") * alloyFindMul() * (S.isLab ? 0.5 : 1) / 1.5)); // V6.5: /1.5 slows Armory fill
     Meta.add(S.lastAlloy);
     if (victory && S.isDaily) Daily.complete();
   }
@@ -4792,12 +4791,12 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.16",
+        ts: Date.now(), ver: "6.17",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
-        coreStart: S.core, dev: devArmory, threat: Math.round(threatLevel() * 100) / 100, obstacles: BLOCKED_SET.size,
+        coreStart: S.core, dev: devArmory, armory: Math.round(armoryLevel() * 100) / 100, mapHp: mapHpMul(), obstacles: BLOCKED_SET.size,
         builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
         earlySends: 0, overlapSends: 0, autoLaunches: 0, satBlocks: 0, leaks: 0,
         waves: [], _t0: performance.now(),
@@ -4974,7 +4973,7 @@
       for (const s of S.queue) {
         if (s.t > 0) { rest.push(s); continue; }
         const st = statsFor(s.type, s.w || S.wave);
-        st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd") * threatSpdMul(); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
+        st.hp = Math.round(st.hp * diffMul()); st.maxHp = st.hp; st.speed *= diffCfg().spd * modv("spd"); if (st.shieldMax) { st.shield = Math.round(st.shield * diffMul()); st.shieldMax = st.shield; }
         const rt = spawnIdx++ % ROUTES.length, sp = ROUTES[rt][0];
         enemies.push(Object.assign({ x: sp.x, y: sp.y, route: rt, pi: 0, slowT: 0, slowF: 1, alive: true, flash: 0, face: 0, bob: Math.random() * 6, revealed: 0 }, st));
         queueTip(s.type);
@@ -6204,7 +6203,6 @@
     ctx.fillStyle = C.textDim; ctx.font = "700 8px system-ui"; ctx.fillText("CORE", 122, 30);
     ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "700 8px system-ui"; ctx.fillText(S.endless ? "ENDLESS" : "WAVE", W - 14, 11);
     ctx.fillStyle = C.text; ctx.font = "800 16px ui-monospace, Menlo, monospace"; ctx.fillText(S.endless ? String(S.wave) : S.wave + " / " + TOTAL_WAVES, W - 14, 24);
-    if (threatLevel() > 0) { ctx.textAlign = "center"; ctx.fillStyle = "#f2643a"; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("\u26a0 +" + Math.round(threatLevel() * THREAT_HP * 100) + "%", 190, 13); ctx.fillStyle = C.textDim; ctx.font = "700 7px system-ui"; ctx.fillText("THREAT", 190, 23); }
 
     // second row
     hudBtns = [];
@@ -6550,8 +6548,8 @@
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
-      const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.16 · REAL 3D</div>
+      const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.17 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6581,13 +6579,11 @@
       }).join("")}</select>`;
       const lockedCount = MAPS.length - 1 - campProg;
       show(`<div class="panel"><h2>Free Play</h2><div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
-        ${threatLevel() > 0 ? `<div class="sub" style="margin:-2px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP</div>` : ""}
         <div class="sub" style="margin:6px 0 4px">Map${lockedCount > 0 ? ` · <span style="color:#f2b23a">${lockedCount} locked \u{1F512}</span>` : ""}</div>${maps}
         <div class="sub" style="margin:10px 0 4px">Mode</div>
         <div class="row"><button class="btn small ${!S.endless ? "active" : ""}" id="m_std" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">20 WAVES</button><button class="btn small ${S.endless ? "active" : ""}" id="m_end" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">∞ ENDLESS</button></div>
         <div class="sub" style="margin:10px 0 4px">Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="df_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
-        ${(() => { const rec = { hard: 0.3, brutal: 0.7 }[S.difficulty]; if (rec == null) return ""; const cur = threatLevel(), ok = cur >= rec - 1e-9; return `<div class="sub" style="margin:4px 0 6px;color:${ok ? "#37e0d0" : "#f2b23a"};text-transform:none;letter-spacing:0.3px">◇ ${ok ? DIFFS[S.difficulty].label + " — your Armory (" + Math.round(cur * 100) + "%) is ready" : DIFFS[S.difficulty].label + " is tuned for ~" + Math.round(rec * 100) + "%+ Armory — you’re at " + Math.round(cur * 100) + "%"}</div>`; })()}
         ${S.difficulty === "custom" ? (() => { const c = CustomDiff.get();
           const row = (id, lbl, min, max, step, val, fv) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span class="sub" style="margin:0;flex:0 0 96px;text-align:left">${lbl}</span><input type="range" id="cs_${id}" min="${min}" max="${max}" step="${step}" value="${val}" style="flex:1;accent-color:#37e0d0"><b id="cv_${id}" style="flex:0 0 44px;font-size:11px;color:#37e0d0;text-align:right">${fv}</b></div>`;
           return `<div style="border:1px solid #2c3a42;border-radius:4px;padding:8px 10px;margin:6px 0;background:#12181d;text-align:left">
@@ -6655,7 +6651,6 @@
           <div class="sub" style="margin:0 0 2px">Mission ${sel + 1} · ${MAPS[sel].name}</div>
           <div class="sub" style="margin:0 0 6px;text-transform:none;letter-spacing:0.3px">Best: ${m.t ? MEDAL_GLYPH[m.t] + " " + MEDAL_NAME[m.t] + (m.p >= m.t ? " ✦ perfect" : "") : "not cleared"}</div>
           <div class="row">${["normal", "hard", "brutal"].map((d) => `<button class="btn small ${S.difficulty === d ? "active" : ""}" id="cd_${d}" style="padding:10px 2px;font-size:10px;letter-spacing:0.5px">${DIFFS[d].label} ${MEDAL_GLYPH[medalTier(d)]}</button>`).join("")}</div>
-          ${(() => { const rec = { hard: 0.3, brutal: 0.7 }[S.difficulty]; if (rec == null) return ""; const cur = threatLevel(), ok = cur >= rec - 1e-9; return `<div class="sub" style="margin:4px 0 0;color:${ok ? "#37e0d0" : "#f2b23a"};text-transform:none;letter-spacing:0.3px">◇ ${ok ? DIFFS[S.difficulty].label + " — Armory " + Math.round(cur * 100) + "% ready" : DIFFS[S.difficulty].label + " tuned for ~" + Math.round(rec * 100) + "%+ Armory (you: " + Math.round(cur * 100) + "%)"}</div>`; })()}
           <button class="btn primary" id="cgo" style="margin-top:8px">▶ Deploy Mission ${sel + 1}</button>
         </div>
         <button class="btn" id="bk">Back</button></div>`);
@@ -6676,7 +6671,7 @@
           <button class="btn buy" id="b_${id}" ${dis}>${label}</button></div>`;
       }).join("");
       show(`<div class="panel"><h2>Armory</h2><div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
-        ${devArmory != null ? `<p class="sub" style="color:#f2b23a">\u{1F6E0} DEV override ${Math.round(devArmory * 100)}% \u2014 forced levels shown, buying locked</p>` : `<p class="sub">Permanent upgrades \u00b7 earned each run</p>`}${rows}
+        ${devArmory != null ? `<p class="sub" style="color:#f2b23a">\u{1F6E0} DEV override ${Math.round(devArmory * 100)}% \u2014 forced levels shown, buying locked</p>` : `<p class="sub">Permanent upgrades \u00b7 your edge on the tougher maps</p>`}${rows}
         <button class="btn primary" id="b">Back</button></div>`);
       TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); }; });
       byId("b").onclick = () => { S.screen = "menu"; render(); };
@@ -6721,7 +6716,7 @@
           <div style="color:#37e0d0;font:800 14px ui-monospace,monospace;margin-bottom:8px">THE GRID HAS FALLEN</div>
           <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">For a century the <b>Grid</b> — the planetary defense lattice — held back the <b>Scourge</b>: self-replicating war-machines and the raider clans that worship them. Then, without warning, the Grid went dark.</p>
           <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">You are a <b>Warden</b>, one of the last, woken from cryo-sleep as the old reactors flicker back to life. Each reactor <b>Core</b> is a shard of the fallen network — and the one thing the Scourge wants even more than your death.</p>
-          <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">Fourteen sectors still guard a living Core. Hold the line at each one: raise towers from salvaged <b>alloy</b>, read the enemy, and never let a machine reach the Core. Reclaim the sectors, relight the Grid, and the wastes may yet be ours again.</p>
+          <p class="sub" style="text-transform:none;letter-spacing:0;margin:0 0 8px">Twenty-five sectors still guard a living Core. Hold the line at each one: raise towers from salvaged <b>alloy</b>, read the enemy, and never let a machine reach the Core. Reclaim the sectors, relight the Grid, and the wastes may yet be ours again.</p>
           <div style="color:#f2b23a;font:800 11px ui-monospace,monospace;margin-top:10px">YOUR MISSION</div>
           <p class="sub" style="text-transform:none;letter-spacing:0;margin:2px 0 0">Survive <b>20 waves</b> in each sector. Earn <b>Alloy</b> to upgrade your <b>Armory</b> between deployments. Lose all Core integrity and the reactor — and the Grid — falls for good.</p>
         </div>`;
@@ -6736,6 +6731,7 @@
         <li><b>Daily Op</b> is a fresh seeded challenge each day — build a streak. <b>Campaign</b> plays all maps in sequence.</li>
         <li><b>Camera:</b> pinch to zoom, drag to pan, or use the on-screen controls.</li>
         <li>Clear 20 waves to win, or push your luck in <b>Endless</b>. Each run earns <b>Alloy</b> for permanent <b>Armory</b> upgrades.</li>
+        <li>Higher-★ sectors field genuinely tougher machines. The <b>Armory</b> is your lever: when a sector stops you, upgrade and come back stronger.</li>
         <li>Lose all <b>Core</b> integrity and the reactor falls.</li>
       </ul>`;
       }
@@ -6797,7 +6793,6 @@
           <div class="sub" style="margin:4px 0 8px;text-transform:none;letter-spacing:0">${mod.desc}</div>
           <ul class="how" style="margin:0 0 0 2px">${effs}</ul>
         </div>
-        ${threatLevel() > 0 ? `<div class="sub" style="margin:2px 0 6px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP (your Armory)</div>` : ""}
         <div class="sub" style="margin:8px 0 4px">Choose Difficulty</div>
         <div class="row">${DIFF_ORDER.map((d) => `<button class="btn small ${S.dailyDiff === d ? "active" : ""}" id="dd_${d}" style="padding:10px 2px;font-size:10.5px;letter-spacing:1px">${DIFFS[d].label}</button>`).join("")}</div>
         <button class="btn primary" id="go">\u25b6 Deploy Daily</button>
@@ -8079,7 +8074,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, threatLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
+    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
