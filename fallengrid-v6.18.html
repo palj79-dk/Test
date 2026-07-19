@@ -66,6 +66,20 @@
     background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
   .mapsel:focus { outline: none; border-color: #37e0d0; }
   .mapsel option { background: #10151c; color: #cfd8e3; }
+  /* V6.18: wide screens -- tablets and landscape phones get a roomier panel */
+  @media (min-width: 600px) {
+    .panel { width: min(520px, 86vw); padding: 30px 34px; }
+  }
+  /* true tablets (both dimensions large): scale the type up as well */
+  @media (min-width: 700px) and (min-height: 700px) {
+    .panel { width: min(560px, 80vw); }
+    .panel h1 { font-size: 42px; }
+    .panel h2 { font-size: 26px; }
+    .panel .sub { font-size: 12px; }
+    .panel .tag { font-size: 15px; }
+    .btn { font-size: 16px; padding: 17px 18px; }
+    .btn.small { font-size: 13px; padding: 12px 10px; }
+  }
 </style>
 </head>
 <body>
@@ -4791,7 +4805,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.17",
+        ts: Date.now(), ver: "6.18",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6549,7 +6563,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.17 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.18 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
