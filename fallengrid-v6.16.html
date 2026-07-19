@@ -4234,6 +4234,16 @@
     { name: "Twin Reservoir", diff: 3, seed: 47, cols: 12, rows: 16, biome: "rust",
       props: [{ c: 3, r: 13, type: "pool" }, { c: 9, r: 2, type: "building" }],
       routes: [[[2, 0], [2, 3], [5, 3], [5, 6], [2, 6], [2, 10], [6, 10], [6, 15]], [[10, 0], [10, 3], [7, 3], [7, 6], [10, 6], [10, 10], [6, 10], [6, 15]]] },
+    // Rake: wide-spaced serpentine (lanes 5 apart, out of double-coverage range) + rubble in every crook.
+    { name: "Rake", diff: 3, seed: 61, cols: 11, rows: 18, biome: "ember",
+      props: [{ c: 9, r: 9, type: "dropship" }],
+      blocks: [[8, 4], [2, 9], [8, 14], [5, 6], [5, 11]],
+      routes: [[[0, 2], [9, 2], [9, 7], [1, 7], [1, 12], [9, 12], [9, 16], [5, 16], [5, 17]]] },
+    // Rimline: the road rings the outer border -- every tower only reaches one short arc; big dead center.
+    { name: "Rimline", diff: 3, seed: 67, cols: 11, rows: 16, biome: "rust",
+      props: [{ c: 5, r: 7, type: "building" }],
+      blocks: [[8, 3], [8, 12], [2, 12], [5, 13]],
+      routes: [[[0, 1], [9, 1], [9, 14], [1, 14], [1, 4]]] },
     // ==== Tier C · Advanced (4 stars): direct paths, 2-3 gates converging late, sprint lanes, open dead-space ====
     { name: "Delta", diff: 4, seed: 13, cols: 13, rows: 18, biome: "toxic",
       props: [{ c: 2, r: 16, type: "building" }, { c: 10, r: 15, type: "dropship" }],
@@ -4256,6 +4266,21 @@
     { name: "Pincer", diff: 4, seed: 59, cols: 13, rows: 18, biome: "ash",
       props: [{ c: 3, r: 3, type: "building" }, { c: 9, r: 3, type: "dropship" }],
       routes: [[[1, 0], [1, 14], [6, 14], [6, 17]], [[11, 0], [11, 14], [6, 14], [6, 17]], [[0, 8], [6, 8], [6, 17]]] },
+    // Horseshoe: a U whose legs hug both edges (one buildable side each), 9 columns apart -- zero shared coverage.
+    { name: "Horseshoe", diff: 4, seed: 71, cols: 12, rows: 18, biome: "toxic",
+      props: [{ c: 5, r: 6, type: "dropship" }, { c: 6, r: 10, type: "building" }],
+      blocks: [[2, 8], [9, 8], [2, 15], [9, 15]],
+      routes: [[[1, 0], [1, 16], [10, 16], [10, 1]]] },
+    // Shattered Field: two fairly direct lanes in opposite halves + a heavy authored rubble field on the prime plots.
+    { name: "Shattered Field", diff: 4, seed: 73, cols: 13, rows: 18, biome: "ash",
+      props: [{ c: 11, r: 2, type: "building" }],
+      blocks: [[7, 3], [9, 5], [7, 10], [3, 12], [5, 14], [9, 12], [2, 5], [10, 8]],
+      routes: [[[0, 4], [8, 4], [8, 17], [6, 17]], [[12, 13], [4, 13], [4, 17], [6, 17]]] },
+    // Terraces: a wide staircase (4-5 tile steps) with rubble on every inside corner (the multi-hit spots).
+    { name: "Terraces", diff: 4, seed: 79, cols: 11, rows: 18, biome: "ember",
+      props: [{ c: 9, r: 2, type: "dropship" }],
+      blocks: [[3, 3], [7, 8], [3, 13], [5, 15], [9, 10]],
+      routes: [[[0, 2], [4, 2], [4, 7], [8, 7], [8, 12], [2, 12], [2, 16], [6, 16], [6, 17]]] },
     // ==== Tier D · Brutal geometry (5 stars): near-straight/short, 3+ gates converging only at the core ====
     { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
       props: [{ c: 6, r: 7, type: "building" }, { c: 11, r: 14, type: "dropship" }, { c: 5, r: 3, type: "building" }],
@@ -4276,6 +4301,22 @@
         [[7, 0], [7, 3], [2, 3], [2, 9], [12, 9], [12, 15], [7, 15], [7, 21]],
         [[0, 6], [9, 6], [9, 12], [4, 12], [4, 18], [7, 18], [7, 21]],
         [[14, 11], [14, 19], [7, 19], [7, 21]]] },
+    // Blockade: three near-straight gates; the whole prime camp zone around both junctions is authored rubble --
+    // pay to excavate it, or defend from the second row.
+    { name: "Blockade", diff: 5, seed: 83, cols: 13, rows: 20, biome: "toxic",
+      props: [{ c: 12, r: 19, type: "building" }, { c: 0, r: 19, type: "dropship" }],
+      blocks: [[5, 14], [7, 14], [5, 16], [7, 16], [5, 7], [7, 7]],
+      routes: [[[2, 0], [2, 15], [6, 15], [6, 19]], [[10, 0], [10, 15], [6, 15], [6, 19]], [[0, 8], [6, 8], [6, 19]]] },
+    // Ground Zero: the core sits in the CENTER; four short gates strike from N/S/E/W and the four tightest
+    // ring plots are rubble. Nowhere does one tower see two approaches for long.
+    { name: "Ground Zero", diff: 5, seed: 89, cols: 15, rows: 20, biome: "rust",
+      props: [{ c: 1, r: 1, type: "building" }, { c: 13, r: 18, type: "dropship" }, { c: 13, r: 1, type: "building" }],
+      blocks: [[6, 10], [8, 10], [6, 11], [8, 9]],
+      routes: [
+        [[7, 0], [7, 10]],
+        [[7, 19], [7, 10]],
+        [[0, 8], [4, 8], [4, 9], [7, 9], [7, 10]],
+        [[14, 12], [10, 12], [10, 11], [7, 11], [7, 10]]] },
   ];
   function buildPath(wp) {
     const tiles = [], seen = new Set();
@@ -4300,17 +4341,23 @@
   const OBST_BY_DIFF = { normal: 3, hard: 6, brutal: 9 }; // V6.13: more, since Excavate turns them into a sink + build room
   function computeObstacles() {
     BLOCKED_SET = new Set();
+    if (currentMap < 0) return;
+    // V6.16 authored obstacles: map-defined rubble squatting the prime camp tiles next to the road
+    // (present on every difficulty; excavatable like any other obstacle).
+    const mpB = MAPS[currentMap];
+    if (mpB && mpB.blocks) for (const b of mpB.blocks) { if (buildableBase(b[0], b[1]) && !(b[0] === TUT_PLOT.c && b[1] === TUT_PLOT.r)) BLOCKED_SET.add(b[0] + "," + b[1]); }
+    const auth = BLOCKED_SET.size;
     const want = (OBST_BY_DIFF[S.difficulty] != null ? OBST_BY_DIFF[S.difficulty] : 3);
-    if (want <= 0 || currentMap < 0) return;
+    if (want <= 0) return;
     const seed = (MAPS[currentMap] ? MAPS[currentMap].seed : 1) * 31 + ({ normal: 0, hard: 1, brutal: 2 }[S.difficulty] != null ? { normal: 0, hard: 1, brutal: 2 }[S.difficulty] : 3) * 137;
     const cand = [];
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      if (!buildableBase(c, r)) continue;
+      if (!buildableBase(c, r) || BLOCKED_SET.has(c + "," + r)) continue;
       if (c === TUT_PLOT.c && r === TUT_PLOT.r) continue; // keep the onboarding plot free
       const adj = PATH_SET.has((c + 1) + "," + r) || PATH_SET.has((c - 1) + "," + r) || PATH_SET.has(c + "," + (r + 1)) || PATH_SET.has(c + "," + (r - 1));
       cand.push({ c, r, adj: adj ? 1 : 0, h: hash2(c * 13 + seed, r * 17 + seed) });
     }
-    const cap = Math.min(want, Math.floor(cand.length * 0.22)); // never eat more than ~22% of buildable ground
+    const cap = auth + Math.min(want, Math.floor(cand.length * 0.22)); // random on top of authored; random never eats more than ~22% of open ground
     cand.sort((a, b) => (b.adj - a.adj) || (a.h - b.h)); // path-adjacent first, then hashed order
     for (let i = 0; i < cand.length && BLOCKED_SET.size < cap; i++) BLOCKED_SET.add(cand[i].c + "," + cand[i].r);
   }
@@ -4745,7 +4792,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.15",
+        ts: Date.now(), ver: "6.16",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6504,7 +6551,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.15 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.16 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
