@@ -4208,6 +4208,8 @@
   // (consecutive corners share a row or column); all routes end at the shared base (last point).
   // Multiple routes = multiple entrances; where two routes' tiles overlap, roads simply cross.
   const MAPS = [
+    // ==== Tier A · Starters (1-2 stars): winding, central paths, 1 gate, lane spacing 3 ====
+    //      (defense-optimal on purpose -- a tower in a switchback crook re-hits each enemy 2-3x)
     { name: "Outpost", diff: 1, seed: 3, cols: 9, rows: 12, biome: "rust",
       props: [{ c: 5, r: 5, type: "dropship" }, { c: 8, r: 10, type: "building" }],
       routes: [[[0, 1], [7, 1], [7, 4], [1, 4], [1, 7], [7, 7], [7, 9], [4, 9], [4, 11]]] },
@@ -4216,36 +4218,58 @@
     { name: "Spiral", diff: 2, seed: 17, cols: 11, rows: 14, biome: "ember",
       props: [{ c: 5, r: 12, type: "dropship" }],
       routes: [[[5, 0], [5, 2], [1, 2], [1, 11], [9, 11], [9, 4], [3, 4], [3, 9], [7, 9], [7, 6], [5, 6]]] },
+    { name: "Switchback", diff: 2, seed: 29, cols: 10, rows: 16, biome: "ember",
+      props: [{ c: 9, r: 8, type: "dropship" }],
+      routes: [[[0, 2], [8, 2], [8, 5], [1, 5], [1, 8], [8, 8], [8, 11], [2, 11], [2, 14], [5, 14], [5, 15]]] },
+    // ==== Tier B · Intermediate (3 stars): more direct, dual gates converging mid, some edge-hug ====
     { name: "Crossroads", diff: 3, seed: 5, cols: 11, rows: 16, biome: "toxic",
       routes: [[[0, 4], [8, 4], [8, 15], [5, 15]], [[10, 7], [2, 7], [2, 15], [5, 15]]] },
     { name: "Gauntlet", diff: 3, seed: 11, cols: 9, rows: 18, biome: "ash",
       routes: [[[4, 0], [4, 2], [1, 2], [1, 5], [7, 5], [7, 8], [1, 8], [1, 11], [7, 11], [7, 14], [4, 14], [4, 17]]] },
+    // Causeway: a long left-edge sprint lane (only one side buildable) + a winding right gate, converging low.
+    { name: "Causeway", diff: 3, seed: 43, cols: 11, rows: 17, biome: "toxic",
+      props: [{ c: 8, r: 15, type: "dropship" }, { c: 7, r: 2, type: "building" }],
+      routes: [[[0, 2], [1, 2], [1, 14], [5, 14], [5, 16]], [[10, 1], [9, 1], [9, 4], [4, 4], [4, 8], [9, 8], [9, 11], [5, 11], [5, 16]]] },
+    // Twin Reservoir: mirrored twin gates that converge at mid (shared kill-zone keeps it a 3-star).
+    { name: "Twin Reservoir", diff: 3, seed: 47, cols: 12, rows: 16, biome: "rust",
+      props: [{ c: 3, r: 13, type: "pool" }, { c: 9, r: 2, type: "building" }],
+      routes: [[[2, 0], [2, 3], [5, 3], [5, 6], [2, 6], [2, 10], [6, 10], [6, 15]], [[10, 0], [10, 3], [7, 3], [7, 6], [10, 6], [10, 10], [6, 10], [6, 15]]] },
+    // ==== Tier C · Advanced (4 stars): direct paths, 2-3 gates converging late, sprint lanes, open dead-space ====
     { name: "Delta", diff: 4, seed: 13, cols: 13, rows: 18, biome: "toxic",
       props: [{ c: 2, r: 16, type: "building" }, { c: 10, r: 15, type: "dropship" }],
       routes: [[[0, 2], [10, 2], [10, 7], [6, 7], [6, 17]], [[12, 9], [6, 9], [6, 17]], [[0, 13], [6, 13], [6, 17]]] },
-    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
-      routes: [[[0, 1], [11, 1], [11, 4], [2, 4], [2, 7], [11, 7], [11, 10], [2, 10], [2, 13], [11, 13], [11, 16], [2, 16], [2, 19], [8, 19], [8, 21]]] },
     { name: "Fracture", diff: 4, seed: 19, cols: 12, rows: 16, biome: "rust",
       props: [{ c: 1, r: 14, type: "building" }],
       routes: [[[0, 3], [9, 3], [9, 12], [6, 12], [6, 15]], [[11, 6], [3, 6], [3, 13], [6, 13], [6, 15]]] },
+    { name: "Crucible", diff: 4, seed: 31, cols: 13, rows: 18, biome: "toxic",
+      props: [{ c: 0, r: 16, type: "building" }, { c: 12, r: 16, type: "dropship" }],
+      routes: [[[0, 3], [10, 3], [10, 8], [6, 8], [6, 17]], [[12, 6], [3, 6], [3, 11], [6, 11], [6, 17]]] },
+    // Sprawl (rebuilt): two big, fairly direct L-lanes that cross once (bridge) and only merge near the core.
+    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
+      props: [{ c: 1, r: 20, type: "building" }, { c: 11, r: 20, type: "dropship" }],
+      routes: [[[0, 3], [11, 3], [11, 12], [3, 12], [3, 21], [6, 21]], [[12, 6], [2, 6], [2, 18], [6, 18], [6, 21]]] },
+    // Highway: a near-straight vertical sprint (short dwell, minimal multi-hit) + a short side gate joining late.
+    { name: "Highway", diff: 4, seed: 53, cols: 11, rows: 20, biome: "ember",
+      props: [{ c: 9, r: 3, type: "dropship" }, { c: 1, r: 5, type: "building" }],
+      routes: [[[5, 0], [5, 8], [3, 8], [3, 12], [7, 12], [7, 19]], [[0, 15], [7, 15], [7, 19]]] },
+    // Pincer: two near-edge vertical sprints + a center feed; a big open middle you cannot use; converge at core.
+    { name: "Pincer", diff: 4, seed: 59, cols: 13, rows: 18, biome: "ash",
+      props: [{ c: 3, r: 3, type: "building" }, { c: 9, r: 3, type: "dropship" }],
+      routes: [[[1, 0], [1, 14], [6, 14], [6, 17]], [[11, 0], [11, 14], [6, 14], [6, 17]], [[0, 8], [6, 8], [6, 17]]] },
+    // ==== Tier D · Brutal geometry (5 stars): near-straight/short, 3+ gates converging only at the core ====
     { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
       props: [{ c: 6, r: 7, type: "building" }, { c: 11, r: 14, type: "dropship" }, { c: 5, r: 3, type: "building" }],
       routes: [[[0, 2], [10, 2], [10, 9], [3, 9], [3, 16], [6, 16], [6, 19]], [[12, 5], [2, 5], [2, 12], [9, 12], [9, 16], [6, 16], [6, 19]]] },
+    // Meltline (rebuilt): two 16-tile straight vertical sprints + a center feed; fire split 3 ways, merge only at core.
+    { name: "Meltline", diff: 5, seed: 37, cols: 12, rows: 20, biome: "ash",
+      props: [{ c: 11, r: 1, type: "building" }, { c: 1, r: 18, type: "dropship" }],
+      routes: [[[2, 0], [2, 16], [6, 16], [6, 19]], [[10, 0], [10, 16], [6, 16], [6, 19]], [[0, 10], [6, 10], [6, 19]]] },
     { name: "Terminus", diff: 5, seed: 23, cols: 15, rows: 22, biome: "ash",
       props: [{ c: 13, r: 2, type: "building" }, { c: 1, r: 20, type: "dropship" }, { c: 13, r: 21, type: "building" }],
       routes: [
         [[7, 0], [7, 4], [2, 4], [2, 10], [12, 10], [12, 16], [7, 16], [7, 20]],
         [[0, 7], [9, 7], [9, 13], [4, 13], [4, 18], [7, 18], [7, 20]],
         [[14, 12], [14, 19], [7, 19], [7, 20]]] },
-    { name: "Switchback", diff: 3, seed: 29, cols: 10, rows: 16, biome: "ember",
-      props: [{ c: 9, r: 8, type: "dropship" }],
-      routes: [[[0, 2], [8, 2], [8, 5], [1, 5], [1, 8], [8, 8], [8, 11], [2, 11], [2, 14], [5, 14], [5, 15]]] },
-    { name: "Crucible", diff: 4, seed: 31, cols: 13, rows: 18, biome: "toxic",
-      props: [{ c: 0, r: 16, type: "building" }, { c: 12, r: 16, type: "dropship" }],
-      routes: [[[0, 3], [10, 3], [10, 8], [6, 8], [6, 17]], [[12, 6], [3, 6], [3, 11], [6, 11], [6, 17]]] },
-    { name: "Meltline", diff: 5, seed: 37, cols: 12, rows: 20, biome: "ash",
-      props: [{ c: 11, r: 1, type: "building" }],
-      routes: [[[6, 0], [6, 3], [1, 3], [1, 7], [10, 7], [10, 11], [2, 11], [2, 15], [9, 15], [9, 18], [6, 18], [6, 19]]] },
     { name: "The Maw", diff: 5, seed: 41, cols: 15, rows: 22, biome: "rust",
       props: [{ c: 0, r: 0, type: "building" }, { c: 14, r: 0, type: "dropship" }],
       routes: [
@@ -4721,7 +4745,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.12",
+        ts: Date.now(), ver: "6.14",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6480,7 +6504,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.13 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.14 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
