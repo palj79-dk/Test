@@ -4745,7 +4745,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.14",
+        ts: Date.now(), ver: "6.15",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6502,9 +6502,9 @@
     if (S.screen === "menu") {
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
-      const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
+      const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}${threatLevel() > 0 ? `<div class="sub" style="margin:-6px 0 8px;color:#f2643a;text-transform:none;letter-spacing:0.4px">⚠ Threat +${Math.round(threatLevel() * THREAT_HP * 100)}% enemy HP — scales with your Armory</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.14 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.15 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6526,7 +6526,7 @@
       byId("set").onclick = () => { S.screen = "settings"; render(); };
     } else if (S.screen === "freeplay") {
       S.difficulty = Store.get("difficulty", "normal");
-      const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
+      const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       if (S.mapIndex > campProg) { S.mapIndex = campProg; selectMap(S.mapIndex); }
       const maps = `<select id="mapsel" class="mapsel">${MAPS.map((m, i) => {
         const locked = i > campProg, info = "★".repeat(m.diff) + " · " + m.cols + "×" + m.rows + (m.routes.length > 1 ? " · " + m.routes.length + " gates" : "");
@@ -6575,6 +6575,8 @@
         <div class="sub" style="margin:10px 0 4px">Play Log</div>
         <div class="row"><button class="btn small ghost" id="logtog">${Telemetry.enabled ? "◉ Logging On" : "○ Logging Off"}</button><button class="btn small ghost" id="logview">📊 View · ${Telemetry.runs.length}</button></div>
         ${Store.get("camp", 0) > 0 ? `<div class="sub" style="margin:10px 0 4px">Campaign</div><button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
+        <div class="sub" style="margin:10px 0 4px">Dev · Map Unlock</div>
+        <button class="btn small ${Store.get("devUnlock", false) ? "active" : "ghost"}" id="unl">${Store.get("devUnlock", false) ? "\u{1F513} All maps unlocked (test)" : "\u{1F512} Unlock all maps (test)"}</button>
         <div class="sub" style="margin:10px 0 4px">Dev · Armory Override</div>
         <div class="row">${[["OFF", null], ["0%", 0], ["50%", 0.5], ["100%", 1]].map(([lb, v], i) => `<button class="btn small ${devArmory === v ? "active" : "ghost"}" id="dv_${i}" style="padding:8px 2px;font-size:10.5px;letter-spacing:1px">${lb}</button>`).join("")}</div>
         <button class="btn primary" id="bk" style="margin-top:10px">Back</button></div>`);
@@ -6583,12 +6585,13 @@
       byId("v").onclick = () => { const nv = !Haptics.isOn(); Haptics.toggle(nv); if (nv) vibrate(35); render(); };
       byId("eco").onclick = () => { const nv = !Store.get("eco", false); Store.set("eco", nv); if (window.G3D && G3D.setEco) G3D.setEco(nv); render(); };
       const rcEl = byId("rc"); if (rcEl) rcEl.onclick = () => { if (confirm("Reset campaign progress back to Mission 1? (Alloy and Armory upgrades are kept.)")) { Store.set("camp", 0); render(); } };
+      byId("unl").onclick = () => { Store.set("devUnlock", !Store.get("devUnlock", false)); Sound.up(); render(); };
       [null, 0, 0.5, 1].forEach((v, i) => { byId("dv_" + i).onclick = () => { setDevArmory(v); render(); }; });
       byId("logtog").onclick = () => { Telemetry.setEnabled(!Telemetry.enabled); render(); };
       byId("logview").onclick = () => { S.screen = "log"; render(); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "campaign") {
-      const campProg = Math.min(Store.get("camp", 0), MAPS.length - 1);
+      const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       if (S.campSel == null || S.campSel > campProg) S.campSel = campProg;
       if (S.difficulty === "custom") S.difficulty = "normal";
       const sel = S.campSel, m = Medals.get(sel);
