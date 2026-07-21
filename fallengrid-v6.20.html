@@ -4805,7 +4805,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.19",
+        ts: Date.now(), ver: "6.20",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6156,7 +6156,7 @@
     if (S.tut === 1 && towers.some((t) => t.lvl >= 1)) S.tut = 2; // upgraded -> deploy nudge
     const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
     let msg = "", target = null, onHud = false;
-    if (S.tut === 0) { msg = "TAP THE GLOWING PLOT, THEN A TOWER"; const c = center(TUT_PLOT.c, TUT_PLOT.r); target = worldToScreen(c.x, c.y); }
+    if (S.tut === 0) { msg = "TAP THE PLOT, THEN PICK AUTO-GUN"; const c = center(TUT_PLOT.c, TUT_PLOT.r); target = worldToScreen(c.x, c.y); }
     else if (S.tut === 1) { msg = "TAP YOUR TOWER, THEN UPGRADE"; if (towers[0]) { const c = center(towers[0].c, towers[0].r); target = worldToScreen(c.x, c.y - 12); } }
     else { msg = "TAP DEPLOY TO SEND WAVE 1"; const b = hudBtns.find((x) => x.id === "nextwave"); if (b) { target = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; onHud = true; } }
     // spotlight
@@ -6172,15 +6172,16 @@
     }
     // instruction banner (below HUD so it never covers the deploy button)
     ctx.save(); ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const bw = ctx.measureText(msg).width + 28, bx = W / 2 - bw / 2, byy = PLAY_TOP + 30;
+    const bw = ctx.measureText(msg).width + 28, bx = W / 2 - bw / 2, byy = PLAY_TOP + 52;
     ctx.fillStyle = "rgba(6,9,12,0.85)"; rr(bx, byy - 13, bw, 26, 6); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.45); ctx.lineWidth = 1; rr(bx, byy - 13, bw, 26, 6); ctx.stroke();
     ctx.fillStyle = C.neonC; ctx.fillText(msg, W / 2, byy);
     // skip
-    const sw = 62, sx = W - sw - 8, sy = PLAY_TOP + 8;
-    ctx.fillStyle = "rgba(6,9,12,0.7)"; rr(sx, sy, sw, 18, 4); ctx.fill();
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("SKIP ✕", sx + sw / 2, sy + 9);
-    tutSkipBtn = { x: sx, y: sy, w: sw, h: 18 };
+    const sw = 80, sh = 27, sx = W - sw - 8, sy = PLAY_TOP + 6;
+    ctx.fillStyle = "rgba(6,9,12,0.9)"; rr(sx, sy, sw, sh, 5); ctx.fill();
+    ctx.strokeStyle = rgba("#37e0d0", 0.75); ctx.lineWidth = 1.5; rr(sx, sy, sw, sh, 5); ctx.stroke();
+    ctx.fillStyle = C.neonC; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("SKIP ✕", sx + sw / 2, sy + sh / 2);
+    tutSkipBtn = { x: sx, y: sy, w: sw, h: sh };
     ctx.restore();
   }
   function drawTips(dt) {
@@ -6461,15 +6462,16 @@
     ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, PLAY_BOTTOM + 15);
     const N = TOWER_ORDER.length, gap = 5, bh = 74, bw = Math.min(82, (W - 16 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 26;
     TOWER_ORDER.forEach((key, i) => {
-      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), banned = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), afford = !banned && S.scrap >= l0.cost;
+      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), banned = tutLock || modBan, afford = !banned && S.scrap >= l0.cost;
       ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
       if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
       ctx.globalAlpha = banned ? 0.28 : (afford ? 1 : 0.45);
       drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, 0.68);
       ctx.globalAlpha = 1;
       ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 48);
-      if (banned) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFFLINE", x + bw / 2, y + 58); }
+      if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFFLINE", x + bw / 2, y + 58); }
       else { ctx.fillStyle = C.textDim; ctx.font = "600 8px system-ui"; ctx.fillText(spec.desc, x + bw / 2, y + 58); coin(x + bw / 2 - 14, y + bh - 10, 4.5); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + 5, y + bh - 10); }
+      if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
       trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
     });
   }
@@ -6563,7 +6565,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.19 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.20 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6626,11 +6628,11 @@
     } else if (S.screen === "settings") {
       show(`<div class="panel"><h2>Settings</h2>
         <div class="sub" style="margin:8px 0 4px">Audio</div>
-        <div class="row"><button class="btn small ghost" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ghost" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
+        <div class="row"><button class="btn small ${Sound.musicOn() ? "active" : "ghost"}" id="mus">${Sound.musicOn() ? "◉ Music" : "○ Music"}</button><button class="btn small ${Sound.sfxOn() ? "active" : "ghost"}" id="sfx">${Sound.sfxOn() ? "◉ SFX" : "○ SFX"}</button></div>
         <div class="sub" style="margin:10px 0 4px">Device</div>
-        <div class="row"><button class="btn small ghost" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ghost" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
+        <div class="row"><button class="btn small ${Haptics.isOn() ? "active" : "ghost"}" id="v">${Haptics.isOn() ? "◉ Haptics" : "○ Haptics"}</button><button class="btn small ${Store.get("eco", false) ? "active" : "ghost"}" id="eco">${Store.get("eco", false) ? "⚡ Battery" : "○ Battery"}</button></div>
         <div class="sub" style="margin:10px 0 4px">Play Log</div>
-        <div class="row"><button class="btn small ghost" id="logtog">${Telemetry.enabled ? "◉ Logging On" : "○ Logging Off"}</button><button class="btn small ghost" id="logview">📊 View · ${Telemetry.runs.length}</button></div>
+        <div class="row"><button class="btn small ${Telemetry.enabled ? "active" : "ghost"}" id="logtog">${Telemetry.enabled ? "◉ Logging On" : "○ Logging Off"}</button><button class="btn small ghost" id="logview">📊 View · ${Telemetry.runs.length}</button></div>
         ${Store.get("camp", 0) > 0 ? `<div class="sub" style="margin:10px 0 4px">Campaign</div><button class="btn small ghost" id="rc">↺ Reset Campaign Progress</button>` : ""}
         <div class="sub" style="margin:10px 0 4px">Dev · Map Unlock</div>
         <button class="btn small ${Store.get("devUnlock", false) ? "active" : "ghost"}" id="unl">${Store.get("devUnlock", false) ? "\u{1F513} All maps unlocked (test)" : "\u{1F512} Unlock all maps (test)"}</button>
