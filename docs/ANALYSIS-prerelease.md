@@ -70,6 +70,7 @@ i forhold til ambitionen om Google Play.
 
 - [ ] `DEV_BUILD = false` (logging skal default være OFF i drift — krav fra V6.8).
 - [ ] Fjern **Dev · Armory Override** (OFF/0/50/100 %) fra Settings + `setDevArmory`-eksport.
+- [ ] Fjern **Dev · Fresh Start / Reset All**-knappen (tilføjet V6.19) fra Settings.
 - [ ] Fjern **Dev · Map Unlock** ("unlock all maps (test)"-toggle, `devUnlock`-nøglen) fra Settings (tilføjet V6.15).
 - [ ] Genovervej Play Log-sektionen i Settings (View/Export er et udviklerværktøj).
 - [ ] Save-migrering: bane-indeks (medals/camp/map-nøgler) hvis rosteren er ændret siden testerens sidste version.
