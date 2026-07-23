@@ -4426,15 +4426,22 @@
   // Procedural synth: layered oscillators + filtered noise through a master compressor,
   // plus a low ambient music bed. No asset files. All guarded for sandboxed WebViews.
   const Sound = (function () {
-    let ctx = null, master = null, sfx = Store.get("sfx", true), musc = Store.get("music", true), noiseBuf = null, music = null;
+    let ctx = null, master = null, rev = null, sfx = Store.get("sfx", true), musc = Store.get("music", true), noiseBuf = null, music = null;
     function ac() {
       if (!ctx) {
         try {
           ctx = new (window.AudioContext || window.webkitAudioContext)();
-          master = ctx.createGain(); master.gain.value = 0.85;
+          master = ctx.createGain(); master.gain.value = 0.9;
+          const tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 12000; // shave digital fizz
           const comp = ctx.createDynamicsCompressor();
-          comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.25;
-          master.connect(comp); comp.connect(ctx.destination);
+          comp.threshold.value = -16; comp.knee.value = 26; comp.ratio.value = 10; comp.attack.value = 0.003; comp.release.value = 0.22;
+          // procedural plate reverb: a decaying-noise impulse on a parallel wet bus (no asset files)
+          rev = ctx.createConvolver();
+          const len = Math.floor(ctx.sampleRate * 1.7), imp = ctx.createBuffer(2, len, ctx.sampleRate);
+          for (let ch = 0; ch < 2; ch++) { const d = imp.getChannelData(ch); for (let i = 0; i < len; i++) { const t = i / len; d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.8); } }
+          rev.buffer = imp;
+          const revGain = ctx.createGain(); revGain.gain.value = 0.85; rev.connect(revGain); revGain.connect(tone);
+          master.connect(tone); tone.connect(comp); comp.connect(ctx.destination);
         } catch (e) { ctx = null; }
       }
       if (ctx && ctx.state === "suspended") { try { ctx.resume(); } catch (e) {} }
@@ -4442,54 +4449,76 @@
     }
     function noiseSrc(a) {
       if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
-      const s = a.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s;
+      const s2 = a.createBufferSource(); s2.buffer = noiseBuf; s2.loop = true; return s2;
     }
-    // one enveloped oscillator (optional pitch glide + lowpass)
-    function osc(f, d, type, g, glide, lp) {
+    // route a gain node to dry master + optional wet reverb send + optional stereo pan
+    function route(a, gain, wet, pan) {
+      let node = gain;
+      if (pan && a.createStereoPanner) { const p = a.createStereoPanner(); p.pan.value = pan; gain.connect(p); node = p; }
+      node.connect(master);
+      if (wet && rev) { const sg = a.createGain(); sg.gain.value = wet; node.connect(sg); sg.connect(rev); }
+    }
+    // one enveloped oscillator; o2 = { detune, lpEnd, atk, wet, pan }
+    function osc(f, d, type, g, glide, lp, o2) {
       if (!sfx) return; const a = ac(); if (!a) return; try {
-        const t0 = a.currentTime, o = a.createOscillator(), gain = a.createGain(); o.type = type || "sine";
-        o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(glide, t0 + d);
-        let node = o;
-        if (lp) { const f2 = a.createBiquadFilter(); f2.type = "lowpass"; f2.frequency.value = lp; o.connect(f2); node = f2; }
-        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.06, t0 + 0.006); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
-        node.connect(gain); gain.connect(master); o.start(t0); o.stop(t0 + d + 0.02);
+        o2 = o2 || {}; const t0 = a.currentTime, o = a.createOscillator(), gain = a.createGain(); o.type = type || "sine";
+        if (o2.detune) o.detune.value = o2.detune;
+        o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(1, glide), t0 + d);
+        let src = o;
+        if (lp) { const f2 = a.createBiquadFilter(); f2.type = "lowpass"; f2.frequency.setValueAtTime(lp, t0); if (o2.lpEnd) f2.frequency.exponentialRampToValueAtTime(Math.max(60, o2.lpEnd), t0 + d); o.connect(f2); src = f2; }
+        const atk = o2.atk != null ? o2.atk : 0.006;
+        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.06, t0 + atk); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+        src.connect(gain); route(a, gain, o2.wet, o2.pan); o.start(t0); o.stop(t0 + d + 0.03);
       } catch (e) {}
     }
-    // enveloped filtered noise burst (percussion / texture)
-    function nz(d, g, type, ff, q) {
+    // enveloped filtered noise burst; o2 = { ffEnd, atk, wet, pan }
+    function nz(d, g, type, ff, q, o2) {
       if (!sfx) return; const a = ac(); if (!a) return; try {
-        const t0 = a.currentTime, s = noiseSrc(a), filt = a.createBiquadFilter(), gain = a.createGain();
-        filt.type = type || "bandpass"; filt.frequency.value = ff || 1000; if (q) filt.Q.value = q;
-        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.05, t0 + 0.004); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
-        s.connect(filt); filt.connect(gain); gain.connect(master); s.start(t0); s.stop(t0 + d + 0.02);
+        o2 = o2 || {}; const t0 = a.currentTime, s2 = noiseSrc(a), filt = a.createBiquadFilter(), gain = a.createGain();
+        filt.type = type || "bandpass"; filt.frequency.setValueAtTime(ff || 1000, t0); if (o2.ffEnd) filt.frequency.exponentialRampToValueAtTime(Math.max(60, o2.ffEnd), t0 + d); if (q) filt.Q.value = q;
+        const atk = o2.atk != null ? o2.atk : 0.004;
+        gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.05, t0 + atk); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+        s2.connect(filt); filt.connect(gain); route(a, gain, o2.wet, o2.pan); s2.start(t0); s2.stop(t0 + d + 0.03);
       } catch (e) {}
     }
+    const rnd = (a2, b2) => a2 + Math.random() * (b2 - a2);
     const api = {
-      gun: () => { nz(0.05, 0.05, "bandpass", 1500, 1.2); osc(200, 0.05, "square", 0.03, 110); },
-      tesla: () => { osc(760, 0.09, "sawtooth", 0.05, 180); nz(0.12, 0.045, "bandpass", 3200, 3); osc(1500, 0.06, "square", 0.02, 500); },
-      cryo: () => { osc(680, 0.16, "sine", 0.045, 1180); nz(0.18, 0.02, "highpass", 4000); },
-      boom: () => { nz(0.32, 0.09, "lowpass", 460); osc(110, 0.34, "sine", 0.09, 42); osc(70, 0.3, "triangle", 0.06, 34); },
-      hit: () => nz(0.04, 0.03, "bandpass", 2200, 2),
-      place: () => { osc(360, 0.1, "sine", 0.05, 620); osc(540, 0.1, "sine", 0.03, 900); },
-      up: () => { osc(420, 0.1, "triangle", 0.05, 640); setTimeout(() => osc(660, 0.14, "triangle", 0.05, 900), 90); },
-      sell: () => osc(420, 0.12, "sine", 0.05, 180),
-      repair: () => { osc(520, 0.13, "sine", 0.05, 900); osc(820, 0.16, "triangle", 0.03, 1200); },
-      err: () => { osc(150, 0.14, "square", 0.05, 90); nz(0.08, 0.02, "lowpass", 600); },
-      leak: () => { osc(300, 0.22, "sawtooth", 0.07, 150); nz(0.2, 0.05, "lowpass", 800); },
-      shield: () => { osc(1400, 0.12, "sine", 0.04, 700); nz(0.1, 0.03, "bandpass", 5000, 4); },
-      strike: () => { osc(1200, 0.5, "sine", 0.05, 180); nz(0.5, 0.03, "highpass", 3000); },
-      wave: () => { osc(150, 0.5, "sawtooth", 0.06, 220, 700); osc(226, 0.5, "sawtooth", 0.05, 300, 700); setTimeout(() => osc(300, 0.3, "square", 0.04, 380), 150); },
-      win: () => [330, 440, 550, 740].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "triangle", 0.07); osc(f * 2, 0.3, "sine", 0.03); }, i * 140)),
-      lose: () => [300, 220, 150, 90].forEach((f, i) => setTimeout(() => { osc(f, 0.3, "sawtooth", 0.08, f * 0.6); nz(0.3, 0.03, "lowpass", 500); }, i * 160)),
+      // --- weapons: transient + body + sub, panned so rapid fire feels wide ---
+      gun: () => { const pan = rnd(-0.5, 0.5); nz(0.03, 0.05, "highpass", 2600, 0.7, { pan, atk: 0.001 }); osc(240, 0.06, "square", 0.035, 120, 900, { pan, wet: 0.08 }); osc(70, 0.05, "sine", 0.03, 45, 0, { atk: 0.001 }); },
+      tesla: () => { osc(820, 0.11, "sawtooth", 0.045, 150, 2600, { detune: 8, wet: 0.18 }); osc(816, 0.11, "sawtooth", 0.04, 150, 2600, { detune: -8 }); nz(0.13, 0.04, "bandpass", 3400, 4, { ffEnd: 1400, wet: 0.2 }); osc(1720, 0.05, "square", 0.018, 900); },
+      cryo: () => { osc(720, 0.28, "sine", 0.045, 720, 0, { wet: 0.35, atk: 0.008 }); osc(1440, 0.24, "sine", 0.02, 1440, 0, { wet: 0.35 }); osc(2160, 0.2, "triangle", 0.012, 2160, 0, { wet: 0.4 }); nz(0.26, 0.014, "highpass", 6000, 0, { wet: 0.4 }); },
+      boom: () => { nz(0.02, 0.08, "highpass", 3500, 0.6, { atk: 0.001 }); nz(0.28, 0.09, "lowpass", 700, 0, { ffEnd: 160, wet: 0.35 }); osc(150, 0.5, "sine", 0.11, 38, 0, { atk: 0.002, wet: 0.3 }); osc(92, 0.42, "triangle", 0.06, 30); nz(0.5, 0.03, "lowpass", 260, 0, { wet: 0.4, atk: 0.03 }); },
+      hit: () => nz(0.04, 0.03, "bandpass", 2200, 2, { pan: rnd(-0.4, 0.4) }),
+      // --- UI / economy ---
+      place: () => { osc(200, 0.12, "sine", 0.06, 90, 0, { atk: 0.002, wet: 0.12 }); nz(0.05, 0.03, "highpass", 1800, 0.5, { atk: 0.001 }); osc(560, 0.08, "triangle", 0.025, 720, 0, { wet: 0.1 }); },
+      up: () => { [523.25, 659.25, 783.99].forEach((f, i) => setTimeout(() => { osc(f, 0.16, "triangle", 0.05, f, 0, { wet: 0.25 }); osc(f * 2, 0.14, "sine", 0.02, f * 2, 0, { wet: 0.25 }); }, i * 80)); },
+      sell: () => { osc(660, 0.1, "triangle", 0.045, 660, 0, { wet: 0.2 }); setTimeout(() => osc(440, 0.14, "sine", 0.045, 300, 0, { wet: 0.2 }), 70); },
+      repair: () => { osc(520, 0.16, "sine", 0.05, 900, 0, { wet: 0.25 }); osc(1040, 0.18, "triangle", 0.022, 1300, 0, { wet: 0.3 }); },
+      err: () => { osc(150, 0.14, "square", 0.05, 88, 500); nz(0.08, 0.02, "lowpass", 500); },
+      // --- alerts / events ---
+      leak: () => { osc(240, 0.4, "sawtooth", 0.07, 90, 700, { wet: 0.3, detune: 10 }); osc(238, 0.4, "sawtooth", 0.05, 90, 700, { detune: -14 }); nz(0.32, 0.05, "lowpass", 700, 0, { wet: 0.3 }); },
+      shield: () => { osc(1500, 0.16, "sine", 0.035, 900, 0, { wet: 0.35 }); osc(2250, 0.12, "sine", 0.018, 1400, 0, { wet: 0.35 }); nz(0.1, 0.025, "bandpass", 5200, 5, { wet: 0.3 }); },
+      strike: () => { osc(1700, 0.55, "sine", 0.04, 240, 0, { wet: 0.2 }); nz(0.5, 0.02, "highpass", 3000, 0, { wet: 0.2 }); setTimeout(() => api.boom(), 520); },
+      wave: () => { osc(110, 0.6, "sawtooth", 0.06, 110, 300, { lpEnd: 1400, detune: 6, wet: 0.3 }); osc(165, 0.6, "sawtooth", 0.05, 165, 300, { lpEnd: 1600, detune: -6, wet: 0.3 }); setTimeout(() => osc(330, 0.35, "square", 0.035, 330, 900, { wet: 0.25 }), 160); },
+      win: () => { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => setTimeout(() => { osc(f, 0.5, "triangle", 0.06, f, 0, { wet: 0.4 }); osc(f * 1.5, 0.4, "sine", 0.02, f * 1.5, 0, { wet: 0.4 }); }, i * 130)); osc(130.81, 1.4, "sine", 0.04, 130.81, 0, { wet: 0.3, atk: 0.05 }); },
+      lose: () => { [392, 311.13, 233.08, 155.56].forEach((f, i) => setTimeout(() => { osc(f, 0.5, "sawtooth", 0.055, f * 0.94, 900, { wet: 0.35, detune: 8 }); osc(f, 0.5, "sine", 0.03, f * 0.94, 0, { detune: -8 }); }, i * 180)); osc(70, 1.6, "sine", 0.05, 55, 0, { wet: 0.3, atk: 0.06 }); nz(0.6, 0.02, "lowpass", 400, 0, { wet: 0.3 }); },
       startMusic() {
         if (!musc || music) return; const a = ac(); if (!a) return; try {
-          const t = a.currentTime, g = a.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(0.05, t + 3);
-          const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
-          const lfo = a.createOscillator(), lfoG = a.createGain(); lfo.frequency.value = 0.05; lfoG.gain.value = 260; lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start();
-          const oscs = [55, 82.4, 110, 164.8].map((f, i) => { const o = a.createOscillator(); o.type = i < 2 ? "sawtooth" : "triangle"; o.frequency.value = f; o.detune.value = (i % 2 ? 6 : -6); o.connect(lp); o.start(); return o; });
-          const wind = noiseSrc(a), wf = a.createBiquadFilter(), wg = a.createGain(); wf.type = "highpass"; wf.frequency.value = 1800; wg.gain.value = 0.012; wind.connect(wf); wf.connect(wg); wg.connect(g); wind.start();
-          lp.connect(g); g.connect(master);
-          music = { g, oscs, lfo, wind, stop() { try { const tt = a.currentTime; g.gain.cancelScheduledValues(tt); g.gain.setValueAtTime(g.gain.value, tt); g.gain.linearRampToValueAtTime(0, tt + 1.2); oscs.forEach((o) => o.stop(tt + 1.3)); lfo.stop(tt + 1.3); wind.stop(tt + 1.3); } catch (e) {} } };
+          const t = a.currentTime, g = a.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(0.06, t + 4);
+          const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 480;
+          const lfo = a.createOscillator(), lfoG = a.createGain(); lfo.frequency.value = 0.045; lfoG.gain.value = 300; lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start();
+          // low A-minor pad (A1 C2 E2 A2), each a detuned pair
+          const oscs = [];
+          [55, 65.41, 82.41, 110].forEach((f, i) => { for (const dt of [-7, 7]) { const o = a.createOscillator(); o.type = i < 2 ? "sawtooth" : "triangle"; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(); oscs.push(o); } });
+          // sub pulse with slow tremolo
+          const sub = a.createOscillator(), subG = a.createGain(); sub.type = "sine"; sub.frequency.value = 55; subG.gain.value = 0.5; sub.connect(subG); subG.connect(lp); sub.start();
+          const trem = a.createOscillator(), tremG = a.createGain(); trem.frequency.value = 0.18; tremG.gain.value = 0.3; trem.connect(tremG); tremG.connect(subG.gain); trem.start();
+          const wind = noiseSrc(a), wf = a.createBiquadFilter(), wg = a.createGain(); wf.type = "highpass"; wf.frequency.value = 2000; wg.gain.value = 0.01; wind.connect(wf); wf.connect(wg); wg.connect(g); wind.start();
+          lp.connect(g); g.connect(master); if (rev) { const ms = a.createGain(); ms.gain.value = 0.25; g.connect(ms); ms.connect(rev); }
+          // sparse evolving bell (A-minor pentatonic), reverb-soaked, for slow melodic interest
+          const scale = [440, 523.25, 659.25, 783.99, 880];
+          const bell = setInterval(() => { if (!musc || !ctx) return; try { const a2 = ctx, f = scale[(Math.random() * scale.length) | 0], t2 = a2.currentTime, bo = a2.createOscillator(), bg = a2.createGain(); bo.type = "sine"; bo.frequency.value = f; bg.gain.setValueAtTime(0.0001, t2); bg.gain.exponentialRampToValueAtTime(0.028, t2 + 0.02); bg.gain.exponentialRampToValueAtTime(0.0001, t2 + 2.4); bo.connect(bg); bg.connect(master); if (rev) { const sg = a2.createGain(); sg.gain.value = 0.6; bg.connect(sg); sg.connect(rev); } bo.start(t2); bo.stop(t2 + 2.5); } catch (e) {} }, 7000);
+          music = { stop() { try { const tt = a.currentTime; clearInterval(bell); g.gain.cancelScheduledValues(tt); g.gain.setValueAtTime(g.gain.value, tt); g.gain.linearRampToValueAtTime(0, tt + 1.4); oscs.concat([lfo, sub, trem, wind]).forEach((o) => { try { o.stop(tt + 1.5); } catch (e) {} }); } catch (e) {} } };
         } catch (e) {}
       },
       stopMusic() { if (music) { music.stop(); music = null; } },
@@ -4805,7 +4834,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.21",
+        ts: Date.now(), ver: "6.22",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6565,7 +6594,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.21 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.22 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
