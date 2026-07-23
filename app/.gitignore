@@ -1,0 +1,5 @@
+# generated / installed at build time
+node_modules/
+android/
+www/
+package-lock.json
