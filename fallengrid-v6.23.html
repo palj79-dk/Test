@@ -4466,6 +4466,7 @@
         o.frequency.setValueAtTime(f, t0); if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(1, glide), t0 + d);
         let src = o;
         if (lp) { const f2 = a.createBiquadFilter(); f2.type = "lowpass"; f2.frequency.setValueAtTime(lp, t0); if (o2.lpEnd) f2.frequency.exponentialRampToValueAtTime(Math.max(60, o2.lpEnd), t0 + d); o.connect(f2); src = f2; }
+        if (o2.drive) { const ws = a.createWaveShaper(); ws.curve = driveCurve(); ws.oversample = "2x"; src.connect(ws); src = ws; }
         const atk = o2.atk != null ? o2.atk : 0.006;
         gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(g || 0.06, t0 + atk); gain.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
         src.connect(gain); route(a, gain, o2.wet, o2.pan); o.start(t0); o.stop(t0 + d + 0.03);
@@ -4481,11 +4482,13 @@
         s2.connect(filt); filt.connect(gain); route(a, gain, o2.wet, o2.pan); s2.start(t0); s2.stop(t0 + d + 0.03);
       } catch (e) {}
     }
+    let driveC = null;
+    function driveCurve() { if (driveC) return driveC; const n = 1024, c = new Float32Array(n), k = 9; for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(k * x); } driveC = c; return driveC; }
     const rnd = (a2, b2) => a2 + Math.random() * (b2 - a2);
     const api = {
       // --- weapons: transient + body + sub, panned so rapid fire feels wide ---
-      gun: () => { const pan = rnd(-0.5, 0.5); nz(0.03, 0.05, "highpass", 2600, 0.7, { pan, atk: 0.001 }); osc(240, 0.06, "square", 0.035, 120, 900, { pan, wet: 0.08 }); osc(70, 0.05, "sine", 0.03, 45, 0, { atk: 0.001 }); },
-      tesla: () => { osc(820, 0.11, "sawtooth", 0.045, 150, 2600, { detune: 8, wet: 0.18 }); osc(816, 0.11, "sawtooth", 0.04, 150, 2600, { detune: -8 }); nz(0.13, 0.04, "bandpass", 3400, 4, { ffEnd: 1400, wet: 0.2 }); osc(1720, 0.05, "square", 0.018, 900); },
+      gun: () => { const pan = rnd(-0.45, 0.45); nz(0.022, 0.06, "highpass", 3000, 0.7, { pan, atk: 0.0004, ffEnd: 1400 }); osc(330, 0.085, "square", 0.05, 92, 1300, { pan, detune: 7, drive: 1, wet: 0.07, atk: 0.0008, lpEnd: 480 }); osc(150, 0.06, "sawtooth", 0.03, 70, 900, { pan, detune: -10, drive: 1 }); osc(84, 0.07, "sine", 0.05, 40, 0, { atk: 0.001 }); },
+      tesla: () => { osc(820, 0.11, "sawtooth", 0.045, 150, 2600, { detune: 8, wet: 0.18, drive: 1 }); osc(816, 0.11, "sawtooth", 0.04, 150, 2600, { detune: -8, drive: 1 }); nz(0.13, 0.04, "bandpass", 3400, 4, { ffEnd: 1400, wet: 0.2 }); osc(1720, 0.05, "square", 0.018, 900); },
       cryo: () => { osc(720, 0.28, "sine", 0.045, 720, 0, { wet: 0.35, atk: 0.008 }); osc(1440, 0.24, "sine", 0.02, 1440, 0, { wet: 0.35 }); osc(2160, 0.2, "triangle", 0.012, 2160, 0, { wet: 0.4 }); nz(0.26, 0.014, "highpass", 6000, 0, { wet: 0.4 }); },
       boom: () => { nz(0.02, 0.08, "highpass", 3500, 0.6, { atk: 0.001 }); nz(0.28, 0.09, "lowpass", 700, 0, { ffEnd: 160, wet: 0.35 }); osc(150, 0.5, "sine", 0.11, 38, 0, { atk: 0.002, wet: 0.3 }); osc(92, 0.42, "triangle", 0.06, 30); nz(0.5, 0.03, "lowpass", 260, 0, { wet: 0.4, atk: 0.03 }); },
       hit: () => nz(0.04, 0.03, "bandpass", 2200, 2, { pan: rnd(-0.4, 0.4) }),
@@ -4834,7 +4837,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.22",
+        ts: Date.now(), ver: "6.23",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6594,7 +6597,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.22 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.23 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
