@@ -1,0 +1,15 @@
+{
+  "name": "fallengrid",
+  "version": "6.21.0",
+  "description": "Fallen Grid - Wasteland Defense (Android wrapper)",
+  "private": true,
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/haptics": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}
