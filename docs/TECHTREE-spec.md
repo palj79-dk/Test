@@ -1,0 +1,201 @@
+# Fallen Grid — Armory → Research Tree (Tech Tree) Spec
+
+**Status:** PROPOSAL — investigation + design + spec. **No code written.** Nothing in the game is changed by this document.
+**Author context:** requested 2026-07-24 — "turn the Armory into a tech tree with branches, tower upgrades, and more advanced towers; later steps hidden, the step you research and the branch type known; investigate how others have done it."
+
+---
+
+## 1. What exists today (baseline)
+
+Two *separate* upgrade layers already ship in the game. Keep this distinction crystal-clear — the new tree only touches the first one.
+
+| Layer | Where | Persistence | Structure today |
+|---|---|---|---|
+| **Armory (meta)** | Between missions | Permanent (localStorage `talents`) | **Flat shop.** 14 talents (`TALENTS`), each 3 levels, bought in any order with Alloy. |
+| **Tower upgrades (in-run)** | During a mission | Resets each mission | **Already a branch tree.** Every tower shares L1/L2, then L2→L3 forks into two specializations (a/b) each with a t4 tier. |
+
+Key facts that constrain the redesign:
+
+- **All 5 towers are available from wave 1** today: `turret` (Auto-Gun), `cryo`, `mortar`, `tesla`, `pyre`. There is *no* tower gating.
+- Meta effects are read individually: `dmgMul()`, `rateMul()`, `rangeMul()`, `splashMul()`, `rewardMul()`, `waveBonusMul()`, `strikeMax()`, `sellRefund()`, `alloyFindMul()`, `heroDmgMul()`, `heroRateMul()`, `heroAbilCd()`, plus `Meta.val("scrap")` / `Meta.val("core")` at run start. Each calls `Meta.val(id)`.
+- `armoryLevel()` = `sum(levels) / (14 × 3)`, clamped to 1 — used only for telemetry + achievements now (Threat retired in V6.17).
+- The **difficulty wall lives in the world** (`MAP_HP_BY_DIFF` per ★ tier). Higher-★ sectors genuinely need a built-up Armory. **This is the hook the tree plugs into**: gating towers behind research makes "the Armory is your lever for hard maps" literally true.
+- `setDevArmory(0/0.5/1)` fakes Armory fill for testing; the "Reset All" dev button wipes the account.
+
+---
+
+## 2. How other games do meta tech trees (prior art)
+
+I looked at the designs closest to what you're describing — a persistent, branching research tree that unlocks units and upgrades, with future nodes hidden.
+
+### 2a. Branching meta trees that gate units/upgrades
+
+- **Infinitode 2** (TD, the closest reference). A large **research tree**: spend a research currency to unlock new towers, new tower abilities, and stat upgrades. Branches by domain. You can see the *immediate* unlockable nodes; deeper structure is there but you commit currency step-by-step. → Confirms the core loop: *earn currency in missions → unlock towers + upgrades in a persistent tree → tackle harder maps.*
+- **Mindustry** (tech tree model for the *fog*). Nodes are laid out as a branching tree; the **next researchable node is visible, nodes past a locked prerequisite are silhouetted/dimmed** until you reach them. → This is almost exactly your "you know the step you can research; you don't know later steps" rule.
+- **Bloons TD 6 — Monkey Knowledge.** Perks grouped into **named categories/branches** (Primary / Military / Magic / Support / Powers / Heroes). Sequential unlocks within a branch with prerequisites. Everything is *visible*, though — no fog. → Good model for *branch theming*, not for hidden reveal.
+- **Kingdom Rush** (and Fallen Grid's own in-run design). Towers reach a tier then **fork into two specializations** — a genuine either/or choice. → Fallen Grid already uses this pattern in-run; we can echo it at the meta level so the two layers feel like one language.
+
+### 2b. The "hidden future" pattern specifically
+
+- **Progressive-disclosure / breadcrumb trees** (Mindustry, many mobile RPG "research labs"): reveal one step ahead. Drives curiosity without full randomness — the player always has a concrete *next* goal but keeps a sense of discovery.
+- **Roguelike blind rewards** (Slay the Spire, Vampire Survivors evolutions): the reward is *fully* unknown until taken. → You explicitly **don't** want this ("the step to research you will know"), so we stop short of full randomness. Fallen Grid's fog reveals the node you're about to buy in full; only the ones *beyond* it are masked.
+
+### 2c. Takeaways applied to Fallen Grid
+
+1. **Branch by theme, name the branch** (BTD6 / current in-run forks).
+2. **Reveal one node ahead; silhouette the rest** (Mindustry). Keep the branch's *theme* and each hidden node's *category tag* visible so choices are informed, not blind.
+3. **Gate towers as nodes inside branches** (Infinitode 2) — the new-player wall + the "place to earn/pay" you asked for.
+4. **Capstones = new advanced towers** — aspirational end-of-branch payoffs (the "more advanced towers than the gun" ask) and future monetization targets.
+5. Keep the **in-run a/b tower forks unchanged** — they're a different layer and they're good.
+
+---
+
+## 3. Proposed design
+
+### 3.1 One-paragraph pitch
+
+Replace the flat 14-talent Armory with a **Research Tree of 4 themed branches**. Each branch is a ladder of nodes bought with Alloy. A branch's **theme is always shown**. Within a branch, purchased nodes show ✓, the **single next node is fully revealed** (name, effect, cost — "RESEARCH NOW"), and **all deeper nodes are masked** — shown as a silhouette with only their **category tag** (⬢ UNLOCK / ⚔ WEAPON / ⬡ SYSTEM / ✦ CAPSTONE) visible. New players **start with the Auto-Gun only**; every other tower — and two brand-new advanced towers — is unlocked by researching down a branch.
+
+### 3.2 The four branches
+
+Themes chosen so all 14 existing effects survive (redistributed) and tower unlocks + two new capstone towers slot in naturally. Node order is illustrative; costs in §5.
+
+**⚔ ORDNANCE** — *raw firepower & heavy weapons* (amber/red)
+1. `UNLOCK` **Mortar** — splash tower
+2. `WEAPON` Munitions I — +5% tower damage
+3. `WEAPON` Fire Control I — +6% fire rate
+4. `WEAPON` Warheads — +splash radius
+5. `WEAPON` Munitions II — +10% tower damage
+6. `WEAPON` Fire Control II — +12% fire rate
+7. `✦ CAPSTONE` **Siege Battery** — *new advanced tower* (heavy anti-armor artillery) **or** Munitions III + universal armor-shred (design pick in §8)
+
+**✦ ARC** — *energy, crowd-control, shields* (cyan/magenta)
+1. `UNLOCK` **Tesla** — long-range energy, hits air, strips shields
+2. `WEAPON` Targeting Optics I — +6% range
+3. `UNLOCK` **Pyre** — burn/cluster control
+4. `WEAPON` Coolant — energy towers +rate
+5. `WEAPON` Targeting Optics II — +12% range
+6. `WEAPON` Overcharged Coils — energy towers +damage
+7. `✦ CAPSTONE` **Prism** — *new advanced tower* (chaining beam / focus-lens)
+
+**⬡ LOGISTICS** — *scrap, alloy, sustain* (green/gold)
+1. `SYSTEM` Reserves I — +25 starting scrap
+2. `SYSTEM` Salvage Rigs I — +8% scrap per kill
+3. `SYSTEM` War Economy — +wave-clear bonus
+4. `SYSTEM` Salvage Refit — +sell refund
+5. `SYSTEM` Contracts — +alloy earned
+6. `SYSTEM` Reserves II — +50 starting scrap
+7. `✦ CAPSTONE` Field Requisition — start each mission with a free pre-placed tower **or** Salvage Rigs III
+
+**★ COMMAND** — *Commander, Core, strikes* (blue)
+1. `SYSTEM` Reinforced Core I — +5 starting core
+2. `SYSTEM` Command Core — +Commander damage
+3. `SYSTEM` Rapid Response — −airstrike cooldown
+4. `SYSTEM` Battle Drills — +Commander fire rate
+5. `SYSTEM` Overcharge — −pulse cooldown
+6. `SYSTEM` Reinforced Core II — +10 starting core
+7. `✦ CAPSTONE` Second Strike — airstrike gains a second charge **or** Commander gains a passive
+
+> Every one of the 14 current talents is preserved (some folded into I/II steps). Net new content: **4 tower-unlock nodes** (Mortar/Tesla/Pyre + the Auto-Gun which is free/pre-owned), **2 brand-new towers** (capstones), and **4 capstone effects**.
+
+### 3.3 Starting state (critical for balance)
+
+- **Unlocked at account creation:** `turret` (Auto-Gun) **+ `cryo` (Cryo Emitter)**.
+  Rationale: slows are near-mandatory to clear even Tier A cleanly; shipping the account with gun+cryo keeps the earliest maps fair while still gating the *offensive* escalation (Mortar/Tesla/Pyre) and the two new towers behind research. (Alternative — gun only — is possible but requires re-checking that Tier A is winnable with a single damage type; see §8 open question O1.)
+- **Locked initially:** Mortar, Tesla, Pyre, Siege Battery, Prism.
+- Tutorial already locks the first build to the Auto-Gun — unchanged and consistent.
+
+### 3.4 Fog reveal rules (the core mechanic)
+
+For each branch, let `n` = number of nodes already purchased. Node at index `i`:
+
+| Condition | State | Shown to player |
+|---|---|---|
+| `i < n` | **Owned** | Full: ✓ name + effect. |
+| `i === n` | **Researchable** | Full: name, effect text, **cost**, "RESEARCH" button (enabled if Alloy ≥ cost). |
+| `i > n` | **Fogged** | Silhouette: branch color + **category tag only** (⬢/⚔/⬡/✦) + "???". No name, no effect, no cost. Capstone always shows the ✦ glyph so players know a big payoff caps the branch. |
+
+- **Branch theme is always visible** (name + icon + one-line promise), satisfying "the type of each branch is known."
+- **Strictly linear** per branch (buy node `i` before `i+1`). This is what makes "reveal one ahead" meaningful and keeps the UI mobile-friendly. (A light 1-fork-per-branch variant is possible later; linear first — see O2.)
+- Optional flavor: fogged nodes can show a scrambled/redacted codename ("PROJECT ▮▮▮▮") for tone. Cosmetic only.
+
+---
+
+## 4. What has to change in code (investigation)
+
+Ordered by blast radius. This is the *why nothing was changed yet* section — it's a real refactor, not a tweak.
+
+### 4.1 Data model
+- **New:** `TECH` = ordered array of branches: `{ id, name, theme, icon, color, nodes: [ { id, type, name, desc, cost, effect } ] }` where `type ∈ {unlock, weapon, system, capstone}` and `effect` is either `{tower:"tesla"}` (unlock) or a stat delta `{dmg:0.05}` / `{scrap:25}` / etc., or a flag for capstones.
+- **Replace:** `TALENTS` (flat) + `TALENT_ORDER`. Keep a thin compatibility shim only if migration needs it (§4.5).
+
+### 4.2 Persistence + `Meta`
+- Save format changes from `talents: {id: level}` to **`research: {branchId: nodesBought}`** (a count per branch — compact, ordered, enough because branches are linear).
+- Rewrite `Meta.lvl/val/maxed/nextCost/buy` around branch counts and node effects.
+- **Effect aggregation:** compute a `Tech.bonus` object once on load and after every purchase — `{dmg, rate, range, splash, scrap, core, reward, waveb, sell, alloyf, hero, hrate, strike, pulse}` — by summing the `effect` of every owned node. This is the join point to the existing multipliers.
+
+### 4.3 The multiplier getters (mechanical but many)
+Repoint each to the aggregated bonus instead of `Meta.val(id)`:
+`dmgMul, rateMul, rangeMul, splashMul, rewardMul, waveBonusMul, strikeMax, sellRefund, alloyFindMul, heroDmgMul, heroRateMul, heroAbilCd`, plus the two run-start reads `Meta.val("scrap")` / `Meta.val("core")`. ~14 call sites, all one-line swaps to `Tech.bonus.X`.
+
+### 4.4 Tower gating (new behavior)
+- **New:** `unlockedTowers` set, seeded `{turret, cryo}`; unlock nodes add to it.
+- **Tray build palette** (`drawTray`, ~line 6482/6497): render locked towers as a locked/❓ slot (or hide) instead of buildable. Fold `!unlocked` into the existing `banned` logic alongside `tutLock`/`modBan`.
+- **Guards:** `build()` / `tap()` must reject a locked tower (defense in depth beyond the tray).
+- The two **new towers** (Siege Battery, Prism) need full definitions in `TOWERS` (levels + a/b in-run branches + art in `towerBaseArt`/`bakeSprite` + a `Sound` cue + a `DMG_SYM`/glow color). This is the largest *content* cost — two new towers is real art/balance work, not just a data row.
+
+### 4.5 Migration for existing saves
+Pre-release, but there are test accounts. Recommended: on first load of the new version, if the old `talents` key exists, **refund** — sum the Alloy spent on owned talents, credit it back as spendable Alloy, delete `talents`, and let the player re-spend in the tree. Clean, no fragile id-mapping, forgiving. (Testers also have "Reset All".)
+
+### 4.6 UI — the Armory screen (full rewrite)
+- Current `S.screen === "armory"` renders a flat list of 14 rows. Replace with a **branch view**: 4 branch cards (icon, name, theme, progress `n/7`); tapping a branch expands its **node ladder** with the fog states from §3.4; the researchable node has the RESEARCH button.
+- Portrait-first: vertical accordion (one branch expanded at a time) or a vertical scroll of 4 sections. Reuse `show(html)` + existing `.btn/.wallet/.sub` styles.
+- `setDevArmory` remap: "50%/100%" should buy the first X% of nodes across all branches (respecting linear order) so on-device balance testing still works.
+
+### 4.7 Peripheral references
+- Achievements: `talent1`/`talentall` tests use `Meta.maxed` + `TALENT_ORDER`; retarget to "research a branch capstone" / "complete every branch."
+- `armoryLevel()` = owned nodes / total nodes (telemetry + achievements keep working).
+- Codex/how-to text mentions "upgrade your Armory" — update copy to "research".
+- `__GAME` debug exports (`Meta`, `setDevArmory`, `armoryLevel`) — keep, adapt.
+- Verify scripts + guards reference the Armory; the per-version regression suite needs new selectors for the tree.
+
+---
+
+## 5. Balancing
+
+- **Total Alloy sink** should stay in the ballpark of today's re-paced curve (V6.17 set ~25,700 Alloy total ≈ 45+ Normal wins). 4 branches × 7 nodes = **28 nodes**; distribute the ~25k so early unlocks are cheap (first Mortar/Tesla reachable in the first few wins) and capstones are long-tail (the aspirational + future-monetizable targets).
+- **Unlock pacing must respect the world wall.** Tier A/Normal must stay winnable with the **starting gun+cryo** at 0 research (matches the confirmed onboarding curve in the latest play-log). Tesla/Pyre/Mortar unlocking over the first several wins should line up with Tier B (★3, mapHp 1.15) starting to bite.
+- **Two new towers** need their own kinetic/energy/explosive identity and a/b forks tuned like the existing five. Budget this as its own iteration.
+
+---
+
+## 6. Why this satisfies the brief
+
+| Your requirement | How the design meets it |
+|---|---|
+| Armory → tech tree with branches | 4 themed branches (§3.2). |
+| Upgrades for towers | WEAPON nodes (damage/rate/range/splash/energy buffs). |
+| More advanced towers than the gun | Mortar/Tesla/Pyre gated as UNLOCK nodes + **2 new capstone towers** (Siege Battery, Prism). |
+| Don't know what later steps give | Fog: only the researchable node is revealed; deeper nodes silhouetted (§3.4). |
+| The step you research is known | Node at `i === n` shows full name/effect/cost. |
+| The type of each branch is known | Branch theme always visible; fogged nodes still show a category tag. |
+| A place that gates new players & to earn/pay | Gun-only start; unlocks earned with Alloy; capstones are long-tail IAP targets (ties into deferred V7 monetization). |
+
+---
+
+## 7. Suggested phasing (when you say go — not now)
+
+- **Phase 1 — Framework, no new towers.** Build `TECH`, migration, aggregation, gating, and the fogged Armory UI using **only the existing 5 towers + 14 effects** (drop the two capstone towers to placeholder SYSTEM nodes). Fully shippable and testable. This is the big refactor; do it first, verify balance holds.
+- **Phase 2 — Capstone tower #1** (e.g., Siege Battery: art, `TOWERS` entry, a/b forks, sound, balance).
+- **Phase 3 — Capstone tower #2** (Prism) + capstone effects polish.
+- Each phase = its own version file + HANDOFF entry + APK, per standing process.
+
+---
+
+## 8. Open decisions (need your call before Phase 1)
+
+- **O1 — Starting towers:** ship accounts with **gun + cryo** (my recommendation, keeps Tier A fair) or **gun only** (harder, purer gate; needs Tier A re-verification)?
+- **O2 — Branch shape:** strictly **linear** ladders (recommended; makes "reveal one ahead" clean and fits portrait) or allow a **single fork** deep in each branch (more BTD6-like, more UI)?
+- **O3 — Capstones:** brand-new **towers** (more work, bigger payoff) or capstone **effects/mega-upgrades** (cheaper, still aspirational)? Can differ per branch — e.g., Ordnance/Arc get new towers, Logistics/Command get effects.
+- **O4 — Number of branches:** 4 (proposed) vs 5 (add a **Fortification/Defense** branch — armor plating, repair economy, core regen) to spread nodes and give a fifth theme.
+- **O5 — Migration:** Alloy-refund (recommended) vs best-effort node-mapping vs force Reset (pre-release only).
