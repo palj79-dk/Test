@@ -119,6 +119,29 @@ For each branch, let `n` = number of nodes already purchased. Node at index `i`:
 - **Strictly linear** per branch (buy node `i` before `i+1`). This is what makes "reveal one ahead" meaningful and keeps the UI mobile-friendly. (A light 1-fork-per-branch variant is possible later; linear first — see O2.)
 - Optional flavor: fogged nodes can show a scrambled/redacted codename ("PROJECT ▮▮▮▮") for tone. Cosmetic only.
 
+### 3.5 Progressive info / onboarding layer (added per feedback)
+
+The tree isn't just a spend screen — it's the best onboarding surface in the game, because it introduces each tower *at the moment the player chooses to invest in it*. Three additions, none of which break the fog:
+
+1. **Tower role cards.** Any node that unlocks or upgrades a tower (UNLOCK + ✦ CAPSTONE towers) shows a compact role card: **damage-type chip** (Kinetic / Explosive / Energy), a one-line **role**, and **Strong vs / Weak vs** rows. This teaches the counter-triangle (kinetic weak vs armor, explosive strong vs armor, energy strips shields) exactly when it's relevant. Pull the text straight from the existing **Codex** so there's one source of truth.
+   - On an **owned** node: the card documents what you have.
+   - On the **researchable** node: the same card is framed **"You'll gain ▾"** — so a new player sees a tower's pros/cons *before* spending, turning every unlock into a teaching moment instead of a gamble.
+   - On a **fogged** node: no card (that's the point) — only the category tag.
+2. **Branch "next milestone" breadcrumb.** Each branch header shows how far the next *tower* (UNLOCK or ✦ CAPSTONE) is — e.g. *"Next milestone: ⬢ new tower · 2 nodes away."* Category + distance are known; the tower's identity stays fogged. This answers "what will I reach" without spoiling "what exactly."
+3. **Unlock moment → Codex hook.** When a tower is first researched, surface a short "New tower unlocked — see Codex" beat (and the role card inline). Contextual teaching beats a wall of tutorial text.
+
+Net effect: the research tree doubles as the tower school. A brand-new player learns *reliable-gun vs armor-mortar vs shield-stripping-tesla* by progressing, not by reading a manual.
+
+### 3.6 Depth — does it make sense to add more levels?
+
+**Yes, add depth — but as more *distinct* nodes, not repeat-buy levels.**
+
+- The old Armory bought "Munitions I/II/III" as one node re-purchased three times. **Don't reinstate that** — the fog reveal only lands on first sight, so re-buying a revealed node is grind, not discovery.
+- Instead, express depth as **separate, individually-named, individually-fogged nodes** (Munitions I early, Munitions II fogged deeper). Each step stays a fresh "what's next" beat.
+- **Target ~8 nodes per branch** (up from 7) with a readable rhythm: `unlock → 2 upgrades → unlock/upgrade → 2 upgrades → capstone`. 4 × 8 = **32 nodes**.
+- **Design the ladder to be extendable:** reserve a **"Tier II" tail after the capstone** that can be appended in a later content update (endless-ish long tail for retention, and the natural home for the deferred Alloy monetization) *without* redesigning the front of the tree.
+- **Constraint unchanged:** front-load cheap unlocks so new players aren't walled; back-load expensive capstones. Total Alloy sink stays near the current re-paced curve (§5).
+
 ---
 
 ## 4. What has to change in code (investigation)
@@ -163,7 +186,7 @@ Pre-release, but there are test accounts. Recommended: on first load of the new 
 
 ## 5. Balancing
 
-- **Total Alloy sink** should stay in the ballpark of today's re-paced curve (V6.17 set ~25,700 Alloy total ≈ 45+ Normal wins). 4 branches × 7 nodes = **28 nodes**; distribute the ~25k so early unlocks are cheap (first Mortar/Tesla reachable in the first few wins) and capstones are long-tail (the aspirational + future-monetizable targets).
+- **Total Alloy sink** should stay in the ballpark of today's re-paced curve (V6.17 set ~25,700 Alloy total ≈ 45+ Normal wins). 4 branches × ~8 nodes = **~32 nodes** (see §3.6); distribute the ~25k so early unlocks are cheap (first Mortar/Tesla reachable in the first few wins) and capstones are long-tail (the aspirational + future-monetizable targets).
 - **Unlock pacing must respect the world wall.** Tier A/Normal must stay winnable with the **starting gun+cryo** at 0 research (matches the confirmed onboarding curve in the latest play-log). Tesla/Pyre/Mortar unlocking over the first several wins should line up with Tier B (★3, mapHp 1.15) starting to bite.
 - **Two new towers** need their own kinetic/energy/explosive identity and a/b forks tuned like the existing five. Budget this as its own iteration.
 
