@@ -4148,68 +4148,145 @@
 
   /* ---------------- META-PROGRESSION ---------------- */
   // Persistent talents bought with Alloy earned each run (retention layer, via Store).
-  const TALENTS = {
-    scrap:  { name: "Reserves",       desc: "Starting Scrap",      vals: [25, 50, 75],      costs: [200, 450, 800],  fmt: (v) => "+" + v },
-    core:   { name: "Reinforced Core", desc: "Starting Core",      vals: [5, 10, 15],       costs: [250, 550, 950], fmt: (v) => "+" + v },
-    dmg:    { name: "Munitions",      desc: "Tower Damage",        vals: [0.05, 0.10, 0.15], costs: [300, 650, 1100], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    reward: { name: "Salvage Rigs",   desc: "Scrap per Kill",      vals: [0.08, 0.16, 0.25], costs: [250, 550, 950], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    strike: { name: "Rapid Response", desc: "Airstrike Cooldown",  vals: [3, 6, 9],         costs: [275, 600, 1000], fmt: (v) => "-" + v + "s" },
-    waveb:  { name: "War Economy",    desc: "Wave-Clear Bonus",    vals: [0.25, 0.50, 0.75], costs: [225, 500, 850], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    hero:   { name: "Command Core",   desc: "Commander Damage",    vals: [0.10, 0.20, 0.35], costs: [350, 750, 1250], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    rate:   { name: "Fire Control",   desc: "Tower Fire Rate",     vals: [0.06, 0.12, 0.20], costs: [300, 650, 1100], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    range:  { name: "Targeting Optics", desc: "Tower Range",       vals: [0.06, 0.12, 0.20], costs: [275, 600, 1000], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    splash: { name: "Warheads",       desc: "Splash Radius",       vals: [0.10, 0.20, 0.35], costs: [250, 550, 950], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    sell:   { name: "Salvage Refit",  desc: "Sell Refund",         vals: [0.05, 0.10, 0.15], costs: [200, 450, 750],   fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    alloyf: { name: "Contracts",      desc: "Alloy Earned",        vals: [0.10, 0.20, 0.35], costs: [300, 700, 1200], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    hrate:  { name: "Battle Drills",  desc: "Commander Fire Rate", vals: [0.08, 0.15, 0.25], costs: [275, 600, 1000], fmt: (v) => "+" + Math.round(v * 100) + "%" },
-    pulse:  { name: "Overcharge",     desc: "Pulse Cooldown",      vals: [2, 4, 6],          costs: [250, 550, 950], fmt: (v) => "-" + v + "s" },
-  };
-  const TALENT_ORDER = ["scrap", "core", "dmg", "rate", "range", "splash", "reward", "sell", "alloyf", "waveb", "strike", "hero", "hrate", "pulse"];
-  // V6.1.1 DEV: force the Armory to 0% / 50% / 100% to test balance without touching the saved
-  // account. Overrides Meta.lvl - so all talent power AND the Threat Level follow - and locks buys.
-  let devTalents = null, devArmory = null;
-  function setDevArmory(f) {
-    devArmory = f; Store.set("devArmory", f);
-    if (f == null) { devTalents = null; return; }
-    const o = {}; TALENT_ORDER.forEach((id) => { o[id] = 0; });
-    let left = Math.round(TALENT_ORDER.length * 3 * f);
-    for (let l = 0; l < 3 && left > 0; l++) for (const id of TALENT_ORDER) { if (left <= 0) break; if (o[id] <= l) { o[id]++; left--; } }
-    devTalents = o;
-  }
-  setDevArmory(Store.get("devArmory", null));
+  // V6.24 RESEARCH TREE: the Armory is 4 themed branches. Each branch is a linear ladder of distinct
+  // nodes bought with Alloy, plus ONE free/reversible specialization fork (Alloy buys reaching it; the
+  // A/B pick is a no-cost toggle). New players start with Auto-Gun + Cryo; Mortar/Tesla/Pyre are
+  // unlocked by researching. Capstones (Siege Battery / Prism) grant a placeholder effect for now — the
+  // two NEW towers land in a later phase. Node `eff` sums into Tech.bonus and is read by the *Mul() getters.
+  const TOWER_START = ["turret", "cryo"];
+  const TECH = [
+    { id: "ord", name: "ORDNANCE", theme: "Raw firepower & heavy weapons", icon: "⚔", accent: "#f2b23a", nodes: [
+      { id: "o_mortar", type: "unlock",   name: "Mortar",          desc: "Unlock the splash tower",  cost: 120, eff: { tower: "mortar" } },
+      { id: "o_dmg1",   type: "weapon",   name: "Munitions I",     desc: "+5% tower damage",   cost: 150, eff: { dmg: 0.05 } },
+      { id: "o_rate1",  type: "weapon",   name: "Fire Control I",  desc: "+6% fire rate",      cost: 190, eff: { rate: 0.06 } },
+      { id: "o_splash", type: "weapon",   name: "Warheads",        desc: "+15% splash radius", cost: 230, eff: { splash: 0.15 } },
+      { id: "o_dmg2",   type: "weapon",   name: "Munitions II",    desc: "+8% tower damage",   cost: 320, eff: { dmg: 0.08 } },
+      { id: "o_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 300,
+        a: { name: "Precision",  desc: "+5% damage, +2% fire rate", eff: { dmg: 0.05, rate: 0.02 } },
+        b: { name: "Saturation", desc: "+20% splash radius",        eff: { splash: 0.20 } } },
+      { id: "o_rate2",  type: "weapon",   name: "Fire Control II", desc: "+14% fire rate",     cost: 430, eff: { rate: 0.14 } },
+      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "+8% damage, +10% splash (new tower in a later build)", cost: 820, eff: { dmg: 0.08, splash: 0.10 } },
+    ] },
+    { id: "arc", name: "ARC", theme: "Energy, crowd-control, shields", icon: "✦", accent: "#37e0d0", nodes: [
+      { id: "a_tesla",  type: "unlock",   name: "Tesla",           desc: "Unlock long-range energy", cost: 140, eff: { tower: "tesla" } },
+      { id: "a_rng1",   type: "weapon",   name: "Targeting Optics I",  desc: "+6% range",  cost: 180, eff: { range: 0.06 } },
+      { id: "a_pyre",   type: "unlock",   name: "Pyre",            desc: "Unlock the burn tower",    cost: 240, eff: { tower: "pyre" } },
+      { id: "a_dmg",    type: "weapon",   name: "Capacitors",      desc: "+5% tower damage", cost: 300, eff: { dmg: 0.05 } },
+      { id: "a_rng2",   type: "weapon",   name: "Targeting Optics II", desc: "+14% range", cost: 380, eff: { range: 0.14 } },
+      { id: "a_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 320,
+        a: { name: "Overload",   desc: "+5% tower damage", eff: { dmg: 0.05 } },
+        b: { name: "Disruption", desc: "+6% fire rate",    eff: { rate: 0.06 } } },
+      { id: "a_rate",   type: "weapon",   name: "Coolant",         desc: "+6% fire rate",    cost: 440, eff: { rate: 0.06 } },
+      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "+8% damage, +6% range (new tower in a later build)", cost: 860, eff: { dmg: 0.08, range: 0.06 } },
+    ] },
+    { id: "log", name: "LOGISTICS", theme: "Scrap, alloy, sustain", icon: "⬡", accent: "#8fe04a", nodes: [
+      { id: "l_scrap1", type: "system",   name: "Reserves I",      desc: "+25 starting scrap", cost: 110, eff: { scrap: 25 } },
+      { id: "l_rew1",   type: "system",   name: "Salvage Rigs I",  desc: "+8% scrap per kill", cost: 150, eff: { reward: 0.08 } },
+      { id: "l_waveb",  type: "system",   name: "War Economy",     desc: "+25% wave-clear bonus", cost: 200, eff: { waveb: 0.25 } },
+      { id: "l_sell",   type: "system",   name: "Salvage Refit",   desc: "+10% sell refund",   cost: 260, eff: { sell: 0.10 } },
+      { id: "l_alloy",  type: "system",   name: "Contracts",       desc: "+15% Alloy earned",  cost: 340, eff: { alloyf: 0.15 } },
+      { id: "l_fork",   type: "fork",     name: "Doctrine",        desc: "Pick a doctrine · free to swap", cost: 300,
+        a: { name: "Boomtown", desc: "+10% scrap/kill, +25% wave bonus", eff: { reward: 0.10, waveb: 0.25 } },
+        b: { name: "Frugal",   desc: "+40 starting scrap, +5% sell",     eff: { scrap: 40, sell: 0.05 } } },
+      { id: "l_scrap2", type: "system",   name: "Reserves II",     desc: "+35 starting scrap", cost: 400, eff: { scrap: 35 } },
+      { id: "l_cap",    type: "capstone", name: "Field Requisition", desc: "+20% Alloy earned, +10% scrap/kill", cost: 760, eff: { alloyf: 0.20, reward: 0.10 } },
+    ] },
+    { id: "cmd", name: "COMMAND", theme: "Commander, Core & strikes", icon: "★", accent: "#6aa8ff", nodes: [
+      { id: "c_core1",  type: "system",   name: "Reinforced Core I",  desc: "+5 starting Core", cost: 130, eff: { core: 5 } },
+      { id: "c_hero",   type: "system",   name: "Command Core",    desc: "+10% Commander damage", cost: 180, eff: { hero: 0.10 } },
+      { id: "c_strike", type: "system",   name: "Rapid Response",  desc: "−3s airstrike cooldown", cost: 240, eff: { strike: 3 } },
+      { id: "c_hrate",  type: "system",   name: "Battle Drills",   desc: "+8% Commander fire rate", cost: 300, eff: { hrate: 0.08 } },
+      { id: "c_pulse",  type: "system",   name: "Overcharge",      desc: "−2s pulse cooldown", cost: 360, eff: { pulse: 2 } },
+      { id: "c_fork",   type: "fork",     name: "Command Style",   desc: "Pick a doctrine · free to swap", cost: 320,
+        a: { name: "Aggression", desc: "+15% Commander damage, −3s airstrike", eff: { hero: 0.15, strike: 3 } },
+        b: { name: "Resilience", desc: "+10 Core, +25 starting scrap",              eff: { core: 10, scrap: 25 } } },
+      { id: "c_core2",  type: "system",   name: "Reinforced Core II", desc: "+5 starting Core", cost: 420, eff: { core: 5 } },
+      { id: "c_cap",    type: "capstone", name: "Second Strike",   desc: "−3s airstrike, +10% Commander damage", cost: 780, eff: { strike: 3, hero: 0.10 } },
+    ] },
+  ];
+  const BONUS_KEYS = ["scrap", "core", "dmg", "reward", "strike", "waveb", "hero", "rate", "range", "splash", "sell", "alloyf", "hrate", "pulse"];
+  // Alloy wallet (persistent). The tree lives in Tech; Meta stays the thin currency layer so all the
+  // existing Meta.alloy / Meta.add() call sites keep working.
   const Meta = {
     alloy: Store.get("alloy", 0),
-    talents: Store.get("talents", {}),
-    lvl(id) { return devTalents ? devTalents[id] : (this.talents[id] || 0); },
-    val(id) { const l = this.lvl(id); return l > 0 ? TALENTS[id].vals[l - 1] : 0; },
-    maxed(id) { return this.lvl(id) >= TALENTS[id].vals.length; },
-    nextCost(id) { return this.maxed(id) ? null : TALENTS[id].costs[this.lvl(id)]; },
-    save() { Store.set("alloy", this.alloy); Store.set("talents", this.talents); },
-    buy(id) { if (devTalents) return false; if (this.maxed(id)) return false; const c = this.nextCost(id); if (this.alloy < c) return false; this.alloy -= c; this.talents[id] = this.lvl(id) + 1; this.save(); return true; },
+    save() { Store.set("alloy", this.alloy); },
     add(n) { this.alloy += n; this.save(); },
   };
-  // V6.17: Threat retired. The Armory is pure, honest power now -- the wall lives in the WORLD
-  // instead (per-map hpMul by star tier), so harder maps genuinely need a built-up Armory.
-  const armoryLevel = () => Math.min(1, TALENT_ORDER.reduce((a, id) => a + Meta.lvl(id), 0) / (TALENT_ORDER.length * 3));
-  const dmgMul = () => (1 + Meta.val("dmg")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
-  const rewardMul = () => 1 + Meta.val("reward");
+  // DEV override (0/0.5/1): forces the first X% of every branch's nodes as "owned" (buying locked) so
+  // balance can be tested without touching the saved account.
+  let devArmory = null;
+  const Tech = {
+    research: Store.get("research", {}),   // { branchId: nodesOwned }
+    spec: Store.get("spec", {}),           // { branchId: "a"|"b" }  (free, reversible fork pick)
+    bonus: {},                             // aggregated stat bonuses, recomputed on any change
+    unlockedTowers: new Set(TOWER_START),
+    owned(bi) { if (devArmory != null) return Math.round(TECH[bi].nodes.length * devArmory); return this.research[TECH[bi].id] || 0; },
+    ownedById(id) { const bi = TECH.findIndex((b) => b.id === id); return bi < 0 ? 0 : this.owned(bi); },
+    next(bi) { const b = TECH[bi], n = this.owned(bi); return n < b.nodes.length ? b.nodes[n] : null; },
+    specOf(bi) { return this.spec[TECH[bi].id] || "a"; },
+    totalNodes() { return TECH.reduce((a, b) => a + b.nodes.length, 0); },
+    totalOwned() { return TECH.reduce((a, b, i) => a + this.owned(i), 0); },
+    branchesComplete() { return TECH.reduce((a, b, i) => a + (this.owned(i) >= b.nodes.length ? 1 : 0), 0); },
+    buy(bi) {
+      if (devArmory != null) return false;
+      const node = this.next(bi); if (!node || Meta.alloy < node.cost) return false;
+      Meta.alloy -= node.cost; Meta.save();
+      this.research[TECH[bi].id] = this.owned(bi) + 1; Store.set("research", this.research);
+      this.recompute(); return true;
+    },
+    setSpec(bi, side) { this.spec[TECH[bi].id] = side; Store.set("spec", this.spec); this.recompute(); },
+    recompute() {
+      const bo = {}; BONUS_KEYS.forEach((k) => { bo[k] = 0; });
+      const tw = new Set(TOWER_START);
+      TECH.forEach((b, bi) => {
+        const n = this.owned(bi);
+        for (let i = 0; i < n; i++) {
+          const nd = b.nodes[i];
+          const e = nd.type === "fork" ? nd[this.specOf(bi)].eff : nd.eff;
+          if (!e) continue;
+          if (e.tower) tw.add(e.tower); else for (const k in e) bo[k] = (bo[k] || 0) + e[k];
+        }
+      });
+      this.bonus = bo; this.unlockedTowers = tw;
+    },
+    isUnlocked(type) { return this.unlockedTowers.has(type); },
+  };
+  // Migrate old flat talents → refund the Alloy spent, clear them, let the player re-spend in the tree.
+  (function migrateTalents() {
+    const old = Store.get("talents", null);
+    if (old && typeof old === "object" && Object.keys(old).length) {
+      const OC = { scrap: [200, 450, 800], core: [250, 550, 950], dmg: [300, 650, 1100], reward: [250, 550, 950], strike: [275, 600, 1000], waveb: [225, 500, 850], hero: [350, 750, 1250], rate: [300, 650, 1100], range: [275, 600, 1000], splash: [250, 550, 950], sell: [200, 450, 750], alloyf: [300, 700, 1200], hrate: [275, 600, 1000], pulse: [250, 550, 950] };
+      let refund = 0;
+      for (const id in old) { const lv = old[id] | 0, cc = OC[id]; if (cc) for (let i = 0; i < lv && i < cc.length; i++) refund += cc[i]; }
+      Meta.alloy += refund; Meta.save(); Store.set("talents", {});
+    }
+  })();
+  function setDevArmory(f) { devArmory = f; Store.set("devArmory", f); Tech.recompute(); }
+  setDevArmory(Store.get("devArmory", null));
+  Tech.recompute();
+  // The wall lives in the WORLD (per-map hpMul by star tier); the tree is your lever. All bonuses are
+  // read from the aggregated Tech.bonus map (recomputed on purchase / fork-swap / dev override).
+  const B = () => Tech.bonus;
+  const armoryLevel = () => Math.min(1, Tech.totalOwned() / Tech.totalNodes());
+  const dmgMul = () => (1 + B().dmg) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
+  const rewardMul = () => 1 + B().reward;
   const EARN_TAPER_W = 12;  // V6.5: past this wave, per-kill scrap fades so late game stops printing money
   const earnTaper = () => S.wave <= EARN_TAPER_W ? 1 : Math.max(0.5, 1 - (S.wave - EARN_TAPER_W) * 0.05);
-  const waveBonusMul = () => 1 + Meta.val("waveb");
-  const strikeMax = () => STRIKE_CD - Meta.val("strike");
-  const heroDmgMul = () => (1 + Meta.val("hero")) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
-  const rateMul = () => 1 - Meta.val("rate");
-  const rangeMul = () => 1 + Meta.val("range");
-  const splashMul = () => 1 + Meta.val("splash");
-  const sellRefund = () => SELL_REFUND + Meta.val("sell");
+  const waveBonusMul = () => 1 + B().waveb;
+  const strikeMax = () => STRIKE_CD - B().strike;
+  const heroDmgMul = () => (1 + B().hero) * (S.difficulty === "custom" ? CustomDiff.get().dmg : 1) * (activeMod && activeMod.dmg || 1);
+  const rateMul = () => 1 - B().rate;
+  const rangeMul = () => 1 + B().range;
+  const splashMul = () => 1 + B().splash;
+  const sellRefund = () => SELL_REFUND + B().sell;
   // V6.13 scrap sinks (soak the late-game surplus): Overclock repeatedly buffs a maxed tower (+10% dmg per
   // stack, rising cost); Excavate clears a rubble obstacle to open a build plot (rising cost).
   const OC_DMG = 0.10;
   const overclockCost = (t) => Math.round(200 * Math.pow(1.5, t.oc || 0));
   const excavateCost = () => Math.round(140 * Math.pow(1.4, S.excavated || 0));
-  const alloyFindMul = () => 1 + Meta.val("alloyf");
-  const heroRateMul = () => 1 - Meta.val("hrate");
-  const heroAbilCd = () => HERO.abilityCd - Meta.val("pulse");
+  const alloyFindMul = () => 1 + B().alloyf;
+  const heroRateMul = () => 1 - B().hrate;
+  const heroAbilCd = () => HERO.abilityCd - B().pulse;
 
   /* ---------------- HASH ---------------- */
   function hash2(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; h ^= h >>> 16; return ((h >>> 0) % 10000) / 10000; }
@@ -4740,8 +4817,8 @@
     { id: "herofull", name: "War Hero",        desc: "Level the Hero to max",               test: (c) => c.heroLvl >= 5 },
     { id: "strike",   name: "Orbital",         desc: "Call in an airstrike",                test: (c) => c.usedStrike },
     { id: "alloy1k",  name: "Industrialist",   desc: "Earn 1,000 total Alloy",              test: (c) => c.alloy >= 1000 },
-    { id: "talent1",  name: "Requisition",     desc: "Max an Armory talent",                test: (c) => c.talentsMaxed >= 1 },
-    { id: "talentall",name: "Enlightened",     desc: "Max every Armory talent",             test: (c) => c.talentsMaxed >= TALENT_ORDER.length },
+    { id: "talent1",  name: "Requisition",     desc: "Research an Armory node",             test: (c) => c.nodesResearched >= 1 },
+    { id: "talentall",name: "Enlightened",     desc: "Complete every Armory branch",        test: (c) => c.talentsMaxed >= TECH.length },
     { id: "medgold",  name: "Gold Standard",   desc: "Earn a Gold medal (clear a mission on Brutal)", test: (c) => c.campGold >= 1 },
     { id: "medsilver",name: "Silver Grid",     desc: "Silver medal or better on every mission",       test: (c) => c.campMinTier >= 2 },
     { id: "medgoldall",name: "Grid Master",    desc: "Gold medal on every mission",                   test: (c) => c.campMinTier >= 3 },
@@ -4774,7 +4851,7 @@
   function achCumulative() {
     const st = Ach.stat;
     return { kills: st.kills || 0, alloy: st.alloy || 0, wins: st.wins || 0,
-      mapsBeat: Object.keys(st.maps || {}).length, talentsMaxed: TALENT_ORDER.filter((id) => Meta.maxed(id)).length,
+      mapsBeat: Object.keys(st.maps || {}).length, talentsMaxed: Tech.branchesComplete(), nodesResearched: Tech.totalOwned(),
       endlessBest: S.highEndless || 0, campaignDone: Store.get("camp", 0) >= MAPS.length - 1, dailyStreak: Daily.activeStreak(),
       campGold: Medals.goldCount(), campMinTier: Medals.minTier(), campMinPerfect: Medals.minPerfect() };
   }
@@ -4837,7 +4914,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.23",
+        ts: Date.now(), ver: "6.24",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -4881,7 +4958,7 @@
     selectMap(S.mapIndex); // rebuilds path/decor/terrain only if the map changed
     computeObstacles();          // V6.9: (re)seed obstacles for the current map + difficulty
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
-    S.scrap = Math.round((baseStartScrap() + Meta.val("scrap")) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + Meta.val("core")) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
+    S.scrap = Math.round((baseStartScrap() + B().scrap) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + B().core) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
@@ -6494,7 +6571,7 @@
     ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, PLAY_BOTTOM + 15);
     const N = TOWER_ORDER.length, gap = 5, bh = 74, bw = Math.min(82, (W - 16 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 26;
     TOWER_ORDER.forEach((key, i) => {
-      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), banned = tutLock || modBan, afford = !banned && S.scrap >= l0.cost;
+      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
       ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
       if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
       ctx.globalAlpha = banned ? 0.28 : (afford ? 1 : 0.45);
@@ -6502,6 +6579,7 @@
       ctx.globalAlpha = 1;
       ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 48);
       if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFFLINE", x + bw / 2, y + 58); }
+      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\ud83d\udd12 ARMORY", x + bw / 2, y + 58); }
       else { ctx.fillStyle = C.textDim; ctx.font = "600 8px system-ui"; ctx.fillText(spec.desc, x + bw / 2, y + 58); coin(x + bw / 2 - 14, y + bh - 10, 4.5); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + 5, y + bh - 10); }
       if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
       trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
@@ -6597,7 +6675,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.23 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.24 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6710,21 +6788,55 @@
       byId("cgo").onclick = () => { S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; S.mapIndex = S.campSel; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("bk").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "armory") {
-      const rows = TALENT_ORDER.map((id) => {
-        const t = TALENTS[id], lvl = Meta.lvl(id), maxed = Meta.maxed(id), cost = Meta.nextCost(id);
-        const cur = lvl > 0 ? t.fmt(t.vals[lvl - 1]) : "—", nxt = maxed ? "MAX" : t.fmt(t.vals[lvl]);
-        const pips = t.vals.map((_, i) => `<span class="pip ${i < lvl ? "on" : ""}"></span>`).join("");
-        const label = maxed ? "MAX" : `⬡ ${cost}`;
-        const dis = maxed || Meta.alloy < cost ? "disabled" : "";
-        return `<div class="tal"><div class="info"><div class="tname">${t.name}</div>
-          <div class="tdesc">${t.desc}: <b style="color:#37e0d0">${cur}</b>${maxed ? "" : ` → ${nxt}`}</div>
-          <div class="pips">${pips}</div></div>
-          <button class="btn buy" id="b_${id}" ${dis}>${label}</button></div>`;
+      if (S.armBranch === undefined) S.armBranch = 0;
+      const wallet = Meta.alloy;
+      const TYPE_UP = { unlock: "UNLOCK", weapon: "WEAPON", system: "SYSTEM", capstone: "CAPSTONE", fork: "SPECIALIZATION" };
+      const GLY = { unlock: "⬢", weapon: "⚔", system: "⬡", capstone: "✦", fork: "⟐" };
+      const TREE_ROLE = { mortar: "Explosive splash · groups & armor", tesla: "Energy · hits air, strips shields", pyre: "Explosive burn · dense swarms" };
+      const forkToggle = (node, bi, small) => `<div style="display:flex;gap:6px;margin-top:${small ? "6" : "8"}px">` + ["a", "b"].map((side) => `<button class="btn small ${Tech.specOf(bi) === side ? "" : "ghost"}" id="sp_${bi}_${side}" style="flex:1;padding:6px 4px;font-size:10px;line-height:1.25">${node[side].name}<br><span style="font-size:8px;color:#9fb0a7">${node[side].desc}</span></button>`).join("") + `</div>`;
+      const cards = TECH.map((b, bi) => {
+        const total = b.nodes.length, n = Tech.owned(bi), pct = Math.round(n / total * 100), open = S.armBranch === bi, node = b.nodes[n];
+        let ms = "Branch complete", msDone = n >= total;
+        if (!msDone) { let mi = -1; for (let i = n; i < total; i++) { const t = b.nodes[i].type; if (t === "unlock" || t === "capstone") { mi = i; break; } } if (mi < 0) ms = "Only upgrades ahead"; else { const away = mi - n; ms = (b.nodes[mi].type === "capstone" ? "✦ capstone tower" : "⬢ new tower") + " · " + (away === 0 ? "now" : away + " away"); } }
+        const head = `<button class="btn ghost" id="hb_${bi}" style="display:block;width:100%;text-align:left;padding:9px 11px;border-left:3px solid ${b.accent}">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:15px">${b.icon}</span><span style="font-weight:800;color:${b.accent};letter-spacing:1px">${b.name}</span><span style="margin-left:auto;font-size:10px;color:#8a978f">${n}/${total} ${open ? "▲" : "▼"}</span></div>
+          <div style="font-size:11px;color:#9fb0a7;margin-top:2px">${b.theme}</div>
+          <div style="height:4px;background:#1b221e;border-radius:2px;margin:6px 0 4px"><div style="height:100%;width:${pct}%;background:${b.accent};border-radius:2px"></div></div>
+          <div style="font-size:9px;letter-spacing:1px;color:${msDone ? "#4fe08a" : b.accent}">▸ ${ms}</div></button>`;
+        if (!open) {
+          const nrow = !node ? `<div style="text-align:center;color:#4fe08a;font-size:11px;padding:7px">✓ FULLY RESEARCHED</div>`
+            : `<div style="display:flex;align-items:center;gap:8px;padding:8px 11px"><span style="font-size:9px;color:${b.accent};letter-spacing:1px">NEXT</span><span style="font-weight:700;font-size:12px">${node.name}</span><span style="margin-left:auto;color:#8a978f;font-size:11px">⬡${node.cost}</span><button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="padding:6px 10px">RESEARCH</button></div>`;
+          return `<div style="background:#121614;border:1px solid #232b27;border-radius:8px;margin:8px 0;overflow:hidden">${head}${nrow}</div>`;
+        }
+        let owned = n > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:8px 11px 2px">` + b.nodes.slice(0, n).map((nd) => `<span style="font-size:10px;padding:3px 6px;border:1px solid ${b.accent}55;border-radius:3px;color:#cdd">✓ ${nd.name}</span>`).join("") + `</div>` : "";
+        let forkUI = "";
+        b.nodes.forEach((nd, i) => { if (nd.type === "fork" && i < n) forkUI = `<div style="padding:8px 11px"><div style="font-size:9px;color:${b.accent};letter-spacing:1px;margin-bottom:2px">SPECIALIZATION · FREE TO SWAP</div>${forkToggle(nd, bi, true)}</div>`; });
+        let live;
+        if (!node) live = `<div style="text-align:center;color:#4fe08a;font-size:11px;padding:10px">✓ EVERY NODE RESEARCHED</div>`;
+        else {
+          const tw = node.eff && node.eff.tower;
+          const role = tw ? `<div style="margin-top:6px;font-size:10px"><span style="background:${TOWERS[tw].accent};color:#06110d;font-weight:800;padding:2px 5px;border-radius:3px;font-size:8.5px">${TOWERS[tw].dmgType.toUpperCase()}</span> <span style="color:#9fb0a7">${TREE_ROLE[tw] || TOWERS[tw].desc}</span></div>` : "";
+          const isFork = node.type === "fork";
+          live = `<div style="margin:8px 11px;border:1.5px solid ${b.accent};border-radius:7px;padding:10px;background:${b.accent}14">
+            <div style="font-size:9px;color:${b.accent};letter-spacing:1px">${GLY[node.type]} ${TYPE_UP[node.type]} · RESEARCH NOW</div>
+            <div style="font-weight:800;font-size:14px;margin-top:3px">${node.name}</div>
+            <div style="font-size:11px;color:#9fb0a7;margin-top:2px">${node.desc}</div>${role}
+            ${isFork ? forkToggle(node, bi, false) : ""}
+            <div style="display:flex;align-items:center;margin-top:9px"><span style="color:${b.accent};font-weight:800">⬡ ${node.cost}</span><span style="color:#8a978f;font-size:10px;margin-left:4px">ALLOY</span><button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="margin-left:auto;padding:6px 12px">RESEARCH ▸</button></div></div>`;
+        }
+        const rest = b.nodes.slice(n + 1);
+        let fog = "";
+        if (rest.length) { const shown = rest.slice(0, 2).map((nd) => `<span style="font-size:9px;padding:3px 6px;border:1px dashed #47564d;border-radius:3px;color:#67766d">${GLY[nd.type]} ${TYPE_UP[nd.type]}</span>`).join(""); const more = rest.length > 2 ? `<span style="font-size:10px;color:#67766d">+${rest.length - 2} more</span>` : ""; fog = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 11px 10px;padding:7px 9px;border:1px dashed #47564d;border-radius:7px"><span style="width:100%;font-size:9px;letter-spacing:1px;color:#47564d">CLASSIFIED · ${rest.length} AHEAD</span>${shown}${more}</div>`; }
+        return `<div style="background:#121614;border:1px solid ${b.accent}55;border-radius:8px;margin:8px 0;overflow:hidden">${head}${owned}${forkUI}${live}${fog}</div>`;
       }).join("");
-      show(`<div class="panel"><h2>Armory</h2><div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
-        ${devArmory != null ? `<p class="sub" style="color:#f2b23a">\u{1F6E0} DEV override ${Math.round(devArmory * 100)}% \u2014 forced levels shown, buying locked</p>` : `<p class="sub">Permanent upgrades \u00b7 your edge on the tougher maps</p>`}${rows}
+      show(`<div class="panel"><h2>Armory · Research</h2><div class="wallet">⬡ ${wallet} ALLOY</div>
+        ${devArmory != null ? `<p class="sub" style="color:#f2b23a">🛠 DEV override ${Math.round(devArmory * 100)}% — forced, buying locked</p>` : `<p class="sub">Research to unlock towers &amp; upgrades · your edge on hard maps</p>`}${cards}
         <button class="btn primary" id="b">Back</button></div>`);
-      TALENT_ORDER.forEach((id) => { const el = byId("b_" + id); if (el) el.onclick = () => { if (Meta.buy(id)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); }; });
+      TECH.forEach((b, bi) => {
+        const hb = byId("hb_" + bi); if (hb) hb.onclick = () => { S.armBranch = S.armBranch === bi ? null : bi; render(); };
+        const rb = byId("rb_" + bi); if (rb) rb.onclick = () => { if (Tech.buy(bi)) { Sound.up(); evalAch(achCumulative()); render(); } else Sound.err(); };
+        ["a", "b"].forEach((side) => { const sp = byId("sp_" + bi + "_" + side); if (sp) sp.onclick = () => { Tech.setSpec(bi, side); Sound.place(); render(); }; });
+      });
       byId("b").onclick = () => { S.screen = "menu"; render(); };
     } else if (S.screen === "howto") {
       const tab = S.codexTab || "guide";
@@ -6986,7 +7098,7 @@
     const pd = S.pending; if (!pd) return;
     if (pd.kind === "build") {
       const spec = TOWERS[pd.tower], cost = spec.levels[0].cost;
-      if (!S.selTile || S.scrap < cost) { Sound.err(); vibrate(40); return; }
+      if (!S.selTile || S.scrap < cost || !Tech.isUnlocked(pd.tower)) { Sound.err(); vibrate(40); return; }
       const { c, r } = S.selTile; S.scrap -= cost; Telemetry.ev("builds"); Telemetry.ev("scrapSpent", cost);
       towers.push({ c, r, type: pd.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
       (S.builtTypes || (S.builtTypes = {}))[pd.tower] = 1;
@@ -8113,7 +8225,7 @@
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, worldToScreen, tStats, overclockCost, excavateCost, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
+  window.__GAME = { S, cam, Meta, Tech, TECH, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, worldToScreen, tStats, overclockCost, excavateCost, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
