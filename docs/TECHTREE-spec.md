@@ -1,7 +1,20 @@
 # Fallen Grid — Armory → Research Tree (Tech Tree) Spec
 
-**Status:** PROPOSAL — investigation + design + spec. **No code written.** Nothing in the game is changed by this document.
+**Status:** SPEC — design locked, ready to plan Phase 1. **No code written yet.** Nothing in the game is changed by this document.
 **Author context:** requested 2026-07-24 — "turn the Armory into a tech tree with branches, tower upgrades, and more advanced towers; later steps hidden, the step you research and the branch type known; investigate how others have done it."
+
+### Locked decisions (2026-07-24)
+
+| # | Decision | Choice |
+|---|---|---|
+| D1 | Starting towers | **Auto-Gun + Cryo** unlocked; everything else researched (§3.3) |
+| D2 | Branch shape | **Linear ladder + one fork**, and the fork is a **free, reversible** specialization toggle (§3.8) |
+| D3 | Capstones | **Two new towers** — Siege Battery (Ordnance) + Prism (Arc); Logistics/Command get effect capstones (§3.2) |
+| D4 | Number of branches | **4** — Ordnance / Arc / Logistics / Command (§3.2) |
+| D5 | UI | **Overview-first accordion**, future folded into one Classified strip (§4.6) |
+| D6 | Depth | More **distinct** fogged nodes, ~8/branch, extendable Tier-II tail — never repeat-buy levels (§3.6) |
+| D7 | Onboarding | Tower **role cards** + "next milestone" breadcrumb, sourced from the Codex (§3.5) |
+| D8 | Migration | **Default: Alloy-refund** old talents → re-spend (§4.5). Not yet explicitly confirmed — flag before Phase 1. |
 
 ---
 
@@ -152,6 +165,21 @@ Asked whether each main branch should split into several sub-branches. Verdict:
 - **Optional, later: exactly one binary fork per branch, at the capstone** — pick *one* of two capstones (e.g. Ordnance → Siege Battery **or** a universal armor-shred). One either/or is exciting and readable; it also echoes the in-run a/b tower forks the game already has. This is the *only* branching I'd consider, and not before the linear framework ships.
 - Net: depth comes from **longer linear ladders (§3.6)**, not from width. Width is where overview dies.
 
+### 3.8 The one fork per branch = a **free, reversible specialization** (locked 2026-07-24)
+
+Decision: each branch is a linear ladder **plus exactly one fork**, and — critically — **switching the fork costs nothing and can be redone any time**, so players can try different combinations across the four branches without paying twice.
+
+- **Where:** one **Specialization** node partway down each branch (recommended just before the capstone). The capstone (the new tower / effect) sits *after* it as a normal terminal node, so "linear + one fork" holds and the capstone reward is never gated behind the coin-flip.
+- **How it pays:** Alloy is spent only to **reach/unlock** the specialization stage (a normal researched node). The **A-vs-B pick itself is not a purchase** — it's a toggle you flip freely from the Armory, like a loadout. Re-picking never costs Alloy and never rolls back your progress.
+- **Not fogged:** because you actively choose between the two sides, **both options are shown** the moment you reach the fork (you always know the step you're on — consistent with the fog rule; only nodes *deeper than your frontier* stay classified).
+- **Proposed specializations** (each a meaningful either/or, freely swappable):
+  - **Ordnance** — *Precision* (weapon bonuses favor single-target damage) ↔ *Saturation* (favor splash/AoE).
+  - **Arc** — *Overload* (energy towers hit harder) ↔ *Disruption* (energy towers slow / strip shields more).
+  - **Logistics** — *Boomtown* (more scrap income) ↔ *Frugal* (cheaper builds & upgrades).
+  - **Command** — *Aggression* (Commander + strike damage) ↔ *Resilience* (core integrity + repair economy).
+- **Why free-respec is the right call here:** it converts the fork from a punishing permanent commitment into an experimentation surface — exactly what was asked. It also mirrors modern player-friendly respec design and pairs naturally with the in-run a/b tower forks (which remain the *committed* per-mission choice). The meta fork is your *strategy dial*; the in-run fork is your *tactical* one.
+- **Data:** stored as `research.<branch>.spec = "a" | "b"` (default `"a"`), settable any time with no Alloy check. Effect aggregation (§4.2) reads it when summing that branch's bonuses.
+
 ---
 
 ## 4. What has to change in code (investigation)
@@ -234,10 +262,18 @@ The naïve "render every node as a cell" layout fails on a phone — 4 columns �
 
 ---
 
-## 8. Open decisions (need your call before Phase 1)
+## 8. Decisions — resolved
 
-- **O1 — Starting towers:** ship accounts with **gun + cryo** (my recommendation, keeps Tier A fair) or **gun only** (harder, purer gate; needs Tier A re-verification)?
-- **O2 — Branch shape:** strictly **linear** ladders (recommended; makes "reveal one ahead" clean and fits portrait) or allow a **single fork** deep in each branch (more BTD6-like, more UI)?
-- **O3 — Capstones:** brand-new **towers** (more work, bigger payoff) or capstone **effects/mega-upgrades** (cheaper, still aspirational)? Can differ per branch — e.g., Ordnance/Arc get new towers, Logistics/Command get effects.
-- **O4 — Number of branches:** 4 (proposed) vs 5 (add a **Fortification/Defense** branch — armor plating, repair economy, core regen) to spread nodes and give a fifth theme.
-- **O5 — Migration:** Alloy-refund (recommended) vs best-effort node-mapping vs force Reset (pre-release only).
+All the structural calls are now locked (see the table up top). Recap:
+
+- **O1 — Starting towers:** ✅ **Gun + Cryo.**
+- **O2 — Branch shape:** ✅ **Linear + one fork**, fork is a **free, reversible** specialization (§3.8).
+- **O3 — Capstones:** ✅ **Two new towers** (Siege Battery + Prism); Logistics/Command get effect capstones.
+- **O4 — Number of branches:** ✅ **4.**
+- **O5 — Migration:** ▶ **Default Alloy-refund** (§4.5) — the only item not explicitly confirmed; I'll surface it once more before writing Phase 1, but pre-release it's low-risk.
+
+### Remaining before Phase 1 (implementation-planning, not design)
+1. Lock the exact node list + Alloy costs per branch (~8 nodes each, §3.6/§5) — a costing pass.
+2. Confirm the four specialization effects (§3.8) are worth building vs. simplifying to a stat A/B.
+3. Design the two new towers' full stat lines + in-run a/b forks + art/sound (their own phases, §7).
+4. Migration confirm (O5).
