@@ -115,6 +115,7 @@ For each branch, let `n` = number of nodes already purchased. Node at index `i`:
 | `i === n` | **Researchable** | Full: name, effect text, **cost**, "RESEARCH" button (enabled if Alloy ≥ cost). |
 | `i > n` | **Fogged** | Silhouette: branch color + **category tag only** (⬢/⚔/⬡/✦) + "???". No name, no effect, no cost. Capstone always shows the ✦ glyph so players know a big payoff caps the branch. |
 
+- **Presentation folds the future.** These are the *data* states; on screen the fogged nodes are not drawn as a stack of silhouettes but collapsed into a single "Classified · N ahead" strip (§4.6) — the rule is unchanged, the clutter is gone.
 - **Branch theme is always visible** (name + icon + one-line promise), satisfying "the type of each branch is known."
 - **Strictly linear** per branch (buy node `i` before `i+1`). This is what makes "reveal one ahead" meaningful and keeps the UI mobile-friendly. (A light 1-fork-per-branch variant is possible later; linear first — see O2.)
 - Optional flavor: fogged nodes can show a scrambled/redacted codename ("PROJECT ▮▮▮▮") for tone. Cosmetic only.
@@ -141,6 +142,15 @@ Net effect: the research tree doubles as the tower school. A brand-new player le
 - **Target ~8 nodes per branch** (up from 7) with a readable rhythm: `unlock → 2 upgrades → unlock/upgrade → 2 upgrades → capstone`. 4 × 8 = **32 nodes**.
 - **Design the ladder to be extendable:** reserve a **"Tier II" tail after the capstone** that can be appended in a later content update (endless-ish long tail for retention, and the natural home for the deferred Alloy monetization) *without* redesigning the front of the tree.
 - **Constraint unchanged:** front-load cheap unlocks so new players aren't walled; back-load expensive capstones. Total Alloy sink stays near the current re-paced curve (§5).
+
+### 3.7 Sub-branches under each main branch? — recommendation: **no true sub-trees; at most one fork**
+
+Asked whether each main branch should split into several sub-branches. Verdict:
+
+- **Avoid a full 2D sub-tree** (a branch that forks into multiple parallel lanes). On a portrait phone it needs pan/zoom, it multiplies the number of simultaneously-visible "unknowns", and it directly re-creates the *"wall of unknowns / no overview"* problem (see §4.6). Games that do 2D meta-trees (PoE, Civ, Infinitode 2's research) are hardcore/desktop-first; this is a casual mobile TD.
+- **Keep each branch a single linear ladder** for launch — it's what makes "reveal one ahead" legible and keeps the whole tree scannable as four cards.
+- **Optional, later: exactly one binary fork per branch, at the capstone** — pick *one* of two capstones (e.g. Ordnance → Siege Battery **or** a universal armor-shred). One either/or is exciting and readable; it also echoes the in-run a/b tower forks the game already has. This is the *only* branching I'd consider, and not before the linear framework ships.
+- Net: depth comes from **longer linear ladders (§3.6)**, not from width. Width is where overview dies.
 
 ---
 
@@ -170,10 +180,19 @@ Repoint each to the aggregated bonus instead of `Meta.val(id)`:
 ### 4.5 Migration for existing saves
 Pre-release, but there are test accounts. Recommended: on first load of the new version, if the old `talents` key exists, **refund** — sum the Alloy spent on owned talents, credit it back as spendable Alloy, delete `talents`, and let the player re-spend in the tree. Clean, no fragile id-mapping, forgiving. (Testers also have "Reset All".)
 
-### 4.6 UI — the Armory screen (full rewrite)
-- Current `S.screen === "armory"` renders a flat list of 14 rows. Replace with a **branch view**: 4 branch cards (icon, name, theme, progress `n/7`); tapping a branch expands its **node ladder** with the fog states from §3.4; the researchable node has the RESEARCH button.
-- Portrait-first: vertical accordion (one branch expanded at a time) or a vertical scroll of 4 sections. Reuse `show(html)` + existing `.btn/.wallet/.sub` styles.
-- `setDevArmory` remap: "50%/100%" should buy the first X% of nodes across all branches (respecting linear order) so on-device balance testing still works.
+### 4.6 UI — the Armory screen (full rewrite): **overview-first accordion**
+
+The naïve "render every node as a cell" layout fails on a phone — 4 columns × 8 nodes is a **wall of "???"** with no overview (confirmed by testing the first pitch). The launch UI must lead with an overview and fold the future away. Structure:
+
+- **Level 1 — overview (default view).** A vertical stack of **4 branch cards**, one per theme. Each card is a single glanceable unit: icon, name, one-line theme, a **progress bar + `n/total`**, and a **"next milestone" line** ("Next: ⬢ new tower · 2 away"). Below the header, a **compact next-action row** — the one researchable node's name + cost + a RESEARCH button — so the common case ("buy my next thing") needs **zero taps to expand**. Four cards = instant overview, one clear action each, no fog wall.
+- **Level 2 — expanded branch (accordion, one open at a time).** Tapping a card expands it into three zones, top to bottom:
+  1. **Owned** → a compact wrap of ✓ chips (the past never clutters).
+  2. **Researchable** → the *one* prominent card: category tag, name, effect, the **tower role card** (§3.5) framed "You'll gain", cost, RESEARCH.
+  3. **Classified** → the entire future folded into **one dashed strip**: 1–2 category tags + "+N more classified". Never a stack of silhouettes.
+- Portrait-first; reuse `show(html)` + existing `.btn/.wallet/.sub` styles. Researching auto-keeps that branch expanded and advances its frontier.
+- `setDevArmory` remap: "50%/100%" buys the first X% of nodes across all branches (respecting linear order) so on-device balance testing still works.
+
+> The interactive pitch implements exactly this layout — it's the reference for the in-game screen.
 
 ### 4.7 Peripheral references
 - Achievements: `talent1`/`talentall` tests use `Meta.maxed` + `TALENT_ORDER`; retarget to "research a branch capstone" / "complete every branch."
