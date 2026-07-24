@@ -4639,6 +4639,28 @@
 
   /* ---------------- WAVES ---------------- */
   // Counts are capped so deep endless waves stay performant/playable; statsFor keeps scaling HP.
+  // V6.26 Wave Intel: what is coming, how many, and what it resists. Counts from waveComp are
+  // deterministic (only the arrival order is shuffled), so a per-wave cache is exact and cheap.
+  const THREAT_TAG = { sentinel: ["ARMOR", "#8d97a2"], wraith: ["AIR", "#a88fd0"], warden: ["SHIELD", "#4f9a96"],
+    phantom: ["CLOAKED", "#7f9ab8"], insulator: ["ENERGY-RES", "#8fb07a"], juggernaut: ["BOSS", "#e0479a"],
+    mender: ["HEALS", "#6fc47f"], splitter: ["SPLITS", "#c46fb0"], cinder: ["SLOW-IMM", "#e0844a"], brute: ["TANKY", "#c47a5a"] };
+  let _intel = { key: "", list: null };
+  function waveIntel(n) {
+    const key = n + "|" + (activeMod ? activeMod.id : "") + "|" + (S.difficulty || "");
+    if (_intel.key === key) return _intel.list;
+    const comp = {};
+    (waveComp(n) || []).forEach((e) => { comp[e.type] = (comp[e.type] || 0) + 1; });
+    const list = Object.keys(comp).filter((k) => THREAT_TAG[k]).sort((a, b) => comp[b] - comp[a]).map((k) => ({ k: k, n: comp[k] }));
+    _intel = { key: key, list: list };
+    return list;
+  }
+  // Does the current board answer a given threat? Drives the targeted warnings.
+  function boardCan(what) {
+    if (what === "air") return towers.some((t) => canHitAir(TOWERS[t.type].kind));
+    if (what === "detect") return !!hero || towers.some((t) => t.type === "tesla" || t.type === "prism");
+    if (what === "armor") return towers.some((t) => tStats(t).pierce || TOWERS[t.type].dmgType === "explosive");
+    return true;
+  }
   function waveComp(n) {
     const list = [];
     if (n % 5 === 0) {
@@ -4654,13 +4676,18 @@
     const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0;     // wardens (shielded) reward energy
     const md = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // menders heal packs: focus-fire them
     const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
-    const ph = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;     // phantoms (camo) force detection (Tesla / Hero)
+    // V6.26: camo is only fair once a DETECTOR tower can be built. Tesla/Prism are gated behind
+    // Armory research, so on an un-researched account phantoms would be untargetable by design —
+    // hold them back entirely and send raiders instead (same pressure, answerable).
+    const canDetect = Tech.isUnlocked("tesla") || Tech.isUnlocked("prism");
+    const phWant = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;
+    const ph = canDetect ? phWant : 0, phSub = canDetect ? 0 : phWant;
     const cn = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0;     // cinders — freeze-immune rushers, punish slow-stacking
     const iu = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // insulators — energy-resistant, punish mono-Tesla (V6.5: arrive w9, cap 6)
     const el = n >= 15 ? Math.min(2 + Math.floor((n - 15) / 2), 5) : 0; // V6.4 anti-conveyor escort: freeze-immune Cinder + energy-resist Insulator pairs at 15+
     const seq = [];
     for (let i = 0; i < st; i++) seq.push("stalker");
-    for (let i = 0; i < rd; i++) seq.push("raider");
+    for (let i = 0; i < rd + phSub; i++) seq.push("raider");
     for (let i = 0; i < br; i++) seq.push("brute");
     for (let i = 0; i < se; i++) seq.push("sentinel");
     for (let i = 0; i < wr; i++) seq.push("wraith");
@@ -4928,7 +4955,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.25",
+        ts: Date.now(), ver: "6.26",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5200,7 +5227,7 @@
     for (const e of enemies) { if (e.alive && e.camo) { anyCamo = true; if (e.revealed > 0) e.revealed -= dt; } }
     if (!anyCamo) return;
     for (const t of towers) {
-      if (t.type !== "tesla") continue;
+      if (t.type !== "tesla" && t.type !== "prism") continue;
       const p = center(t.c, t.r), rng = tStats(t).range * rangeMul();
       for (const e of enemies) if (e.alive && e.camo && Math.hypot(e.x - p.x, e.y - p.y) <= rng) e.revealed = 0.9;
     }
@@ -6304,7 +6331,7 @@
   // one-time contextual tips that teach the systems the coach-marks don't cover
   const TIPS = {
     timer:     "Waves now arrive on a timer — tap DEPLOY early for bonus scrap (more time left = more)",
-    phantom:   "\u25c6 Phantom is CLOAKED — a Rail-Tesla or your Hero reveals it for every tower",
+    phantom:   "\u25c6 Phantom is CLOAKED — a Rail-Tesla, a Prism or your Hero reveals it for every tower",
     cinder:    "\u25c6 Cinder is FREEZE-IMMUNE — slow can't stop it; answer with raw firepower",
     insulator: "\u25c6 Insulator RESISTS ENERGY — Tesla & Cryo hit soft; use Auto-Gun or Mortar",
   };
@@ -6592,6 +6619,7 @@
     ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
     trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
   }
+  const trayIsIdle = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !S.selTile;
   function drawTray(dt) {
     // slide animation
     if (S.sheetAnim < 1) S.sheetAnim = Math.min(1, S.sheetAnim + dt * 6);
@@ -6608,16 +6636,73 @@
   function drawTrayIdle() {
     trayBtns = [];
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = C.textDim; ctx.font = "700 10px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT · PINCH TO ZOOM · DRAG TO PAN", W / 2, PLAY_BOTTOM + 18);
-    const N = TOWER_ORDER.length, tight = N > 5, gap = tight ? 4 : 6, bh = 64, bw = Math.min(80, (W - 20 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 34;
-    TOWER_ORDER.forEach((key, i) => {
-      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap);
-      ctx.fillStyle = C.trayCell; rr(x, y, bw, bh, 5); ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke();
-      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, tight ? 0.48 : 0.62);
-      ctx.fillStyle = C.textDim; ctx.font = (tight ? "800 7.5px" : "800 9px") + " ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 46);
-      coin(x + bw / 2 - (tight ? 10 : 13), y + bh - 10, tight ? 3.6 : 4.5); ctx.fillStyle = C.scrap; ctx.font = (tight ? "800 8.5px" : "800 10px") + " ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + (tight ? 5 : 6), y + bh - 10);
+    // ---- WAVE INTEL command bar (V6.26) ----
+    // Replaces the old untappable tower palette: what is coming, what it resists, what you can do.
+    const nw = Math.min((S.wave || 0) + 1, S.endless ? 9999 : TOTAL_WAVES);
+    const intel = waveIntel(nw).slice(0, 3);
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
+    ctx.fillText("\u25b8 WAVE " + nw + (S.waveActive ? " ENGAGED" : " INBOUND"), 11, PLAY_BOTTOM + 13);
+    ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "800 9px ui-monospace, monospace";
+    ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s" : "\u2014"), W - 11, PLAY_BOTTOM + 13);
+    // threat cards
+    const iy = PLAY_BOTTOM + 22, ih = 38, iw = (W - 22 - 2 * 5) / 3;
+    if (!intel.length) {
+      ctx.fillStyle = C.trayCell; rr(11, iy, W - 22, ih, 5); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
+      ctx.fillText("LIGHT WAVE \u00b7 NO SPECIAL THREATS", W / 2, iy + ih / 2);
+    } else intel.forEach((e, i) => {
+      const x = 11 + i * (iw + 5), tag = THREAT_TAG[e.k], col = tag[1];
+      ctx.fillStyle = C.trayCell; rr(x, iy, iw, ih, 5); ctx.fill();
+      ctx.fillStyle = col; rr(x, iy, 2.5, ih, 1.2); ctx.fill();
+      ctx.textAlign = "left"; ctx.fillStyle = C.text; ctx.font = "800 9.5px ui-monospace, monospace";
+      ctx.fillText(ENEMY_LABEL[e.k], x + 8, iy + 11);
+      ctx.fillStyle = C.textDim; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("\u00d7" + e.n, x + 8, iy + 24);
+      ctx.fillStyle = col; ctx.font = "800 7px ui-monospace, monospace"; ctx.fillText(tag[0], x + 8, iy + 33);
     });
+    // targeted warning — only when the board genuinely cannot answer what is coming
+    const has = (k) => intel.some((e) => e.k === k);
+    let warn = null;
+    if (has("wraith") && !boardCan("air")) warn = "\u26a0 AIR INCOMING \u00b7 NO ANTI-AIR IN RANGE";
+    else if (has("phantom") && !boardCan("detect")) warn = "\u26a0 CLOAKED FOES \u00b7 NO DETECTOR (TESLA/PRISM/HERO)";
+    else if (has("sentinel") && !boardCan("armor")) warn = "\u26a0 ARMORED \u00b7 NEED PIERCE OR EXPLOSIVE";
+    const wy = PLAY_BOTTOM + 68;
+    ctx.textAlign = "left";
+    if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(warn, 11, wy); }
+    else { ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT \u00b7 PINCH ZOOM \u00b7 DRAG PAN", 11, wy); }
+    ctx.textAlign = "right"; ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace";
+    ctx.fillText("\u2b21 " + S.scrap, W - 11, wy);
+    // ---- action row: HERO / STRIKE / REPAIR as real buttons ----
+    drawCmdRow();
+  }
+  // V6.26: Hero / Airstrike / Repair as proper labelled tray buttons instead of circles floating
+  // over the map edge. They push into the SAME arrays the existing tap handlers already read.
+  function cmdBtn(x, y, w, h, col, on, label, sub, cd) {
+    ctx.fillStyle = on ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.02)"; rr(x, y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = on ? rgba(col, 0.65) : "rgba(255,255,255,0.08)"; ctx.lineWidth = 1.2; rr(x, y, w, h, 5); ctx.stroke();
+    if (cd > 0 && cd < 1) { ctx.save(); ctx.fillStyle = rgba(col, 0.16); rr(x, y, w * cd, h, 5); ctx.fill(); ctx.restore(); }
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = on ? col : C.textDim; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(label, x + w / 2, y + 12);
+    ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText(sub, x + w / 2, y + 24);
+    ctx.textAlign = "left";
+  }
+  function drawCmdRow() {
+    heroBtns = []; abilityBtns = [];
+    const y = PLAY_BOTTOM + 78, h = 32, w = (W - 22 - 2 * 6) / 3;
+    // HERO
+    const hx = 11, ac = HERO.accent, dep = !!hero, hReady = dep ? hero.abil <= 0 : true;
+    cmdBtn(hx, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
+      dep ? "COMMANDER L" + (hero.lvl + 1) : "DEPLOY \u00b7 FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
+    heroBtns.push({ id: "hero", x: hx, y: y, w: w, h: h });
+    // STRIKE
+    const sx2 = 11 + w + 6, sReady = S.strikeCd <= 0;
+    cmdBtn(sx2, y, w, h, "#ff9a5a", sReady || S.strikeArm, S.strikeArm ? "CANCEL" : (sReady ? "STRIKE" : Math.ceil(S.strikeCd) + "s"),
+      sReady ? "ORBITAL \u00b7 READY" : "RECHARGING", sReady ? 1 : 1 - S.strikeCd / strikeMax());
+    abilityBtns.push({ id: "strike", x: sx2, y: y, w: w, h: h });
+    // REPAIR (id reuses the existing hudBtns handler)
+    const rx2 = 11 + (w + 6) * 2, rc = repairCost(), hurt2 = S.core < (S.coreMax || S.core), canFix = hurt2 && S.scrap >= rc;
+    cmdBtn(rx2, y, w, h, "#8fe04a", canFix, hurt2 ? "REPAIR" : "CORE OK", hurt2 ? "\u2699" + rc + " \u00b7 " + S.core + "/" + S.coreMax : S.core + "/" + S.coreMax, 1);
+    if (hurt2) trayBtns.push({ action: "repair", x: rx2, y: y, w: w, h: h });
   }
   function drawBuildMenu() {
     trayBtns = [];
@@ -6730,7 +6815,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.25 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.26 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6902,7 +6987,7 @@
         tesla: "long-range energy, hits air, strips shields, reveals camo; Arc-Coil chains 3, Railgun snipes",
         pyre: "cheap burn DoT over a cone (ground only); Inferno widens the flame, Plasma pierces armor",
         siege: "Armory capstone — huge armor-piercing shells with splash (ground only); Bombard barrages wide, Breaker lands one colossal hit",
-        prism: "Armory capstone — refracting energy beam, hits air; Refraction chains across a crowd, Lance is a long-range pierce sniper",
+        prism: "Armory capstone — refracting energy beam, hits air and reveals camo; Refraction chains across a crowd, Lance is a long-range pierce sniper",
       };
       const THREAT = {
         stalker: "Fast, fragile scout. — Counter: any rapid-fire tower (Gatling).",
@@ -6916,7 +7001,7 @@
         spawnling: "Fast fragment spawned by a dying Splitter. — Counter: mop up with rapid fire.",
         cinder: "◆ FREEZE-IMMUNE — ignores all slow; Cryo/Glacier cannot touch its speed. — Counter: raw firepower & overlapping coverage, not stalling.",
         insulator: "◆ ENERGY-RESIST — takes only ~35% from energy (Tesla, Cryo). — Counter: kinetic (Auto-Gun) or explosive (Mortar, Pyre).",
-        phantom: "◆ CAMO — cloaked; towers cannot target it until it is revealed. — Counter: keep a Rail-Tesla or the Hero nearby (they reveal camo foes for every tower) — an airstrike reveals too.",
+        phantom: "◆ CAMO — cloaked; towers cannot target it until it is revealed. — Counter: keep a Rail-Tesla, a Prism or the Hero nearby (they reveal camo foes for every tower) — an airstrike reveals too. They only appear once you can research a detector.",
         juggernaut: "◆ BOSS · SHIELD 420 — the wave's anchor. — Counter: energy to strip the shield, then sustained fire.",
       };
       let body;
@@ -7183,6 +7268,16 @@
     S.pending = null; S.rangePreview = null;
   }
   function trayAction(b) {
+    if (b.action === "repair") {
+      const rc = repairCost();
+      if (S.core < (S.coreMax || S.core) && S.scrap >= rc) {
+        S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1;
+        Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12);
+        const bp = ROUTES[0][ROUTES[0].length - 1];
+        floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true });
+      } else { Sound.err(); vibrate(40); }
+      return;
+    }
     if (b.action === "build") {
       if (b.banned) { Sound.err(); vibrate(40); return; }
       S.pending = { kind: "build", tower: b.tower }; Sound.place(); vibrate(8);
@@ -8237,7 +8332,9 @@
     drawBossBar();
     drawBanner(raw);
     drawZoomButtons();
-    if (S.screen === "playing" || S.screen === "paused") { drawAbility(); drawHeroFab(); }
+    // V6.26: while the tray shows the command bar the Hero/Strike buttons live THERE, so the
+    // floating map-edge circles only appear in the build/upgrade/confirm tray states.
+    if (S.screen === "playing" || S.screen === "paused") { if (!trayIsIdle()) { drawAbility(); drawHeroFab(); } }
     drawHUD();
     drawTray(raw);
     drawTutorial();
@@ -8294,6 +8391,8 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
+    __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
