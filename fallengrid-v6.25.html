@@ -4089,8 +4089,20 @@
         a: { name: "Inferno", short: "INFERNO", desc: "wider, hotter", cost: 115, dmg: 15, range: 130, rate: 210, burn: 6.0, burnT: 2.6, t4: { name: "Firestorm", cost: 170, dmg: 24, range: 142, rate: 190, burn: 9.0, burnT: 3.0 } },
         b: { name: "Plasma", short: "PLASMA", desc: "pierces armor", cost: 130, dmg: 30, range: 118, rate: 300, burn: 5.0, burnT: 2.0, pierce: true, t4: { name: "Ion Torch", cost: 200, dmg: 60, range: 126, rate: 280, burn: 8.0, burnT: 2.2, pierce: true } },
       } },
+    siege:  { name: "Siege Battery", short: "SIEGE", kind: "lob", art: "siege", dmgType: "explosive", metal: "#5c5240", metalLt: "#82755a", accent: "#ffb703", desc: "siege artillery",
+      levels: [ { cost: 155, dmg: 105, range: 172, rate: 1550, splash: 92, pierce: true }, { cost: 130, dmg: 165, range: 184, rate: 1470, splash: 100, pierce: true }, { cost: 200, dmg: 255, range: 198, rate: 1380, splash: 110, pierce: true } ],
+      branches: {
+        a: { name: "Bombard", short: "BOMBARD", desc: "rapid wide barrage", cost: 210, dmg: 225, range: 208, rate: 1050, splash: 132, pierce: true, t4: { name: "Cataclysm", cost: 330, dmg: 340, range: 222, rate: 950, splash: 152, pierce: true } },
+        b: { name: "Breaker", short: "BREAKER", desc: "one colossal shell", cost: 265, dmg: 480, range: 202, rate: 1800, splash: 86, pierce: true, t4: { name: "Ruination", cost: 420, dmg: 760, range: 216, rate: 1700, splash: 98, pierce: true } },
+      } },
+    prism:  { name: "Prism", short: "PRISM", kind: "beam", art: "prism", dmgType: "energy", metal: "#3f4a72", metalLt: "#63719e", accent: "#a878ff", desc: "refracting beam",
+      levels: [ { cost: 165, dmg: 70, range: 238, rate: 880, chain: 2 }, { cost: 140, dmg: 110, range: 252, rate: 830, chain: 2 }, { cost: 205, dmg: 168, range: 270, rate: 770, chain: 3 } ],
+      branches: {
+        a: { name: "Refraction", short: "REFRACT", desc: "chains far & wide", cost: 215, dmg: 128, range: 286, rate: 700, chain: 4, t4: { name: "Spectrum", cost: 340, dmg: 190, range: 302, rate: 640, chain: 5 } },
+        b: { name: "Lance", short: "LANCE", desc: "focused pierce beam", cost: 275, dmg: 300, range: 340, rate: 1080, pierce: true, t4: { name: "Singularity", cost: 430, dmg: 470, range: 368, rate: 1000, pierce: true } },
+      } },
   };
-  const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla", "pyre"];
+  const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla", "pyre", "siege", "prism"];
   const DMG_SYM = { kinetic: "\u25c9", explosive: "\u2738", energy: "\u2726" }; // colour-blind: a distinct glyph per damage type
   const repairCost = () => 50 + (S.repairs || 0) * 25 + Math.floor(S.wave * 3);
   const SELL_REFUND = 0.7;
@@ -4165,7 +4177,7 @@
         a: { name: "Precision",  desc: "+5% damage, +2% fire rate", eff: { dmg: 0.05, rate: 0.02 } },
         b: { name: "Saturation", desc: "+20% splash radius",        eff: { splash: 0.20 } } },
       { id: "o_rate2",  type: "weapon",   name: "Fire Control II", desc: "+14% fire rate",     cost: 430, eff: { rate: 0.14 } },
-      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "+8% damage, +10% splash (new tower in a later build)", cost: 820, eff: { dmg: 0.08, splash: 0.10 } },
+      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "Unlock siege artillery — the armor answer", cost: 820, eff: { tower: "siege" } },
     ] },
     { id: "arc", name: "ARC", theme: "Energy, crowd-control, shields", icon: "✦", accent: "#37e0d0", nodes: [
       { id: "a_tesla",  type: "unlock",   name: "Tesla",           desc: "Unlock long-range energy", cost: 140, eff: { tower: "tesla" } },
@@ -4177,7 +4189,7 @@
         a: { name: "Overload",   desc: "+5% tower damage", eff: { dmg: 0.05 } },
         b: { name: "Disruption", desc: "+6% fire rate",    eff: { rate: 0.06 } } },
       { id: "a_rate",   type: "weapon",   name: "Coolant",         desc: "+6% fire rate",    cost: 440, eff: { rate: 0.06 } },
-      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "+8% damage, +6% range (new tower in a later build)", cost: 860, eff: { dmg: 0.08, range: 0.06 } },
+      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "Unlock the refracting beam tower", cost: 860, eff: { tower: "prism" } },
     ] },
     { id: "log", name: "LOGISTICS", theme: "Scrap, alloy, sustain", icon: "⬡", accent: "#8fe04a", nodes: [
       { id: "l_scrap1", type: "system",   name: "Reserves I",      desc: "+25 starting scrap", cost: 110, eff: { scrap: 25 } },
@@ -4567,6 +4579,8 @@
       gun: () => { const pan = rnd(-0.45, 0.45); nz(0.022, 0.06, "highpass", 3000, 0.7, { pan, atk: 0.0004, ffEnd: 1400 }); osc(330, 0.085, "square", 0.05, 92, 1300, { pan, detune: 7, drive: 1, wet: 0.07, atk: 0.0008, lpEnd: 480 }); osc(150, 0.06, "sawtooth", 0.03, 70, 900, { pan, detune: -10, drive: 1 }); osc(84, 0.07, "sine", 0.05, 40, 0, { atk: 0.001 }); },
       tesla: () => { osc(820, 0.11, "sawtooth", 0.045, 150, 2600, { detune: 8, wet: 0.18, drive: 1 }); osc(816, 0.11, "sawtooth", 0.04, 150, 2600, { detune: -8, drive: 1 }); nz(0.13, 0.04, "bandpass", 3400, 4, { ffEnd: 1400, wet: 0.2 }); osc(1720, 0.05, "square", 0.018, 900); },
       cryo: () => { osc(720, 0.28, "sine", 0.045, 720, 0, { wet: 0.35, atk: 0.008 }); osc(1440, 0.24, "sine", 0.02, 1440, 0, { wet: 0.35 }); osc(2160, 0.2, "triangle", 0.012, 2160, 0, { wet: 0.4 }); nz(0.26, 0.014, "highpass", 6000, 0, { wet: 0.4 }); },
+      siege: () => { nz(0.03, 0.09, "highpass", 2200, 0.6, { atk: 0.0006 }); osc(120, 0.22, "square", 0.06, 34, 900, { drive: 1, atk: 0.001, lpEnd: 220, wet: 0.18 }); osc(62, 0.3, "sine", 0.09, 26, 0, { atk: 0.002, wet: 0.25 }); nz(0.34, 0.05, "lowpass", 420, 0, { ffEnd: 130, wet: 0.4, atk: 0.02 }); },
+      prism: () => { osc(1180, 0.16, "triangle", 0.032, 780, 0, { wet: 0.3, atk: 0.002 }); osc(1770, 0.14, "sine", 0.022, 1180, 0, { wet: 0.35 }); osc(2360, 0.1, "sine", 0.014, 1570, 0, { wet: 0.4 }); nz(0.1, 0.05, "bandpass", 5200, 6, { ffEnd: 2600, wet: 0.35 }); osc(295, 0.12, "sawtooth", 0.02, 220, 1400, { drive: 1 }); },
       boom: () => { nz(0.02, 0.08, "highpass", 3500, 0.6, { atk: 0.001 }); nz(0.28, 0.09, "lowpass", 700, 0, { ffEnd: 160, wet: 0.35 }); osc(150, 0.5, "sine", 0.11, 38, 0, { atk: 0.002, wet: 0.3 }); osc(92, 0.42, "triangle", 0.06, 30); nz(0.5, 0.03, "lowpass", 260, 0, { wet: 0.4, atk: 0.03 }); },
       hit: () => nz(0.04, 0.03, "bandpass", 2200, 2, { pan: rnd(-0.4, 0.4) }),
       // --- UI / economy ---
@@ -4914,7 +4928,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.24",
+        ts: Date.now(), ver: "6.25",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5207,12 +5221,12 @@
     const spec = TOWERS[t.type], dtype = spec.dmgType, pierce = !!st.pierce, dmg = st.dmg * dmgMul(), mx = p.x + Math.cos(t.angle) * 22, my = (p.y - 12) + Math.sin(t.angle) * 22, tg = t.target;
     if (spec.kind === "hit") { hurt(tg, dmg, dtype, pierce); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.06, mlife: 0.06, color: spec.accent, w: 1.6 }); burst(tg.x, tg.y, spec.accent, 3); Sound.gun(); }
     else if (spec.kind === "beam") {
-      hurt(tg, dmg, dtype, pierce); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.13, mlife: 0.13, color: spec.accent, w: 3, bolt: true }); burst(tg.x, tg.y, spec.accent, 6); doShake(1.6, 0.1); screenFlash = 0.12; Sound.tesla();
+      hurt(tg, dmg, dtype, pierce); beams.push({ x1: mx, y1: my, x2: tg.x, y2: tg.y, life: 0.13, mlife: 0.13, color: spec.accent, w: 3, bolt: true }); burst(tg.x, tg.y, spec.accent, 6); doShake(1.6, 0.1); screenFlash = 0.12; if (t.type === "prism") Sound.prism(); else Sound.tesla();
       // Arc-Coil branch: lightning chains to nearby foes (flyers included)
       if (st.chain) { let from = tg, hit = new Set([tg]); for (let i = 0; i < st.chain; i++) { let nx = null, nd = 120; for (const e of enemies) { if (!e.alive || hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < nd) { nd = d; nx = e; } } if (!nx) break; hurt(nx, dmg * 0.6, dtype, pierce); beams.push({ x1: from.x, y1: from.y, x2: nx.x, y2: nx.y, life: 0.12, mlife: 0.12, color: spec.accent, w: 2, bolt: true }); hit.add(nx); from = nx; } }
     }
     else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: dmg, splash: st.splash * splashMul(), slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4, sid: (t._sid || (t._sid = ++towerSeq)) }); Sound.cryo(); }
-    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: dmg, splash: st.splash * splashMul(), dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); Sound.gun(); }
+    else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: dmg, splash: st.splash * splashMul(), dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); if (t.type === "siege") Sound.siege(); else Sound.gun(); }
     else if (spec.kind === "burn") {
       const range = st.range * rangeMul(), ox = p.x, oy = p.y - 12; let any = false;
       for (const e of enemies) { if (!e.alive || e.flying) continue; const ex = e.x - ox, ey = e.y - oy, d = Math.hypot(ex, ey); if (d > range) continue; let da = Math.abs(Math.atan2(ey, ex) - t.angle); if (da > Math.PI) da = 2 * Math.PI - da; if (da > 0.85) continue; hurt(e, dmg, dtype, pierce); e.burn = { dps: (st.burn || 3) * dmgMul(), t: st.burnT || 2, pierce: pierce, dtype: dtype }; any = true; }
@@ -5589,7 +5603,7 @@
       ctx.fillStyle = un; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
     });
     // V2.4 bloom emitter sprites (one per emissive color) + cloud shadow blob
-    const glowCols = { turret: "#f2b23a", cryo: "#37e0d0", mortar: "#f28a3a", tesla: "#e0479a", fire: "#ff8c46", core: "#37e0d0", gold: "#ffd24a", heal: "#8fe04a" };
+    const glowCols = { turret: "#f2b23a", cryo: "#37e0d0", mortar: "#f28a3a", tesla: "#e0479a", siege: "#ffb703", prism: "#a878ff", fire: "#ff8c46", core: "#37e0d0", gold: "#ffd24a", heal: "#8fe04a" };
     for (const k in glowCols) bakeSprite("gl_" + k, 64, () => {
       const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 30);
       g.addColorStop(0, rgba(glowCols[k], 0.85)); g.addColorStop(0.4, rgba(glowCols[k], 0.28)); g.addColorStop(1, rgba(glowCols[k], 0));
@@ -5721,7 +5735,48 @@
     ctx.save(); ctx.translate(x, y - 12 * s); ctx.rotate(angle || 0); ctx.translate(-pull, 0);
     let barrelL = (18 + lvl * 4) * s; const mflash = flash > 0 ? Math.min(1, flash / 0.09) : 0;
     if (brSpec) barrelL += (branch === "b" ? 6 : 2) * s;
-    if (spec.kind === "hit") {
+    const art = spec.art || spec.kind; let flashAt = null;
+    if (art === "siege") {
+      // siege battery: armored breech, braced heavy barrel with recoil cylinders + muzzle brake
+      const bl = (20 + lvl * 4) * s + (brSpec ? (branch === "b" ? 8 : 3) * s : 0), bth = (7 + lvl * 0.8) * s + (brSpec ? (branch === "b" ? 2.4 : 1.2) * s : 0);
+      flashAt = bl + 4 * s;
+      ctx.strokeStyle = edge; ctx.lineWidth = 2.2 * s; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(-2 * s, 0); ctx.lineTo(-11 * s, -7 * s); ctx.moveTo(-2 * s, 0); ctx.lineTo(-11 * s, 7 * s); ctx.stroke();
+      ctx.fillStyle = dk; rr(0, -bth / 2 - 3.2 * s, bl * 0.62, 2.6 * s, 1 * s); ctx.fill(); rr(0, bth / 2 + 0.6 * s, bl * 0.62, 2.6 * s, 1 * s); ctx.fill();
+      const sbg = ctx.createLinearGradient(0, -bth / 2, 0, bth / 2); sbg.addColorStop(0, lighten(spec.metalLt, 0.15)); sbg.addColorStop(1, dk);
+      ctx.fillStyle = sbg; rr(-2 * s, -bth / 2, bl, bth, 2 * s); ctx.fill();
+      ctx.strokeStyle = edge; ctx.lineWidth = 1.2 * s; rr(-2 * s, -bth / 2, bl, bth, 2 * s); ctx.stroke();
+      for (let i = 1; i <= 2 + lvl; i++) { const bx = -2 * s + bl * (i / (3 + lvl)); ctx.beginPath(); ctx.moveTo(bx, -bth / 2); ctx.lineTo(bx, bth / 2); ctx.stroke(); }
+      ctx.fillStyle = spec.metalLt; rr(bl - 5 * s, -bth * 0.82, 5 * s, bth * 1.64, 1.4 * s); ctx.fill();
+      ctx.strokeStyle = edge; rr(bl - 5 * s, -bth * 0.82, 5 * s, bth * 1.64, 1.4 * s); ctx.stroke();
+      ctx.fillStyle = "#15171a"; ctx.beginPath(); ctx.ellipse(bl - 1 * s, 0, 1.8 * s, bth * 0.34, 0, 0, 7); ctx.fill();
+      const brg = ctx.createLinearGradient(0, -9 * s, 0, 9 * s); brg.addColorStop(0, spec.metalLt); brg.addColorStop(1, darken(spec.metal, 0.55));
+      ctx.fillStyle = brg; rr(-9 * s, -8.5 * s, 12 * s, 17 * s, 3 * s); ctx.fill();
+      ctx.strokeStyle = edge; ctx.lineWidth = 1.3 * s; rr(-9 * s, -8.5 * s, 12 * s, 17 * s, 3 * s); ctx.stroke();
+      const chg = 0.5 + 0.5 * Math.sin(t * 2.5);
+      ctx.save(); ctx.globalAlpha = 0.5 + chg * 0.5; ctx.shadowColor = spec.accent; ctx.shadowBlur = 8 * s; ctx.fillStyle = spec.accent; rr(-6.5 * s, -5 * s, 2.6 * s, 10 * s, 1 * s); ctx.fill(); ctx.restore();
+    } else if (art === "prism") {
+      // prism: floating refracting crystal + orbiting shards (Refraction spreads, Lance focuses one)
+      const shards = brSpec ? (branch === "a" ? 5 : 1) : 2 + lvl, reach = (12 + lvl * 1.6) * s + (brSpec ? (branch === "a" ? 4 : 8) * s : 0), spin = t * 0.9;
+      flashAt = reach + 3 * s;
+      ctx.fillStyle = spec.metal; ctx.beginPath(); ctx.arc(0, 0, 7 * s, 0, 7); ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = 1 * s; ctx.stroke();
+      for (let i = 0; i < shards; i++) {
+        const a2 = (brSpec && branch === "b") ? 0 : spin + i / shards * 6.283, px = Math.cos(a2) * reach, py = Math.sin(a2) * reach;
+        ctx.save(); ctx.globalAlpha = 0.32 + 0.28 * Math.sin(t * 6 + i); ctx.strokeStyle = spec.accent; ctx.lineWidth = 1 * s; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(px, py); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.translate(px, py); ctx.rotate(a2 + spin * 1.6);
+        const sz = ((brSpec && branch === "b") ? 5.4 : 3.2) * s;
+        ctx.fillStyle = rgba(spec.accent, 0.85); ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.72, 0); ctx.lineTo(0, sz); ctx.lineTo(-sz * 0.72, 0); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 0.7 * s; ctx.stroke(); ctx.restore();
+      }
+      ctx.save(); ctx.rotate(-spin * 0.7);
+      const cr = (5.5 + lvl * 0.7) * s, pgd = ctx.createLinearGradient(-cr, -cr, cr, cr);
+      pgd.addColorStop(0, "#ffffff"); pgd.addColorStop(0.5, spec.accent); pgd.addColorStop(1, darken(spec.accent, 0.45));
+      ctx.fillStyle = pgd; ctx.beginPath();
+      for (let i = 0; i < 3; i++) { const a3 = i / 3 * 6.283 - Math.PI / 2, px = Math.cos(a3) * cr, py = Math.sin(a3) * cr; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.closePath(); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,0.66)"; ctx.lineWidth = 0.9 * s; ctx.stroke(); ctx.restore();
+      const cp2 = 0.6 + 0.4 * Math.sin(t * 5);
+      ctx.save(); ctx.globalAlpha = cp2; ctx.shadowColor = spec.accent; ctx.shadowBlur = 12 * s; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(0, 0, 2.2 * s, 0, 7); ctx.fill(); ctx.restore();
+    } else if (spec.kind === "hit") {
       // turret: Gatling (a) = four short barrels, Breacher (b) = one heavy long barrel
       const bg = ctx.createLinearGradient(0, -7 * s, 0, 7 * s); bg.addColorStop(0, spec.metalLt); bg.addColorStop(1, dk);
       let nb = lvl === 0 ? 2 : lvl === 1 ? 2 : 3, bth = 2.6 * s; const sp = 3.6 * s;
@@ -5783,7 +5838,7 @@
       ctx.restore();
     }
     // muzzle flash
-    if (mflash > 0) { ctx.save(); ctx.globalAlpha = mflash; const fm = spec.kind === "lob" ? 14 * s : barrelL + 2 * s; ctx.shadowColor = spec.accent; ctx.shadowBlur = 10 * s; ctx.fillStyle = "#fff8e0"; ctx.beginPath(); ctx.arc(fm, 0, 4.5 * s, 0, 7); ctx.fill(); ctx.fillStyle = spec.accent; ctx.globalAlpha = mflash * 0.7; ctx.beginPath(); ctx.moveTo(fm, -5 * s); ctx.lineTo(fm + 8 * s, 0); ctx.lineTo(fm, 5 * s); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    if (mflash > 0) { ctx.save(); ctx.globalAlpha = mflash; const fm = flashAt != null ? flashAt : (spec.kind === "lob" ? 14 * s : barrelL + 2 * s); ctx.shadowColor = spec.accent; ctx.shadowBlur = 10 * s; ctx.fillStyle = "#fff8e0"; ctx.beginPath(); ctx.arc(fm, 0, 4.5 * s, 0, 7); ctx.fill(); ctx.fillStyle = spec.accent; ctx.globalAlpha = mflash * 0.7; ctx.beginPath(); ctx.moveTo(fm, -5 * s); ctx.lineTo(fm + 8 * s, 0); ctx.lineTo(fm, 5 * s); ctx.closePath(); ctx.fill(); ctx.restore(); }
     ctx.restore();
     // level pips
     for (let i = 0; i <= lvl; i++) { ctx.fillStyle = spec.accent; ctx.save(); ctx.shadowColor = spec.accent; ctx.shadowBlur = 3 * s; ctx.beginPath(); ctx.arc(x - 8 * s + i * 8 * s, y + R * 0.78, 2.2 * s, 0, 7); ctx.fill(); ctx.restore(); }
@@ -6554,14 +6609,14 @@
     trayBtns = [];
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillStyle = C.textDim; ctx.font = "700 10px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT · PINCH TO ZOOM · DRAG TO PAN", W / 2, PLAY_BOTTOM + 18);
-    const N = TOWER_ORDER.length, gap = 6, bh = 64, bw = Math.min(80, (W - 20 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 34;
+    const N = TOWER_ORDER.length, tight = N > 5, gap = tight ? 4 : 6, bh = 64, bw = Math.min(80, (W - 20 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 34;
     TOWER_ORDER.forEach((key, i) => {
       const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap);
       ctx.fillStyle = C.trayCell; rr(x, y, bw, bh, 5); ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke();
-      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, 0.62);
-      ctx.fillStyle = C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 46);
-      coin(x + bw / 2 - 13, y + bh - 10, 4.5); ctx.fillStyle = C.scrap; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + 6, y + bh - 10);
+      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, tight ? 0.48 : 0.62);
+      ctx.fillStyle = C.textDim; ctx.font = (tight ? "800 7.5px" : "800 9px") + " ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 46);
+      coin(x + bw / 2 - (tight ? 10 : 13), y + bh - 10, tight ? 3.6 : 4.5); ctx.fillStyle = C.scrap; ctx.font = (tight ? "800 8.5px" : "800 10px") + " ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + (tight ? 5 : 6), y + bh - 10);
     });
   }
   function drawBuildMenu() {
@@ -6569,18 +6624,18 @@
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", 12, PLAY_BOTTOM + 15);
     ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, PLAY_BOTTOM + 15);
-    const N = TOWER_ORDER.length, gap = 5, bh = 74, bw = Math.min(82, (W - 16 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 26;
+    const N = TOWER_ORDER.length, tight = N > 5, gap = tight ? 4 : 5, bh = 74, bw = Math.min(82, (W - 16 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 26;
     TOWER_ORDER.forEach((key, i) => {
       const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
       ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
       if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
       ctx.globalAlpha = banned ? 0.28 : (afford ? 1 : 0.45);
-      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, 0.68);
+      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, tight ? 0.5 : 0.68);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 48);
-      if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFFLINE", x + bw / 2, y + 58); }
-      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\ud83d\udd12 ARMORY", x + bw / 2, y + 58); }
-      else { ctx.fillStyle = C.textDim; ctx.font = "600 8px system-ui"; ctx.fillText(spec.desc, x + bw / 2, y + 58); coin(x + bw / 2 - 14, y + bh - 10, 4.5); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + 5, y + bh - 10); }
+      ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = (tight ? "800 7.5px" : "800 9.5px") + " ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 48);
+      if (modBan) { ctx.fillStyle = C.danger; ctx.font = (tight ? "800 7px" : "800 8px") + " ui-monospace, monospace"; ctx.fillText(tight ? "\u2298 OFF" : "\u2298 OFFLINE", x + bw / 2, y + 58); }
+      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = (tight ? "800 7px" : "800 8px") + " ui-monospace, monospace"; ctx.fillText(tight ? "\ud83d\udd12 LOCKED" : "\ud83d\udd12 ARMORY", x + bw / 2, y + 58); }
+      else { if (!tight) { ctx.fillStyle = C.textDim; ctx.font = "600 8px system-ui"; ctx.fillText(spec.desc, x + bw / 2, y + 58); } coin(x + bw / 2 - (tight ? 11 : 14), y + bh - 10, tight ? 3.8 : 4.5); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = (tight ? "800 8.5px" : "800 10px") + " ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + (tight ? 4 : 5), y + bh - 10); }
       if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
       trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
     });
@@ -6675,7 +6730,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.24 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.25 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6792,7 +6847,7 @@
       const wallet = Meta.alloy;
       const TYPE_UP = { unlock: "UNLOCK", weapon: "WEAPON", system: "SYSTEM", capstone: "CAPSTONE", fork: "SPECIALIZATION" };
       const GLY = { unlock: "⬢", weapon: "⚔", system: "⬡", capstone: "✦", fork: "⟐" };
-      const TREE_ROLE = { mortar: "Explosive splash · groups & armor", tesla: "Energy · hits air, strips shields", pyre: "Explosive burn · dense swarms" };
+      const TREE_ROLE = { mortar: "Explosive splash · groups & armor", tesla: "Energy · hits air, strips shields", pyre: "Explosive burn · dense swarms", siege: "Siege artillery · armor & heavies (no air)", prism: "Refracting beam · chains, hits air" };
       const forkToggle = (node, bi, small) => `<div style="display:flex;gap:6px;margin-top:${small ? "6" : "8"}px">` + ["a", "b"].map((side) => `<button class="btn small ${Tech.specOf(bi) === side ? "" : "ghost"}" id="sp_${bi}_${side}" style="flex:1;padding:6px 4px;font-size:10px;line-height:1.25">${node[side].name}<br><span style="font-size:8px;color:#9fb0a7">${node[side].desc}</span></button>`).join("") + `</div>`;
       const cards = TECH.map((b, bi) => {
         const total = b.nodes.length, n = Tech.owned(bi), pct = Math.round(n / total * 100), open = S.armBranch === bi, node = b.nodes[n];
@@ -6846,6 +6901,8 @@
         mortar: "explosive splash vs armor & packs; can't hit flyers; Carpet widens, Buster is siege",
         tesla: "long-range energy, hits air, strips shields, reveals camo; Arc-Coil chains 3, Railgun snipes",
         pyre: "cheap burn DoT over a cone (ground only); Inferno widens the flame, Plasma pierces armor",
+        siege: "Armory capstone — huge armor-piercing shells with splash (ground only); Bombard barrages wide, Breaker lands one colossal hit",
+        prism: "Armory capstone — refracting energy beam, hits air; Refraction chains across a crowd, Lance is a long-range pierce sniper",
       };
       const THREAT = {
         stalker: "Fast, fragile scout. — Counter: any rapid-fire tower (Gatling).",

@@ -1,6 +1,6 @@
 # Fallen Grid — Armory → Research Tree (Tech Tree) Spec
 
-**Status:** ✅ **PHASE 1 SHIPPED in `fallengrid-v6.24.html`** (HTML test build, no APK). Framework + gating + free/reversible fork + overview-first UI + Alloy-refund migration are live on the existing 5 towers; the two capstone *towers* (Siege Battery, Prism) are placeholder effects pending P2/P3. Below is the design of record.
+**Status:** ✅ **ALL PHASES SHIPPED — P1 in `fallengrid-v6.24.html`, P2+P3 in `fallengrid-v6.25.html`** (HTML test builds, no APK). Framework, gating, free/reversible fork, overview-first UI and Alloy-refund migration went in with P1; **Siege Battery** (Ordnance capstone) and **Prism** (Arc capstone) are now real towers with full stat lines, in-run a/b forks, bespoke art, dedicated SFX and Codex entries. Remaining work is the balance/costing pass, pending an on-device play-log. Below is the design of record.
 **Author context:** requested 2026-07-24 — "turn the Armory into a tech tree with branches, tower upgrades, and more advanced towers; later steps hidden, the step you research and the branch type known; investigate how others have done it."
 
 ### Locked decisions (2026-07-24)
