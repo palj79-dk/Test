@@ -4955,7 +4955,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.27",
+        ts: Date.now(), ver: "6.28",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6626,12 +6626,19 @@
     trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
   }
   const trayIsIdle = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !S.selTile;
+  // V6.28: 7+ towers need two rows. Rather than squeeze 42px rows into the fixed 118px band (hugging
+  // the gesture-nav edge), the tray grows upward while the build menu is open. 22px borrowed from a
+  // 466px play area, only while building, is imperceptible. Every hit-test goes through trayTop().
+  const BUILD_EXP = 22;
+  const buildMenuOpen = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !!S.selTile;
+  const trayTop = () => buildMenuOpen() ? PLAY_BOTTOM - BUILD_EXP : PLAY_BOTTOM;
   function drawTray(dt) {
     // slide animation
     if (S.sheetAnim < 1) S.sheetAnim = Math.min(1, S.sheetAnim + dt * 6);
     const off = (1 - S.sheetAnim) * 16;
-    ctx.fillStyle = C.tray; ctx.fillRect(0, PLAY_BOTTOM, W, TRAY_H);
-    ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.4; ctx.fillRect(0, PLAY_BOTTOM, W, 2); ctx.globalAlpha = 1;
+    const tTop = trayTop();
+    ctx.fillStyle = C.tray; ctx.fillRect(0, tTop, W, TRAY_H + (PLAY_BOTTOM - tTop));
+    ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.4; ctx.fillRect(0, tTop, W, 2); ctx.globalAlpha = 1;
     ctx.save(); ctx.translate(0, off); ctx.globalAlpha = S.sheetAnim;
     if (S.pending) drawConfirm();
     else if (S.selTower != null && towers[S.selTower]) drawTowerMenu();
@@ -6713,20 +6720,27 @@
   function drawBuildMenu() {
     trayBtns = [];
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", 12, PLAY_BOTTOM + 15);
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, PLAY_BOTTOM + 15);
-    const N = TOWER_ORDER.length, tight = N > 5, gap = tight ? 4 : 5, bh = 74, bw = Math.min(82, (W - 16 - gap * (N - 1)) / N), sx = (W - (bw * N + gap * (N - 1))) / 2, y = PLAY_BOTTOM + 26;
+    const tt = trayTop();
+    ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("\u25b8 CONSTRUCT", 12, tt + 13);
+    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, tt + 13);
+    // 4 per row: cells go from ~46px wide to ~82px, i.e. clear of the 48px tap minimum
+    const N = TOWER_ORDER.length, PER = 4, rows = Math.ceil(N / PER), gap = 6;
+    const bw = Math.min(82, (W - 16 - gap * (PER - 1)) / PER), bh = rows > 1 ? 46 : 74, y0 = tt + 24;
     TOWER_ORDER.forEach((key, i) => {
-      const spec = TOWERS[key], l0 = spec.levels[0], x = sx + i * (bw + gap), tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
+      const rw = Math.floor(i / PER), cl = i % PER, inRow = Math.min(PER, N - rw * PER);
+      const sx = (W - (bw * inRow + gap * (inRow - 1))) / 2, x = sx + cl * (bw + gap), y = y0 + rw * (bh + 5);
+      const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
       ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
       if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
-      ctx.globalAlpha = banned ? 0.28 : (afford ? 1 : 0.45);
-      drawTowerArt(x + bw / 2, y + 24, key, 0, -Math.PI / 2, 0, 0, false, tight ? 0.5 : 0.68);
+      ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
+      drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = (tight ? "800 7.5px" : "800 9.5px") + " ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(spec.short, x + bw / 2, y + 48);
-      if (modBan) { ctx.fillStyle = C.danger; ctx.font = (tight ? "800 7px" : "800 8px") + " ui-monospace, monospace"; ctx.fillText(tight ? "\u2298 OFF" : "\u2298 OFFLINE", x + bw / 2, y + 58); }
-      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = (tight ? "800 7px" : "800 8px") + " ui-monospace, monospace"; ctx.fillText(tight ? "\ud83d\udd12 LOCKED" : "\ud83d\udd12 ARMORY", x + bw / 2, y + 58); }
-      else { if (!tight) { ctx.fillStyle = C.textDim; ctx.font = "600 8px system-ui"; ctx.fillText(spec.desc, x + bw / 2, y + 58); } coin(x + bw / 2 - (tight ? 11 : 14), y + bh - 10, tight ? 3.8 : 4.5); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = (tight ? "800 8.5px" : "800 10px") + " ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + bw / 2 + (tight ? 4 : 5), y + bh - 10); }
+      ctx.textAlign = "left";
+      ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 16);
+      if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFF", x + 34, y + 31); }
+      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\ud83d\udd12 LOCKED", x + 34, y + 31); }
+      else { coin(x + 37, y + 31, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 31); }
+      ctx.textAlign = "center";
       if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
       trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
     });
@@ -6821,7 +6835,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.27 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.28 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7232,7 +7246,7 @@
       if (y >= PLAY_TOP && y < PLAY_BOTTOM) { const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE); if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) deployHero(c, r); else Sound.err(); }
       else S.heroArm = false; return;
     }
-    if (y >= PLAY_BOTTOM) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; }
+    if (y >= trayTop()) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; }
     // world tap — cancels any pending confirm first
     if (S.pending) { S.pending = null; S.rangePreview = null; }
     const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
@@ -8398,7 +8412,7 @@
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
-    __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __trayTop: trayTop, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
