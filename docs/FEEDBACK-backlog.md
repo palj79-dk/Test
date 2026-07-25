@@ -9,7 +9,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 
 ---
 
-## 1. No welcome / onboarding when the game starts — `OPEN`
+## 1. No welcome / onboarding when the game starts — `DONE` (V6.29)
 
 > "when starting the game there is no welcome to help onboard the player. it could be history and a
 > bit of guidance (you decide what will work best)"
@@ -29,7 +29,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 
 ---
 
-## 2. The starting guide never teaches the Hero — `OPEN`
+## 2. The starting guide never teaches the Hero — `DONE` (V6.29)
 
 > "at start the guide does not help to use the hero. As the hero can clear the first waves single
 > tower this could be improved."
@@ -52,7 +52,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
   "HERO / DEPLOY · FREE" instead of an unlabelled circle floating over the map — but that is a
   passive hint, not guidance.
 
-## 3. The Airstrike is never introduced either — `OPEN`
+## 3. The Airstrike is never introduced either — `DONE` (V6.29)
 
 > "also introduce the strike"
 
@@ -84,7 +84,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 - Worth deciding at planning time: true landscape layout vs. letterboxed portrait-locked. The
   ask is for the former.
 
-## 5. Build menu still shows 7 towers on one cramped row — `OPEN`
+## 5. Build menu still shows 7 towers on one cramped row — `DONE` (V6.28)
 
 > "når jeg bygger er der stadig 7 tårne på linje. de er meget små. syntes du havde ordnet det"
 

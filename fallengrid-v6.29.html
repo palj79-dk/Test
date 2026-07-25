@@ -4263,6 +4263,15 @@
     },
     isUnlocked(type) { return this.unlockedTowers.has(type); },
   };
+  // V6.29 B0: cheapest node the current wallet can afford, across all four branches — or null.
+  function cheapestAffordable() {
+    let best = null;
+    TECH.forEach((b, bi) => {
+      const n = Tech.next(bi);
+      if (n && Meta.alloy >= n.cost && (!best || n.cost < best.node.cost)) best = { bi, node: n };
+    });
+    return best;
+  }
   // Migrate old flat talents → refund the Alloy spent, clear them, let the player re-spend in the tree.
   (function migrateTalents() {
     const old = Store.get("talents", null);
@@ -4955,7 +4964,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.28",
+        ts: Date.now(), ver: "6.29",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5076,6 +5085,7 @@
     // append this wave's spawns to whatever is still in flight, so waves overlap when sent early / under pressure
     S.queue = S.queue.concat(waveComp(S.wave).map((e) => ({ ...e, t: e.delay, w: S.wave, rush })));
     S.waveActive = true; S.countdown = waveGap(); if (S.wave === 1) queueTip("timer");
+    if (S.wave === 2 && !hero) queueTip("hero");
     // survival salvage: paid for having outlasted the previous wave (wave 1 launch earns nothing yet)
     if (S.wave > 1) S.scrap += Math.round((20 + (S.wave - 1) * 3) * waveBonusMul() * modv("income"));
     const final = !S.endless && S.wave === TOTAL_WAVES;
@@ -6340,6 +6350,8 @@
     phantom:   "\u25c6 Phantom is CLOAKED — a Rail-Tesla, a Prism or your Hero reveals it for every tower",
     cinder:    "\u25c6 Cinder is FREEZE-IMMUNE — slow can't stop it; answer with raw firepower",
     insulator: "\u25c6 Insulator RESISTS ENERGY — Tesla & Cryo hit soft; use Auto-Gun or Mortar",
+    hero:      "\u2691 Commander is FREE to deploy — it fights on its own, levels up through the run, and reveals cloaked foes nearby",
+    strike:    "\u2733 Airstrike is FREE and recharges — heavy damage, a stun, and it reveals camo in the blast",
   };
   let seenTips = Store.get("seenTips", {});
   function queueTip(key) { if (!TIPS[key] || seenTips[key]) return; seenTips[key] = 1; Store.set("seenTips", seenTips); (S.tipQ || (S.tipQ = [])).push(TIPS[key]); }
@@ -6828,14 +6840,40 @@
     parts.push(Math.round((r.durationMs || 0) / 1000) + "s");
     return `<div class="sub" style="margin:0 0 12px;text-transform:none;letter-spacing:0.4px;line-height:1.5">${parts.join(" \u00b7 ")}</div>`;
   }
+  // V6.29 B1: one-time first-launch briefing (Store-gated), also re-viewable from the Codex.
+  const INTRO_CARDS = [
+    { crest: "⌬", title: "THE GRID HAS FALLEN", body: "For a century the <b>Grid</b> held back the <b>Scourge</b>. Then, without warning, it went dark. You are a <b>Warden</b> — woken from cryo-sleep to relight it, sector by sector." },
+    { crest: "☢", title: "HOLD THE LINE", body: "Machines walk the road toward your <b>Core</b>. Survive <b>20 waves</b> — every leak costs Core integrity, and losing it all ends the sector." },
+    { crest: "⬡", title: "YOUR EDGE", body: "<b>Scrap</b> builds towers during a mission. <b>Alloy</b> is earned per run — spend it in the <b>Armory</b> to research permanent upgrades and unlock new towers. You start with only Auto-Gun + Cryo; the Armory opens the rest." },
+  ];
+  function introFinish(begin) {
+    Store.set("seenIntro", true);
+    const fromCodex = S.introFrom === "howto";
+    S.introFrom = null;
+    if (begin && !fromCodex) {   // BEGIN on a fresh account deploys straight into Mission 1
+      S.campaign = true; S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null;
+      S.mapIndex = 0; selectMap(0); reset(); S.screen = "playing"; render(); return;
+    }
+    S.screen = fromCodex ? "howto" : "menu";
+    render();
+  }
+  function renderIntro() {
+    if (S.introCard == null) S.introCard = 0;
+    const i = S.introCard, c = INTRO_CARDS[i], last = i === INTRO_CARDS.length - 1;
+    const dots = INTRO_CARDS.map((_, k) => `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;margin:0 3px;background:${k === i ? "#37e0d0" : "#2c3a42"}"></span>`).join("");
+    show(`<div class="panel"><div class="crest">${c.crest}</div><div class="sub">BRIEFING ${i + 1}/${INTRO_CARDS.length}</div><h2 style="margin:0 0 10px">${c.title}</h2><p class="tag">${c.body}</p><div style="margin:2px 0 18px">${dots}</div><button class="btn primary" id="nx">${last ? "\u25b8 BEGIN MISSION 1" : "NEXT ▸"}</button><button class="btn ghost" id="sk">SKIP ✕</button></div>`);
+    byId("nx").onclick = () => { if (last) introFinish(true); else { S.introCard++; render(); } };
+    byId("sk").onclick = () => introFinish(false);
+  }
   function render() {
     if (S.screen === "playing") Sound.startMusic(); else Sound.stopMusic();
+    if (S.screen === "intro") { renderIntro(); return; }
     if (S.screen === "menu") {
       S.difficulty = Store.get("difficulty", "normal");
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.28 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.29 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -6843,7 +6881,7 @@
         <button class="btn" id="free">\u{1F5FA}️ Free Play</button>
         <button class="btn" id="dl">◈ Daily Op · ${MAPS[dcfg.map].name} · ${dcfg.mod.name}${dDone ? " ✓" : ""}${dStk ? " · \u{1F525}" + dStk : ""}</button>
         <button class="btn" id="lab">\u{1F9EA} Challenge Lab</button>
-        <div class="row" style="margin-top:6px"><button class="btn small" id="a">⬡ Armory</button><button class="btn small" id="h">\u{1F4D6} Codex</button></div>
+        <div class="row" style="margin-top:6px"><button class="btn small" id="a">⬡ Armory${cheapestAffordable() ? '<b style="color:#8fe04a;margin-left:5px">●</b>' : ""}</button><button class="btn small" id="h">\u{1F4D6} Codex</button></div>
         <div class="row"><button class="btn small" id="ach">\u{1F3C6} Achievements · ${Ach.count()}/${ACH.length}</button></div>
         <button class="btn small ghost" id="set" style="margin-top:6px">⚙ Settings</button>
         <p class="best">Best · Wave ${S.high}/${TOTAL_WAVES}${S.highEndless ? "  ·  Endless " + S.highEndless : ""}</p></div>`);
@@ -7061,7 +7099,8 @@
       </ul>`;
       }
       const tb = (id, lbl) => `<button class="btn small ${tab === id ? "active" : ""}" id="cx_${id}" style="flex:1">${lbl}</button>`;
-      show(`<div class="panel"><h2>Codex</h2><div class="row" style="margin-bottom:10px">${tb("story","Story")}${tb("guide","Guide")}${tb("tw","Towers")}${tb("en","Threats")}</div><div style="max-height:54vh;overflow-y:auto">${body}</div><button class="btn primary" id="b">Back</button></div>`);
+      show(`<div class="panel"><h2>Codex</h2><div class="row" style="margin-bottom:10px">${tb("story","Story")}${tb("guide","Guide")}${tb("tw","Towers")}${tb("en","Threats")}</div><div style="max-height:54vh;overflow-y:auto">${body}</div><button class="btn small ghost" id="brief" style="margin-top:10px">▶ Replay Briefing</button><button class="btn primary" id="b">Back</button></div>`);
+      byId("brief").onclick = () => { S.introCard = 0; S.introFrom = "howto"; S.screen = "intro"; render(); };
       byId("cx_story").onclick = () => { S.codexTab = "story"; render(); };
       byId("cx_guide").onclick = () => { S.codexTab = "guide"; render(); };
       byId("cx_tw").onclick = () => { S.codexTab = "tw"; render(); };
@@ -7076,7 +7115,9 @@
     } else if (S.screen === "gameover") {
       runAchCheck(false);
       const where = S.endless ? `Endless wave ${S.wave}${S.wave >= S.highEndless ? " · new best" : ""}` : `wave ${S.wave} of ${TOTAL_WAVES}`;
-      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}<button class="btn primary" id="r">Redeploy</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      const best = cheapestAffordable();
+      const nudge = best ? `<div class="sub" style="margin:-4px 0 12px;color:#8fe04a;text-transform:none;letter-spacing:0.3px">▸ READY TO RESEARCH: <b style="color:#8fe04a">${best.node.name}</b> (⬡${best.node.cost})</div>` : "";
+      show(`<div class="panel"><div class="crest">☢</div><h2>Reactor Lost</h2><p class="tag">Overrun at ${where} · ${S.kills} hostiles neutralized</p>${runSummary()}<div class="wallet">+${S.lastAlloy} ⬡ ALLOY EARNED · ${Meta.alloy} UNSPENT</div>${nudge}${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}<button class="btn ${best ? "" : "primary"}" id="r">Redeploy</button><button class="btn ${best ? "primary" : ""}" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       byId("r").onclick = () => { reset(); S.screen = "playing"; render(); };
       byId("a").onclick = () => { S.screen = "armory"; render(); };
       byId("m").onclick = () => { S.screen = "menu"; render(); };
@@ -7094,10 +7135,12 @@
         }
       }
       runAchCheck(true);
-      const missionBtn = campNext ? `<button class="btn primary" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
+      const best = cheapestAffordable();
+      const nudge = best ? `<div class="sub" style="margin:-4px 0 12px;color:#8fe04a;text-transform:none;letter-spacing:0.3px">▸ READY TO RESEARCH: <b style="color:#8fe04a">${best.node.name}</b> (⬡${best.node.cost})</div>` : "";
+      const missionBtn = campNext ? `<button class="btn ${best ? "" : "primary"}" id="nm">⚔ Next Mission · ${MAPS[S.mapIndex + 1].name}</button>` : (S.campaign ? `<div class="wallet">⚔ CAMPAIGN COMPLETE</div>` : "");
       const vTitle = S.isDaily ? "Daily Op Cleared" : (S.campaign ? "Mission " + (S.mapIndex + 1) + " Secured" : "Grid Secured");
       const vTag = S.isDaily ? `${dailyConfig().mod.name} · 🔥 streak ${Daily.activeStreak()} · ${S.kills} neutralized` : `All ${TOTAL_WAVES} waves repelled · ${S.kills} hostiles neutralized`;
-      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p>${runSummary()}<div class="wallet">⬡ +${S.lastAlloy} ALLOY  ·  ${Meta.alloy} total</div>${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${S.medalMsg ? `<div class="wallet" style="color:#f2b23a">${S.medalMsg}</div>` : ""}${missionBtn}<button class="btn ${campNext ? "" : "primary"}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
+      show(`<div class="panel"><div class="crest">✦</div><h2>${vTitle}</h2><p class="tag">${vTag}</p>${runSummary()}<div class="wallet">+${S.lastAlloy} ⬡ ALLOY EARNED · ${Meta.alloy} UNSPENT</div>${nudge}${(S.newAch && S.newAch.length) ? `<div class="wallet" style="font-size:10px;color:#f2b23a">🏆 ${S.newAch.map((a) => a.name).join(" · ")}</div>` : ""}${S.medalMsg ? `<div class="wallet" style="color:#f2b23a">${S.medalMsg}</div>` : ""}${missionBtn}<button class="btn ${(!campNext && !best) ? "primary" : ""}" id="e">∞ Continue Endless</button><button class="btn" id="r">Play Again</button><button class="btn ${best ? "primary" : ""}" id="a">⬡ Armory</button><button class="btn ghost" id="m">Main Menu</button></div>`);
       const nmEl = byId("nm"); if (nmEl) nmEl.onclick = () => { S.mapIndex++; selectMap(S.mapIndex); reset(); S.screen = "playing"; render(); };
       byId("e").onclick = () => { S.endless = true; S.campaign = false; S.isDaily = false; S.isLab = false; activeMod = null; S.alloyAwarded = false; S.screen = "playing"; startWave(); render(); };
       byId("r").onclick = () => { S.endless = false; S.isDaily = false; S.isLab = false; activeMod = null; reset(); S.screen = "playing"; render(); };
@@ -8335,6 +8378,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
+      else if (!S.usedStrike && enemies.some((e) => e.alive)) queueTip("strike");
       if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       if (S.screen !== "playing") render();
     }
@@ -8367,6 +8411,7 @@
   selectMap(S.mapIndex);
   if (window.G3D && G3D.setEco) G3D.setEco(Store.get("eco", false)); // honor persisted Battery Saver
   fitCamera();
+  if (!Store.get("seenIntro", false)) { S.screen = "intro"; S.introFrom = "boot"; S.introCard = 0; }
   render();
   requestAnimationFrame(frame);
 
@@ -8388,6 +8433,7 @@
     const s = S.screen;
     if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
     if (s === "paused") { S.screen = "playing"; render(); return true; }
+    if (s === "intro") { introFinish(false); return true; }   // back = dismiss, never exit the app
     if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "log" || s === "freeplay" || s === "settings" || s === "campaign" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
     return false; // main menu → let the OS decide (exit)
   }
