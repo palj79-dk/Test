@@ -63,3 +63,46 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
   **reveals camo** — genuinely useful and currently easy to miss entirely.
 - Both #2 and #3 are "the game never teaches its two free active abilities", so they probably want a
   single onboarding beat rather than two separate ones — and it should tie in with #1.
+
+## 4. No landscape support — layout stays portrait when the phone is rotated — `OPEN`
+
+> "when I turn the phone the layout is still portrait. consider to make both portrait and landscape a
+> possibility (and for phone and tablet)"
+
+**Recorded:** 2026-07-25 · against V6.27. Scope explicitly covers **phone *and* tablet**, both orientations.
+
+**Context:**
+- The whole UI is built on a **fixed logical space of `W = 360, H = 640`** (portrait), with
+  `HUD_H = 56`, `TRAY_H = 118`, and `PLAY_BOTTOM = H - TRAY_H` derived from it. Everything —
+  HUD, tray, menus, hit-testing — is positioned against those constants.
+- So this is not a CSS/viewport tweak: a real landscape mode means the layout constants become
+  orientation-dependent, and the tray/HUD need a side-by-side arrangement rather than stacked.
+- V6.18 did tablet **scaling** (the portrait canvas scales up on bigger screens) — that is not the
+  same as a landscape **layout**, which is what is being asked for here.
+- Worth deciding at planning time: true landscape layout vs. letterboxed portrait-locked. The
+  ask is for the former.
+
+## 5. Build menu still shows 7 towers on one cramped row — `OPEN`
+
+> "når jeg bygger er der stadig 7 tårne på linje. de er meget små. syntes du havde ordnet det"
+
+**Recorded:** 2026-07-25 · against V6.27.
+
+**Status clarification (my miscommunication, recorded so it is not lost):** the two-row build menu was
+only ever **prototyped**, never shipped. The sequence was: bottom-bar proposals → the user asked to see
+proposal 1 rendered → I built a throwaway prototype in scratchpad and sent screenshots, stating V6.25
+was untouched → the user then asked for the **Wave Intel bar + camo fix**, which became V6.26. Wave Intel
+was the *idle* half of proposal 1; the **build half was never requested and never built**. The user
+reasonably expected both.
+
+**Context / what a fix needs:**
+- Current build palette: one row of `TOWER_ORDER.length` (7) cells at **45.7 × 74 px** — measured. The
+  45.7 px width is below the 48 px Android / 44 pt iOS minimum, with six adjacent neighbours.
+- Prototype that was already built and validated: **two rows of four**, horizontal cell layout
+  (art left, name + cost right) → **81.5 × 42 px** cells; total tap area essentially unchanged (+1%),
+  but the crowded dimension roughly doubles. Screenshots exist from that run.
+- Known refinement, agreed but not built: let the tray **temporarily grow ~22 px upward while the build
+  menu is open**, so rows get ~46 px instead of 42 and do not crowd the bottom edge / gesture-nav area.
+  This needs `trayTop()` used by the tray fill *and* by the tap gate (`if (y >= PLAY_BOTTOM)` today).
+- Interacts with **#4**: if landscape lands first, the tray layout changes anyway — worth sequencing
+  these two together rather than solving the row twice.
