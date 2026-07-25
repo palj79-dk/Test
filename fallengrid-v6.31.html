@@ -4039,6 +4039,9 @@
       PLAY_TOP = HUD_H; PLAY_BOTTOM = H - TRAY_H; PLAY_H = PLAY_BOTTOM - PLAY_TOP;
     }
   }
+  // C2: the actual play-viewport width — in landscape the tray eats the right TRAY_W px, so the
+  // play viewport is only 0..TRAY_X wide, not the full canvas. Portrait: TRAY_X === W, so this is W.
+  const playW = () => LANDSCAPE ? TRAY_X : W;
 
   /* ---------------- WORLD (map space) ---------------- */
   // Grid size is per-map (set by loadMap); TILE is fixed. Maps range from small to large-and-panned.
@@ -4516,7 +4519,7 @@
     currentMap = i; const m = MAPS[i];
     BM = Object.assign({}, C, BIOMES[m.biome] || {});
     COLS = m.cols; ROWS = m.rows; WORLD_W = COLS * TILE; WORLD_H = ROWS * TILE;
-    MINZOOM = Math.min(W / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98;
+    MINZOOM = Math.min(playW() / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98;
     PATH_SET = new Set(); CROSS_MAP = new Map(); BRIDGES = [];
     const tileLists = m.routes.map((wp) => buildPath(wp));
     const owner = new Map(), shared = [];
@@ -4764,7 +4767,7 @@
   const TILT = 1, UNTILT = 1 / TILT;
   function uprightAt(y) { ctx.translate(0, y); ctx.scale(1, UNTILT); ctx.translate(0, -y); }
   const cam = { x: 0, y: 0, zoom: 1 };
-  let MINZOOM = Math.min(W / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98; // recomputed per map in loadMap
+  let MINZOOM = Math.min(playW() / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98; // recomputed per map in loadMap
   const MAXZOOM = 1.9;
 
   const STRIKE_CD = 30, STRIKE_R = 92;
@@ -4949,13 +4952,13 @@
   const TUT_PLOT = { c: 3, r: 2 };
 
   function fitCamera() {
-    cam.zoom = clamp(W / WORLD_W, MINZOOM, MAXZOOM);
-    cam.x = (WORLD_W - W / cam.zoom) / 2;
+    cam.zoom = clamp(playW() / WORLD_W, MINZOOM, MAXZOOM);
+    cam.x = (WORLD_W - playW() / cam.zoom) / 2;
     cam.y = 0;
     clampCam();
   }
   function clampCam() {
-    const vw = W / cam.zoom, vh = PLAY_H / (cam.zoom * TILT);
+    const vw = playW() / cam.zoom, vh = PLAY_H / (cam.zoom * TILT);
     cam.x = vw >= WORLD_W ? (WORLD_W - vw) / 2 : clamp(cam.x, 0, WORLD_W - vw);
     cam.y = vh >= WORLD_H ? (WORLD_H - vh) / 2 : clamp(cam.y, 0, WORLD_H - vh);
   }
@@ -4983,7 +4986,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.30",
+        ts: Date.now(), ver: "6.31",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5679,12 +5682,20 @@
       }
     });
   }
+  let __wasLandscape = LANDSCAPE;
   function resize() {
     layout();
     const sc = Math.min(window.innerWidth / W, window.innerHeight / H), dpr = window.devicePixelRatio || 1;
     canvas.style.width = W * sc + "px"; canvas.style.height = H * sc + "px";
     canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (window.G3D) G3D.resize(sc, dpr);
+    // C2: an orientation flip changes the play-viewport width the camera must fit (mid-run rotation
+    // must not leave the map stretched off-screen or hidden behind the tray panel).
+    if (LANDSCAPE !== __wasLandscape) {
+      __wasLandscape = LANDSCAPE;
+      MINZOOM = Math.min(playW() / WORLD_W, PLAY_H / (WORLD_H * TILT)) * 0.98;
+      fitCamera();
+    }
   }
   window.addEventListener("resize", resize); resize();
   // V2.4 bloom: half-res additive glow buffer (bilinear upscale = cheap blur)
@@ -6401,12 +6412,13 @@
     }
     // instruction banner (below HUD so it never covers the deploy button)
     ctx.save(); ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const bw = ctx.measureText(msg).width + 28, bx = W / 2 - bw / 2, byy = PLAY_TOP + 52;
+    const pw = playW();
+    const bw = ctx.measureText(msg).width + 28, bx = pw / 2 - bw / 2, byy = PLAY_TOP + 52;
     ctx.fillStyle = "rgba(6,9,12,0.85)"; rr(bx, byy - 13, bw, 26, 6); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.45); ctx.lineWidth = 1; rr(bx, byy - 13, bw, 26, 6); ctx.stroke();
-    ctx.fillStyle = C.neonC; ctx.fillText(msg, W / 2, byy);
+    ctx.fillStyle = C.neonC; ctx.fillText(msg, pw / 2, byy);
     // skip
-    const sw = 80, sh = 27, sx = W - sw - 8, sy = PLAY_TOP + 6;
+    const sw = 80, sh = 27, sx = pw - sw - 8, sy = PLAY_TOP + 6;
     ctx.fillStyle = "rgba(6,9,12,0.9)"; rr(sx, sy, sw, sh, 5); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.75); ctx.lineWidth = 1.5; rr(sx, sy, sw, sh, 5); ctx.stroke();
     ctx.fillStyle = C.neonC; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("SKIP ✕", sx + sw / 2, sy + sh / 2);
@@ -6419,16 +6431,17 @@
     if (!S.tip) return;
     S.tip.t -= dt; if (S.tip.t <= 0) { S.tip = null; return; }
     ctx.save(); ctx.font = "700 10px ui-monospace, monospace"; ctx.textBaseline = "middle";
-    const words = S.tip.text.split(" "), maxW = W - 52, lines = []; let cur = "";
+    const pw = playW();
+    const words = S.tip.text.split(" "), maxW = pw - 52, lines = []; let cur = "";
     for (const w of words) { const t2 = cur ? cur + " " + w : w; if (ctx.measureText(t2).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t2; }
     if (cur) lines.push(cur);
     const lh = 14, pad = 8, a = S.tip.t < 0.6 ? S.tip.t / 0.6 : 1;
-    const bw = Math.min(W - 14, Math.max.apply(null, lines.map((l) => ctx.measureText(l).width)) + 24), bh = lines.length * lh + pad * 2, bx = W / 2 - bw / 2, byy = PLAY_TOP + 22;
+    const bw = Math.min(pw - 14, Math.max.apply(null, lines.map((l) => ctx.measureText(l).width)) + 24), bh = lines.length * lh + pad * 2, bx = pw / 2 - bw / 2, byy = PLAY_TOP + 22;
     ctx.globalAlpha = a;
     ctx.fillStyle = "rgba(6,9,12,0.9)"; rr(bx, byy, bw, bh, 6); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.5); ctx.lineWidth = 1; rr(bx, byy, bw, bh, 6); ctx.stroke();
     ctx.textAlign = "center"; ctx.fillStyle = "#bfefff";
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, byy + pad + lh / 2 + i * lh));
+    lines.forEach((l, i) => ctx.fillText(l, pw / 2, byy + pad + lh / 2 + i * lh));
     ctx.restore();
   }
   function coin(x, y, s) { const g = ctx.createRadialGradient(x - s * 0.3, y - s * 0.3, 0.5, x, y, s); g.addColorStop(0, "#ffe3a0"); g.addColorStop(0.55, C.scrap); g.addColorStop(1, C.scrapDark); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.font = "800 " + (s * 1.1) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⚙", x, y + 0.5); }
@@ -6474,7 +6487,9 @@
 
     // next-wave control — the timer runs continuously; the button sends the next wave early (even mid-wave) for a bonus
     const moreWaves = S.endless || S.wave < TOTAL_WAVES;
-    const nwW = 156, nwX = W - nwW - 10, nwY = rowY - 10, nwH = 20;
+    // V6.31: in landscape the right edge of the HUD is the side panel, not the canvas edge —
+    // anchor DEPLOY to the play viewport so it never overlaps (or shadows taps on) the tray.
+    const nwW = 156, nwX = playW() - nwW - 10, nwY = rowY - 10, nwH = 20;
     if (moreWaves) {
       ctx.textAlign = "right";
       if (S.waveActive) { // hostiles remaining on the field
@@ -6501,7 +6516,7 @@
 
   function drawZoomButtons() {
     zoomBtns = [];
-    const bx = W - 34, by0 = PLAY_BOTTOM - 116, sz = 30, gap = 6;
+    const bx = playW() - 34, by0 = PLAY_BOTTOM - 116, sz = 30, gap = 6;
     const defs = [{ id: "in", t: "+" }, { id: "out", t: "–" }, { id: "fit", t: "⤢" }];
     defs.forEach((d, i) => {
       const by = by0 + i * (sz + gap);
@@ -6515,12 +6530,12 @@
   function drawBossBar() {
     const boss = enemies.find((e) => e.type === "juggernaut" && e.alive);
     if (!boss) return;
-    const bw = W - 60, bx = 30, by = HUD_H + 6, ratio = Math.max(0, boss.hp / boss.maxHp);
+    const pw = playW(), bw = pw - 60, bx = 30, by = HUD_H + 6, ratio = Math.max(0, boss.hp / boss.maxHp);
     ctx.fillStyle = "rgba(6,9,12,0.7)"; rr(bx - 2, by - 2, bw + 4, 14, 3); ctx.fill();
     ctx.fillStyle = "#2a1416"; rr(bx, by, bw, 8, 2); ctx.fill();
     ctx.fillStyle = C.neonM; rr(bx, by, bw * ratio, 8, 2); ctx.fill();
     if (boss.shieldMax) { const sf = Math.max(0, boss.shield / boss.shieldMax); ctx.fillStyle = rgba("#9fe8ff", 0.9); rr(bx, by + 8.5, bw * sf, 2.5, 1); ctx.fill(); }
-    ctx.fillStyle = C.text; ctx.font = "800 8px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("JUGGERNAUT", W / 2, by + 4);
+    ctx.fillStyle = C.text; ctx.font = "800 8px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("JUGGERNAUT", pw / 2, by + 4);
   }
 
   function drawBanner(dt) {
@@ -6528,12 +6543,12 @@
     S.banner.t -= dt;
     const total = 1.9, t = Math.max(0, S.banner.t), p = 1 - t / total;
     const a = Math.min(Math.min(1, p / 0.12), t > 0.4 ? 1 : Math.max(0, t / 0.4));
-    const y = PLAY_TOP + PLAY_H * 0.32;
+    const y = PLAY_TOP + PLAY_H * 0.32, pw = playW();
     ctx.save(); ctx.globalAlpha = a;
-    ctx.fillStyle = "rgba(224,71,154,0.12)"; ctx.fillRect(0, y - 26, W, 52);
-    ctx.strokeStyle = C.neonM; ctx.lineWidth = 1; ctx.globalAlpha = a * 0.6; ctx.beginPath(); ctx.moveTo(0, y - 26); ctx.lineTo(W, y - 26); ctx.moveTo(0, y + 26); ctx.lineTo(W, y + 26); ctx.stroke();
+    ctx.fillStyle = "rgba(224,71,154,0.12)"; ctx.fillRect(0, y - 26, pw, 52);
+    ctx.strokeStyle = C.neonM; ctx.lineWidth = 1; ctx.globalAlpha = a * 0.6; ctx.beginPath(); ctx.moveTo(0, y - 26); ctx.lineTo(pw, y - 26); ctx.moveTo(0, y + 26); ctx.lineTo(pw, y + 26); ctx.stroke();
     ctx.globalAlpha = a; ctx.fillStyle = C.text; ctx.font = "900 22px ui-monospace, Menlo, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.shadowColor = C.neonM; ctx.shadowBlur = 14; ctx.fillText(S.banner.text, W / 2, y);
+    ctx.shadowColor = C.neonM; ctx.shadowBlur = 14; ctx.fillText(S.banner.text, pw / 2, y);
     ctx.restore();
   }
   function drawScreenFlash() {
@@ -6551,23 +6566,23 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
   function drawStrikeArm() {
-    const pl = 0.5 + 0.5 * Math.sin(S.time * 6);
+    const pl = 0.5 + 0.5 * Math.sin(S.time * 6), pw = playW();
     ctx.save();
-    ctx.strokeStyle = rgba("#f2643a", 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, W - 4, PLAY_H - 4);
-    ctx.fillStyle = rgba("#f2643a", 0.06 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, W, PLAY_H);
-    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(W / 2 - 92, PLAY_TOP + 10, 184, 22, 5); ctx.fill();
+    ctx.strokeStyle = rgba("#f2643a", 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, pw - 4, PLAY_H - 4);
+    ctx.fillStyle = rgba("#f2643a", 0.06 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, pw, PLAY_H);
+    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(pw / 2 - 92, PLAY_TOP + 10, 184, 22, 5); ctx.fill();
     ctx.fillStyle = "#ff9a5a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("✷ TAP A TARGET ZONE", W / 2, PLAY_TOP + 21);
+    ctx.fillText("✷ TAP A TARGET ZONE", pw / 2, PLAY_TOP + 21);
     ctx.restore();
   }
   function drawHeroArm() {
-    const pl = 0.5 + 0.5 * Math.sin(S.time * 6), ac = HERO.accent;
+    const pl = 0.5 + 0.5 * Math.sin(S.time * 6), ac = HERO.accent, pw = playW();
     ctx.save();
-    ctx.strokeStyle = rgba(ac, 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, W - 4, PLAY_H - 4);
-    ctx.fillStyle = rgba(ac, 0.05 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, W, PLAY_H);
-    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(W / 2 - 108, PLAY_TOP + 10, 216, 22, 5); ctx.fill();
+    ctx.strokeStyle = rgba(ac, 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, pw - 4, PLAY_H - 4);
+    ctx.fillStyle = rgba(ac, 0.05 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, pw, PLAY_H);
+    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(pw / 2 - 108, PLAY_TOP + 10, 216, 22, 5); ctx.fill();
     ctx.fillStyle = ac; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("⚑ TAP A PLOT TO DEPLOY HERO", W / 2, PLAY_TOP + 21);
+    ctx.fillText("⚑ TAP A PLOT TO DEPLOY HERO", pw / 2, PLAY_TOP + 21);
     ctx.restore();
   }
 
@@ -6587,39 +6602,72 @@
     if (x.burn) out.push("BURN"); if (x.shatter) out.push("SHATTER"); return out.join(" · ");
   }
   function drawSellConfirm() {
+    const rect = trayRect();
     const t = towers[S.pending.tower];
     if (!t) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
     const sp = TOWERS[t.type], refund = Math.round(towerSpent(t) * sellRefund()), pl = center(t.c, t.r);
     S.rangePreview = { x: pl.x, y: pl.y, range: tStats(t).range * rangeMul() };
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    ctx.fillStyle = "#f0a090"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("SELL TOWER", 12, PLAY_BOTTOM + 13);
-    drawTowerArt(30, PLAY_BOTTOM + 40, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.58, t.branch);
-    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(t.branch ? sp.branches[t.branch].name : sp.name, 54, PLAY_BOTTOM + 30);
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Refund \u2699" + refund + "  \u00b7  cannot be undone", 54, PLAY_BOTTOM + 48);
-    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
-    ctx.fillStyle = "#c25a4a"; rr(12, by, cw, bh, 4); ctx.fill();
-    ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("\u2713 SELL  \u2699" + refund, 12 + cw / 2, by + bh / 2);
-    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: true });
-    const xx = 12 + cw + 8, xw = W - xx - 12;
-    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
-    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("\u2717", xx + xw / 2, by + bh / 2);
-    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    if (LANDSCAPE) {
+      const pad = 8, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("SELL TOWER", x0, rect.y + 10);
+      drawTowerArt(x0 + 16, rect.y + 34, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.5, t.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 10.5px ui-monospace, monospace"; ctx.fillText(t.branch ? sp.branches[t.branch].name : sp.name, x0 + 34, rect.y + 26);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace"; ctx.fillText("Refund ⚙" + refund, x0 + 34, rect.y + 40);
+      const by = rect.y + 56, bh = 34;
+      ctx.fillStyle = "#c25a4a"; rr(x0, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("✓ SELL  ⚙" + refund, x0 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: x0, y: by, w: cw, h: bh, action: "confirm", afford: true });
+      const cy = by + bh + 6;
+      ctx.fillStyle = "#3a2020"; rr(x0, cy, cw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✗ CANCEL", x0 + cw / 2, cy + bh / 2);
+      trayBtns.push({ x: x0, y: cy, w: cw, h: bh, action: "cancel" });
+    } else {
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("SELL TOWER", 12, rect.y + 13);
+      drawTowerArt(30, rect.y + 40, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.58, t.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(t.branch ? sp.branches[t.branch].name : sp.name, 54, rect.y + 30);
+      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Refund ⚙" + refund + "  ·  cannot be undone", 54, rect.y + 48);
+      const by = rect.y + 74, bh = 38, cw = 206;
+      ctx.fillStyle = "#c25a4a"; rr(12, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✓ SELL  ⚙" + refund, 12 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: true });
+      const xx = 12 + cw + 8, xw = W - xx - 12;
+      ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
+      trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    }
   }
   function drawExcavateConfirm() {
+    const rect = trayRect();
     const cost = excavateCost(), af = S.scrap >= cost, pl = center(S.pending.c, S.pending.r);
     S.rangePreview = { x: pl.x, y: pl.y, range: 0 };
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    ctx.fillStyle = "#c9a06a"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("EXCAVATE RUBBLE", 12, PLAY_BOTTOM + 13);
-    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("Clear the debris \u2192 build plot", 12, PLAY_BOTTOM + 32);
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Opens this tile for building", 12, PLAY_BOTTOM + 48);
-    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
-    ctx.fillStyle = af ? "#b98a3a" : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
-    ctx.textAlign = "center"; ctx.fillStyle = af ? "#1a1206" : C.textDim; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("\u26CF EXCAVATE  \u2699" + cost, 12 + cw / 2, by + bh / 2);
-    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
-    const xx = 12 + cw + 8, xw = W - xx - 12;
-    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
-    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("\u2717", xx + xw / 2, by + bh / 2);
-    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    if (LANDSCAPE) {
+      const pad = 8, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      ctx.fillStyle = "#c9a06a"; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("EXCAVATE", x0, rect.y + 10);
+      ctx.fillStyle = C.text; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.fillText("Clear debris → build plot", x0, rect.y + 26);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace"; ctx.fillText("Opens this tile for building", x0, rect.y + 40);
+      const by = rect.y + 56, bh = 34;
+      ctx.fillStyle = af ? "#b98a3a" : "#1c2228"; rr(x0, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = af ? "#1a1206" : C.textDim; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("⛏ EXCAVATE  ⚙" + cost, x0 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: x0, y: by, w: cw, h: bh, action: "confirm", afford: af });
+      const cy = by + bh + 6;
+      ctx.fillStyle = "#3a2020"; rr(x0, cy, cw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✗ CANCEL", x0 + cw / 2, cy + bh / 2);
+      trayBtns.push({ x: x0, y: cy, w: cw, h: bh, action: "cancel" });
+    } else {
+      ctx.fillStyle = "#c9a06a"; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("EXCAVATE RUBBLE", 12, rect.y + 13);
+      ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("Clear the debris → build plot", 12, rect.y + 32);
+      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText("Opens this tile for building", 12, rect.y + 48);
+      const by = rect.y + 74, bh = 38, cw = 206;
+      ctx.fillStyle = af ? "#b98a3a" : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = af ? "#1a1206" : C.textDim; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("⛏ EXCAVATE  ⚙" + cost, 12 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
+      const xx = 12 + cw + 8, xw = W - xx - 12;
+      ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
+      trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    }
   }
   function drawConfirm() {
     trayBtns = [];
@@ -6627,6 +6675,7 @@
     if (S.pending.kind === "excavate") { drawExcavateConfirm(); return; }
     const info = pendingInfo();
     if (!info) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
+    const rect = trayRect();
     const sp = info.sp, cur = info.cur, nx = info.next, af = S.scrap >= info.cost;
     // persistent range ring on the target plot
     let pl = null;
@@ -6634,44 +6683,82 @@
     else if (info.t) pl = center(info.t.c, info.t.r);
     if (pl) S.rangePreview = { x: pl.x, y: pl.y, range: nx.range * rangeMul() };
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    ctx.fillStyle = sp.accent; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(info.verb, 12, PLAY_BOTTOM + 13);
-    drawTowerArt(30, PLAY_BOTTOM + 40, info.tp, info.lvl, -Math.PI / 2, 0, 0, false, 0.58, info.branch);
-    ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(info.name, 54, PLAY_BOTTOM + 28);
-    const dtCol = sp.dmgType === "kinetic" ? "#f2b23a" : sp.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
-    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[sp.dmgType] + " " + sp.dmgType.toUpperCase(), 54, PLAY_BOTTOM + 41);
-    // stat line — show cur→next deltas for upgrades, plain values for a fresh build
-    const rt = (x) => (x.rate / 1000).toFixed(1);
-    const seg = cur
-      ? "DMG " + cur.dmg + "→" + nx.dmg + "   RNG " + cur.range + "→" + nx.range + "   " + rt(cur) + "→" + rt(nx) + "s   DPS " + _dps(cur) + "→" + _dps(nx)
-      : "DMG " + nx.dmg + "    RNG " + nx.range + "    " + rt(nx) + "s    ~" + _dps(nx) + " DPS";
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText(seg, 54, PLAY_BOTTOM + 54);
-    const tags = specialTags(nx); if (tags) { ctx.fillStyle = sp.accent; ctx.font = "700 8px ui-monospace, monospace"; ctx.fillText(tags, 54, PLAY_BOTTOM + 65); }
-    // confirm / cancel
-    const by = PLAY_BOTTOM + 74, bh = 38, cw = 206;
-    ctx.fillStyle = af ? C.neonC : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
-    ctx.textAlign = "center"; ctx.fillStyle = af ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
-    ctx.fillText((S.pending.kind === "build" ? "✓ BUILD  ⚙" : "✓ CONFIRM  ⚙") + info.cost, 12 + cw / 2, by + bh / 2);
-    trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
-    const xx = 12 + cw + 8, xw = W - xx - 12;
-    ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
-    ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
-    trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    if (LANDSCAPE) {
+      const pad = 8, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      ctx.fillStyle = sp.accent; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText(info.verb, x0, rect.y + 10);
+      drawTowerArt(x0 + 16, rect.y + 34, info.tp, info.lvl, -Math.PI / 2, 0, 0, false, 0.5, info.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 10.5px ui-monospace, monospace"; ctx.fillText(info.name, x0 + 34, rect.y + 26);
+      const dtCol = sp.dmgType === "kinetic" ? "#f2b23a" : sp.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+      ctx.fillStyle = dtCol; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText(DMG_SYM[sp.dmgType] + " " + sp.dmgType.toUpperCase(), x0 + 34, rect.y + 40);
+      const rt = (x) => (x.rate / 1000).toFixed(1);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
+      let ly = rect.y + 56;
+      if (cur) { ctx.fillText("DMG " + cur.dmg + "→" + nx.dmg + "   RNG " + cur.range + "→" + nx.range, x0, ly); ly += 11; ctx.fillText(rt(cur) + "→" + rt(nx) + "s   DPS " + _dps(cur) + "→" + _dps(nx), x0, ly); ly += 14; }
+      else { ctx.fillText("DMG " + nx.dmg + "    RNG " + nx.range, x0, ly); ly += 11; ctx.fillText(rt(nx) + "s    ~" + _dps(nx) + " DPS", x0, ly); ly += 14; }
+      const tags = specialTags(nx); if (tags) { ctx.fillStyle = sp.accent; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText(tags, x0, ly); ly += 12; }
+      const by = ly + 6, bh = 34;
+      ctx.fillStyle = af ? C.neonC : "#1c2228"; rr(x0, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = af ? "#06181a" : C.textDim; ctx.font = "800 11px ui-monospace, monospace";
+      ctx.fillText((S.pending.kind === "build" ? "✓ BUILD ⚙" : "✓ OK ⚙") + info.cost, x0 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: x0, y: by, w: cw, h: bh, action: "confirm", afford: af });
+      const cy = by + bh + 6;
+      ctx.fillStyle = "#3a2020"; rr(x0, cy, cw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✗ CANCEL", x0 + cw / 2, cy + bh / 2);
+      trayBtns.push({ x: x0, y: cy, w: cw, h: bh, action: "cancel" });
+    } else {
+      ctx.fillStyle = sp.accent; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(info.verb, 12, rect.y + 13);
+      drawTowerArt(30, rect.y + 40, info.tp, info.lvl, -Math.PI / 2, 0, 0, false, 0.58, info.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(info.name, 54, rect.y + 28);
+      const dtCol = sp.dmgType === "kinetic" ? "#f2b23a" : sp.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+      ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[sp.dmgType] + " " + sp.dmgType.toUpperCase(), 54, rect.y + 41);
+      // stat line — show cur→next deltas for upgrades, plain values for a fresh build
+      const rt = (x) => (x.rate / 1000).toFixed(1);
+      const seg = cur
+        ? "DMG " + cur.dmg + "→" + nx.dmg + "   RNG " + cur.range + "→" + nx.range + "   " + rt(cur) + "→" + rt(nx) + "s   DPS " + _dps(cur) + "→" + _dps(nx)
+        : "DMG " + nx.dmg + "    RNG " + nx.range + "    " + rt(nx) + "s    ~" + _dps(nx) + " DPS";
+      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.fillText(seg, 54, rect.y + 54);
+      const tags = specialTags(nx); if (tags) { ctx.fillStyle = sp.accent; ctx.font = "700 8px ui-monospace, monospace"; ctx.fillText(tags, 54, rect.y + 65); }
+      // confirm / cancel
+      const by = rect.y + 74, bh = 38, cw = 206;
+      ctx.fillStyle = af ? C.neonC : "#1c2228"; rr(12, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = af ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
+      ctx.fillText((S.pending.kind === "build" ? "✓ BUILD  ⚙" : "✓ CONFIRM  ⚙") + info.cost, 12 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: af });
+      const xx = 12 + cw + 8, xw = W - xx - 12;
+      ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
+      trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    }
   }
   const trayIsIdle = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !S.selTile;
   // V6.28: 7+ towers need two rows. Rather than squeeze 42px rows into the fixed 118px band (hugging
   // the gesture-nav edge), the tray grows upward while the build menu is open. 22px borrowed from a
   // 466px play area, only while building, is imperceptible. Every hit-test goes through trayTop().
+  // V6.31 (C2): landscape's side panel has vertical room to spare, so this portrait-only space hack
+  // does not apply there — trayTop() just returns PLAY_TOP in landscape.
   const BUILD_EXP = 22;
   const buildMenuOpen = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !!S.selTile;
-  const trayTop = () => buildMenuOpen() ? PLAY_BOTTOM - BUILD_EXP : PLAY_BOTTOM;
+  const trayTop = () => LANDSCAPE ? PLAY_TOP : (buildMenuOpen() ? PLAY_BOTTOM - BUILD_EXP : PLAY_BOTTOM);
+  // Single source of truth for the tray's screen rectangle: a bottom sheet in portrait, a right-hand
+  // side panel in landscape (a 640x360 space has no room for a full-width bottom band). Every tray
+  // draw + hit-test function reads this instead of hardcoding PLAY_BOTTOM/W.
+  function trayRect() {
+    if (LANDSCAPE) return { x: TRAY_X, y: PLAY_TOP, w: TRAY_W, h: H - PLAY_TOP };
+    const tt = trayTop();
+    return { x: 0, y: tt, w: W, h: H - tt };
+  }
   function drawTray(dt) {
     // slide animation
     if (S.sheetAnim < 1) S.sheetAnim = Math.min(1, S.sheetAnim + dt * 6);
     const off = (1 - S.sheetAnim) * 16;
-    const tTop = trayTop();
-    ctx.fillStyle = C.tray; ctx.fillRect(0, tTop, W, TRAY_H + (PLAY_BOTTOM - tTop));
-    ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.4; ctx.fillRect(0, tTop, W, 2); ctx.globalAlpha = 1;
-    ctx.save(); ctx.translate(0, off); ctx.globalAlpha = S.sheetAnim;
+    const rect = trayRect();
+    ctx.fillStyle = C.tray; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.fillStyle = C.neonC; ctx.globalAlpha = 0.4;
+    if (LANDSCAPE) ctx.fillRect(rect.x, rect.y, 2, rect.h); else ctx.fillRect(rect.x, rect.y, rect.w, 2);
+    ctx.globalAlpha = 1;
+    ctx.save();
+    if (LANDSCAPE) ctx.translate(off, 0); else ctx.translate(0, off);
+    ctx.globalAlpha = S.sheetAnim;
     if (S.pending) drawConfirm();
     else if (S.selTower != null && towers[S.selTower]) drawTowerMenu();
     else if (S.selTile) drawBuildMenu();
@@ -6680,45 +6767,85 @@
   }
   function drawTrayIdle() {
     trayBtns = [];
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    // ---- WAVE INTEL command bar (V6.26) ----
-    // Replaces the old untappable tower palette: what is coming, what it resists, what you can do.
+    const rect = trayRect();
     const nw = Math.min((S.wave || 0) + 1, S.endless ? 9999 : TOTAL_WAVES);
     const intel = waveIntel(nw).slice(0, 3);
-    ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
-    ctx.fillText("\u25b8 WAVE " + nw + (S.waveActive ? " ENGAGED" : " INBOUND"), 11, PLAY_BOTTOM + 13);
-    ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "800 9px ui-monospace, monospace";
-    ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s" : "\u2014"), W - 11, PLAY_BOTTOM + 13);
-    // threat cards
-    const iy = PLAY_BOTTOM + 22, ih = 38, iw = (W - 22 - 2 * 5) / 3;
-    if (!intel.length) {
-      ctx.fillStyle = C.trayCell; rr(11, iy, W - 22, ih, 5); ctx.fill();
-      ctx.textAlign = "center"; ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
-      ctx.fillText("LIGHT WAVE \u00b7 NO SPECIAL THREATS", W / 2, iy + ih / 2);
-    } else intel.forEach((e, i) => {
-      const x = 11 + i * (iw + 5), tag = THREAT_TAG[e.k], col = tag[1];
-      ctx.fillStyle = C.trayCell; rr(x, iy, iw, ih, 5); ctx.fill();
-      ctx.fillStyle = col; rr(x, iy, 2.5, ih, 1.2); ctx.fill();
-      ctx.textAlign = "left"; ctx.fillStyle = C.text; ctx.font = "800 9.5px ui-monospace, monospace";
-      ctx.fillText(ENEMY_LABEL[e.k], x + 8, iy + 11);
-      ctx.fillStyle = C.textDim; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("\u00d7" + e.n, x + 8, iy + 24);
-      ctx.fillStyle = col; ctx.font = "800 7px ui-monospace, monospace"; ctx.fillText(tag[0], x + 8, iy + 33);
-    });
-    // targeted warning — only when the board genuinely cannot answer what is coming
-    const has = (k) => intel.some((e) => e.k === k);
-    let warn = null;
-    if (has("wraith") && !boardCan("air")) warn = "\u26a0 AIR INCOMING \u00b7 NO ANTI-AIR IN RANGE";
-    else if (has("phantom") && !boardCan("detect")) warn = "\u26a0 CLOAKED FOES \u00b7 NO DETECTOR (TESLA/PRISM/HERO)";
-    else if (has("sentinel") && !boardCan("armor")) warn = "\u26a0 ARMORED \u00b7 NEED PIERCE OR EXPLOSIVE";
-    const wy = PLAY_BOTTOM + 68;
-    ctx.textAlign = "left";
-    if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(warn, 11, wy); }
-    else { ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT \u00b7 PINCH ZOOM \u00b7 DRAG PAN", 11, wy); }
-    ctx.textAlign = "right"; ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace";
-    ctx.fillText("\u2b21 " + S.scrap, W - 11, wy);
-    // ---- action row: HERO / STRIKE / REPAIR as real buttons ----
-    drawCmdRow();
+    if (LANDSCAPE) {
+      const pad = 10, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
+      ctx.fillText("▸ WAVE " + nw, x0, rect.y + 12);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace";
+      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s left" : (S.waveActive ? "ENGAGED" : "—")), x0, rect.y + 24);
+      let y = rect.y + 34;
+      // threat cards, stacked vertically (no room to go 3-across in a 188px panel)
+      const ih = 28, gap = 4;
+      if (!intel.length) {
+        ctx.fillStyle = C.trayCell; rr(x0, y, cw, ih, 5); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
+        ctx.fillText("LIGHT WAVE · NO THREATS", x0 + cw / 2, y + ih / 2);
+        y += ih + gap;
+      } else intel.forEach((e) => {
+        const tag = THREAT_TAG[e.k], col = tag[1];
+        ctx.fillStyle = C.trayCell; rr(x0, y, cw, ih, 5); ctx.fill();
+        ctx.fillStyle = col; rr(x0, y, 2.5, ih, 1.2); ctx.fill();
+        ctx.textAlign = "left"; ctx.fillStyle = C.text; ctx.font = "800 8.5px ui-monospace, monospace";
+        ctx.fillText(ENEMY_LABEL[e.k] + "  ×" + e.n, x0 + 8, y + 9);
+        ctx.fillStyle = col; ctx.font = "700 7px ui-monospace, monospace"; ctx.fillText(tag[0], x0 + 8, y + 20);
+        y += ih + gap;
+      });
+      // targeted warning — only when the board genuinely cannot answer what is coming
+      const has = (k) => intel.some((e) => e.k === k);
+      let warn = null;
+      if (has("wraith") && !boardCan("air")) warn = "⚠ AIR · NO ANTI-AIR";
+      else if (has("phantom") && !boardCan("detect")) warn = "⚠ CLOAKED · NO DETECTOR";
+      else if (has("sentinel") && !boardCan("armor")) warn = "⚠ ARMORED · NEED PIERCE/EXPL";
+      ctx.textAlign = "left";
+      if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText(warn, x0, y + 6); }
+      else { ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText("PINCH ZOOM · DRAG PAN", x0, y + 6); }
+      y += 15;
+      ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("⬡ " + S.scrap, x0, y + 6);
+      y += 18;
+      drawCmdRow(rect, y);
+    } else {
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      // ---- WAVE INTEL command bar (V6.26) ----
+      // Replaces the old untappable tower palette: what is coming, what it resists, what you can do.
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
+      ctx.fillText("▸ WAVE " + nw + (S.waveActive ? " ENGAGED" : " INBOUND"), 11, rect.y + 13);
+      ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "800 9px ui-monospace, monospace";
+      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s" : "—"), W - 11, rect.y + 13);
+      // threat cards
+      const iy = rect.y + 22, ih = 38, iw = (W - 22 - 2 * 5) / 3;
+      if (!intel.length) {
+        ctx.fillStyle = C.trayCell; rr(11, iy, W - 22, ih, 5); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
+        ctx.fillText("LIGHT WAVE · NO SPECIAL THREATS", W / 2, iy + ih / 2);
+      } else intel.forEach((e, i) => {
+        const x = 11 + i * (iw + 5), tag = THREAT_TAG[e.k], col = tag[1];
+        ctx.fillStyle = C.trayCell; rr(x, iy, iw, ih, 5); ctx.fill();
+        ctx.fillStyle = col; rr(x, iy, 2.5, ih, 1.2); ctx.fill();
+        ctx.textAlign = "left"; ctx.fillStyle = C.text; ctx.font = "800 9.5px ui-monospace, monospace";
+        ctx.fillText(ENEMY_LABEL[e.k], x + 8, iy + 11);
+        ctx.fillStyle = C.textDim; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("×" + e.n, x + 8, iy + 24);
+        ctx.fillStyle = col; ctx.font = "800 7px ui-monospace, monospace"; ctx.fillText(tag[0], x + 8, iy + 33);
+      });
+      // targeted warning — only when the board genuinely cannot answer what is coming
+      const has = (k) => intel.some((e) => e.k === k);
+      let warn = null;
+      if (has("wraith") && !boardCan("air")) warn = "⚠ AIR INCOMING · NO ANTI-AIR IN RANGE";
+      else if (has("phantom") && !boardCan("detect")) warn = "⚠ CLOAKED FOES · NO DETECTOR (TESLA/PRISM/HERO)";
+      else if (has("sentinel") && !boardCan("armor")) warn = "⚠ ARMORED · NEED PIERCE OR EXPLOSIVE";
+      const wy = rect.y + 68;
+      ctx.textAlign = "left";
+      if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(warn, 11, wy); }
+      else { ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT · PINCH ZOOM · DRAG PAN", 11, wy); }
+      ctx.textAlign = "right"; ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace";
+      ctx.fillText("⬡ " + S.scrap, W - 11, wy);
+      // ---- action row: HERO / STRIKE / REPAIR as real buttons ----
+      drawCmdRow(rect, rect.y + 78);
+    }
   }
   // V6.26: Hero / Airstrike / Repair as proper labelled tray buttons instead of circles floating
   // over the map edge. They push into the SAME arrays the existing tap handlers already read.
@@ -6731,102 +6858,196 @@
     ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText(sub, x + w / 2, y + 24);
     ctx.textAlign = "left";
   }
-  function drawCmdRow() {
+  function drawCmdRow(rect, y0) {
     heroBtns = []; abilityBtns = [];
-    const y = PLAY_BOTTOM + 78, h = 32, w = (W - 22 - 2 * 6) / 3;
-    // HERO
-    const hx = 11, ac = HERO.accent, dep = !!hero, hReady = dep ? hero.abil <= 0 : true;
-    cmdBtn(hx, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
-      dep ? "COMMANDER L" + (hero.lvl + 1) : "DEPLOY \u00b7 FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
-    heroBtns.push({ id: "hero", x: hx, y: y, w: w, h: h });
-    // STRIKE
-    const sx2 = 11 + w + 6, sReady = S.strikeCd <= 0;
-    cmdBtn(sx2, y, w, h, "#ff9a5a", sReady || S.strikeArm, S.strikeArm ? "CANCEL" : (sReady ? "STRIKE" : Math.ceil(S.strikeCd) + "s"),
-      sReady ? "ORBITAL \u00b7 READY" : "RECHARGING", sReady ? 1 : 1 - S.strikeCd / strikeMax());
-    abilityBtns.push({ id: "strike", x: sx2, y: y, w: w, h: h });
-    // REPAIR (id reuses the existing hudBtns handler)
-    const rx2 = 11 + (w + 6) * 2, rc = repairCost(), hurt2 = S.core < (S.coreMax || S.core), canFix = hurt2 && S.scrap >= rc;
-    cmdBtn(rx2, y, w, h, "#8fe04a", canFix, hurt2 ? "REPAIR" : "CORE OK", hurt2 ? "\u2699" + rc + " \u00b7 " + S.core + "/" + S.coreMax : S.core + "/" + S.coreMax, 1);
-    if (hurt2) trayBtns.push({ action: "repair", x: rx2, y: y, w: w, h: h });
+    const ac = HERO.accent, dep = !!hero, hReady = dep ? hero.abil <= 0 : true;
+    if (LANDSCAPE) {
+      const pad = 10, w = rect.w - 2 * pad, h = 27, gap = 5, x = rect.x + pad;
+      let y = y0;
+      cmdBtn(x, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
+        dep ? "CMDR L" + (hero.lvl + 1) : "DEPLOY · FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
+      heroBtns.push({ id: "hero", x: x, y: y, w: w, h: h });
+      y += h + gap;
+      const sReady = S.strikeCd <= 0;
+      cmdBtn(x, y, w, h, "#ff9a5a", sReady || S.strikeArm, S.strikeArm ? "CANCEL" : (sReady ? "STRIKE" : Math.ceil(S.strikeCd) + "s"),
+        sReady ? "ORBITAL · READY" : "RECHARGING", sReady ? 1 : 1 - S.strikeCd / strikeMax());
+      abilityBtns.push({ id: "strike", x: x, y: y, w: w, h: h });
+      y += h + gap;
+      const rc = repairCost(), hurt2 = S.core < (S.coreMax || S.core), canFix = hurt2 && S.scrap >= rc;
+      cmdBtn(x, y, w, h, "#8fe04a", canFix, hurt2 ? "REPAIR" : "CORE OK", hurt2 ? "⚙" + rc + " · " + S.core + "/" + S.coreMax : S.core + "/" + S.coreMax, 1);
+      if (hurt2) trayBtns.push({ action: "repair", x: x, y: y, w: w, h: h });
+    } else {
+      const y = y0, h = 32, w = (rect.w - 22 - 2 * 6) / 3;
+      // HERO
+      const hx = 11;
+      cmdBtn(hx, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
+        dep ? "COMMANDER L" + (hero.lvl + 1) : "DEPLOY · FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
+      heroBtns.push({ id: "hero", x: hx, y: y, w: w, h: h });
+      // STRIKE
+      const sx2 = 11 + w + 6, sReady = S.strikeCd <= 0;
+      cmdBtn(sx2, y, w, h, "#ff9a5a", sReady || S.strikeArm, S.strikeArm ? "CANCEL" : (sReady ? "STRIKE" : Math.ceil(S.strikeCd) + "s"),
+        sReady ? "ORBITAL · READY" : "RECHARGING", sReady ? 1 : 1 - S.strikeCd / strikeMax());
+      abilityBtns.push({ id: "strike", x: sx2, y: y, w: w, h: h });
+      // REPAIR (id reuses the existing hudBtns handler)
+      const rx2 = 11 + (w + 6) * 2, rc = repairCost(), hurt2 = S.core < (S.coreMax || S.core), canFix = hurt2 && S.scrap >= rc;
+      cmdBtn(rx2, y, w, h, "#8fe04a", canFix, hurt2 ? "REPAIR" : "CORE OK", hurt2 ? "⚙" + rc + " · " + S.core + "/" + S.coreMax : S.core + "/" + S.coreMax, 1);
+      if (hurt2) trayBtns.push({ action: "repair", x: rx2, y: y, w: w, h: h });
+    }
   }
   function drawBuildMenu() {
     trayBtns = [];
+    const rect = trayRect();
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const tt = trayTop();
-    ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("\u25b8 CONSTRUCT", 12, tt + 13);
-    ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, tt + 13);
-    // 4 per row: cells go from ~46px wide to ~82px, i.e. clear of the 48px tap minimum
-    const N = TOWER_ORDER.length, PER = 4, rows = Math.ceil(N / PER), gap = 6;
-    const bw = Math.min(82, (W - 16 - gap * (PER - 1)) / PER), bh = rows > 1 ? 46 : 74, y0 = tt + 24;
-    TOWER_ORDER.forEach((key, i) => {
-      const rw = Math.floor(i / PER), cl = i % PER, inRow = Math.min(PER, N - rw * PER);
-      const sx = (W - (bw * inRow + gap * (inRow - 1))) / 2, x = sx + cl * (bw + gap), y = y0 + rw * (bh + 5);
-      const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
-      ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
-      if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
-      ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
-      drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
-      ctx.globalAlpha = 1;
-      ctx.textAlign = "left";
-      ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 16);
-      if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\u2298 OFF", x + 34, y + 31); }
-      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("\ud83d\udd12 LOCKED", x + 34, y + 31); }
-      else { coin(x + 37, y + 31, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 31); }
-      ctx.textAlign = "center";
-      if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
-      trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
-    });
+    if (LANDSCAPE) {
+      const pad = 8;
+      ctx.fillStyle = C.neonC; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", rect.x + pad, rect.y + 11);
+      ctx.fillStyle = C.textDim; ctx.font = "700 7px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP AGAIN TO CANCEL", rect.x + rect.w - pad, rect.y + 11);
+      // 2 per row: the 188px panel has no room for 4-across, but plenty of vertical room for tall rows
+      const N = TOWER_ORDER.length, PER = 2, gap = 6;
+      const bw = (rect.w - 2 * pad - gap * (PER - 1)) / PER, bh = 56, y0 = rect.y + 20;
+      TOWER_ORDER.forEach((key, i) => {
+        const rw = Math.floor(i / PER), cl = i % PER;
+        const x = rect.x + pad + cl * (bw + gap), y = y0 + rw * (bh + 6);
+        const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
+        ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
+        if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
+        ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
+        drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
+        ctx.globalAlpha = 1;
+        ctx.textAlign = "left";
+        ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 19);
+        if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText("⊘ OFF", x + 34, y + 34); }
+        else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText("🔒 LOCK", x + 34, y + 34); }
+        else { coin(x + 37, y + 34, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 34); }
+        ctx.textAlign = "center";
+        if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
+        trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
+      });
+    } else {
+      const tt = rect.y;
+      ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", 12, tt + 13);
+      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, tt + 13);
+      // 4 per row: cells go from ~46px wide to ~82px, i.e. clear of the 48px tap minimum
+      const N = TOWER_ORDER.length, PER = 4, rows = Math.ceil(N / PER), gap = 6;
+      const bw = Math.min(82, (W - 16 - gap * (PER - 1)) / PER), bh = rows > 1 ? 46 : 74, y0 = tt + 24;
+      TOWER_ORDER.forEach((key, i) => {
+        const rw = Math.floor(i / PER), cl = i % PER, inRow = Math.min(PER, N - rw * PER);
+        const sx = (W - (bw * inRow + gap * (inRow - 1))) / 2, x = sx + cl * (bw + gap), y = y0 + rw * (bh + 5);
+        const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
+        ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
+        if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
+        ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
+        drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
+        ctx.globalAlpha = 1;
+        ctx.textAlign = "left";
+        ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 16);
+        if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("⊘ OFF", x + 34, y + 31); }
+        else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("🔒 LOCKED", x + 34, y + 31); }
+        else { coin(x + 37, y + 31, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 31); }
+        ctx.textAlign = "center";
+        if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
+        trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
+      });
+    }
   }
   function towerSpent(t) { const spec = TOWERS[t.type]; return spec.levels[0].cost + (t.lvl >= 1 ? spec.levels[1].cost : 0) + (t.lvl >= 2 && t.branch ? spec.branches[t.branch].cost : 0) + (t.lvl >= 3 && t.branch && spec.branches[t.branch].t4 ? spec.branches[t.branch].t4.cost : 0); }
   function drawTowerMenu() {
     trayBtns = [];
+    const rect = trayRect();
     const t = towers[S.selTower], spec = TOWERS[t.type], st = tStats(t), branched = t.lvl >= 2 && t.branch;
     const title = branched ? spec.branches[t.branch].name : spec.name;
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    drawTowerArt(30, PLAY_BOTTOM + 28, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.66, t.branch);
-    ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1) + (t.oc ? "  \u26A1" + t.oc : ""), 54, PLAY_BOTTOM + 14);
-    ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
-    ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, PLAY_BOTTOM + 28);
-    // damage-type tag (teaches the counterplay triangle)
-    const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
-    ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, PLAY_BOTTOM + 40);
-    // target mode toggle
-    const tmX = 168, tmY = PLAY_BOTTOM + 34, tmW = 128, tmH = 16;
-    ctx.fillStyle = "rgba(55,224,208,0.12)"; rr(tmX, tmY - 8, tmW, tmH, 3); ctx.fill();
-    ctx.fillStyle = C.neonC; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("TARGET ▸ " + TARGET_LABEL[t.mode], tmX + tmW / 2, tmY);
-    trayBtns.push({ x: tmX, y: tmY - 9, w: tmW, h: tmH + 2, action: "target" });
-
-    const sell = Math.round(towerSpent(t) * sellRefund());
-    const y = PLAY_BOTTOM + 66, bh = 40, ux = 12;
-    if (t.lvl === 1) {
-      // branch choice: two specialization buttons
-      const bw2 = 108, gap = 4;
-      ["a", "b"].forEach((key, i) => {
-        const br = spec.branches[key], x = ux + i * (bw2 + gap), afford = S.scrap >= br.cost;
-        ctx.fillStyle = afford ? "rgba(55,224,208,0.16)" : "#1c2228"; rr(x, y, bw2, bh, 4); ctx.fill();
-        ctx.strokeStyle = afford ? spec.accent : "rgba(255,255,255,0.06)"; ctx.lineWidth = 1; rr(x, y, bw2, bh, 4); ctx.stroke();
-        ctx.textAlign = "center"; ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(br.short, x + bw2 / 2, y + 12);
-        ctx.fillStyle = C.textDim; ctx.font = "600 7.5px system-ui"; ctx.fillText(br.desc, x + bw2 / 2, y + 24);
-        ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("⚙" + br.cost, x + bw2 / 2, y + 34);
-        trayBtns.push({ x, y, w: bw2, h: bh, action: "branch", branch: key, afford });
-      });
-      const sx2 = ux + 2 * bw2 + 2 * gap + 4, sw = W - sx2 - 12;
-      ctx.fillStyle = "#3a2020"; rr(sx2, y, sw, bh, 4); ctx.fill();
-      ctx.textAlign = "center"; ctx.fillStyle = "#f0a090"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("SELL ⚙" + sell, sx2 + sw / 2, y + bh / 2);
-      trayBtns.push({ x: sx2, y, w: sw, h: bh, action: "sell" });
+    if (LANDSCAPE) {
+      const pad = 8, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      drawTowerArt(x0 + 16, rect.y + 24, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.5, t.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 10.5px ui-monospace, monospace"; ctx.fillText(title + " L" + (t.lvl + 1) + (t.oc ? " ⚡" + t.oc : ""), x0 + 34, rect.y + 15);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
+      ctx.fillText("DMG " + st.dmg + " RNG " + st.range, x0 + 34, rect.y + 28);
+      const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+      let y = rect.y + 44;
+      ctx.fillStyle = dtCol; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), x0, y);
+      y += 15;
+      const tmH = 18;
+      ctx.fillStyle = "rgba(55,224,208,0.12)"; rr(x0, y, cw, tmH, 3); ctx.fill();
+      ctx.fillStyle = C.neonC; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("TARGET ▸ " + TARGET_LABEL[t.mode], x0 + cw / 2, y + tmH / 2);
+      trayBtns.push({ x: x0, y: y, w: cw, h: tmH, action: "target" });
+      y += tmH + 8;
+      ctx.textAlign = "left";
+      const sell = Math.round(towerSpent(t) * sellRefund());
+      const bh = 34;
+      if (t.lvl === 1) {
+        ["a", "b"].forEach((key) => {
+          const br = spec.branches[key], afford = S.scrap >= br.cost;
+          ctx.fillStyle = afford ? "rgba(55,224,208,0.16)" : "#1c2228"; rr(x0, y, cw, bh, 4); ctx.fill();
+          ctx.strokeStyle = afford ? spec.accent : "rgba(255,255,255,0.06)"; ctx.lineWidth = 1; rr(x0, y, cw, bh, 4); ctx.stroke();
+          ctx.textAlign = "center"; ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(br.short + "  ⚙" + br.cost, x0 + cw / 2, y + bh / 2 - 6);
+          ctx.fillStyle = C.textDim; ctx.font = "600 7.5px system-ui"; ctx.fillText(br.desc, x0 + cw / 2, y + bh / 2 + 8);
+          trayBtns.push({ x: x0, y: y, w: cw, h: bh, action: "branch", branch: key, afford });
+          y += bh + 6;
+        });
+        ctx.fillStyle = "#3a2020"; rr(x0, y, cw, bh, 4); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = "#f0a090"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("SELL ⚙" + sell, x0 + cw / 2, y + bh / 2);
+        trayBtns.push({ x: x0, y: y, w: cw, h: bh, action: "sell" });
+      } else {
+        const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
+        const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
+        const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
+        const act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
+        ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(x0, y, cw, bh, 4); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 11px ui-monospace, monospace";
+        ctx.fillText(ocAvail ? "⚡ OC ⚙" + ocCost : (canUp ? "UPGRADE ⚙" + upCost : "MAX LEVEL"), x0 + cw / 2, y + bh / 2);
+        trayBtns.push({ x: x0, y: y, w: cw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
+        y += bh + 6;
+        ctx.fillStyle = "#3a2020"; rr(x0, y, cw, bh, 4); ctx.fill();
+        ctx.fillStyle = "#f0a090"; ctx.fillText("SELL ⚙" + sell, x0 + cw / 2, y + bh / 2);
+        trayBtns.push({ x: x0, y: y, w: cw, h: bh, action: "sell" });
+      }
     } else {
-      const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
-      const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
-      const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
-      const bw = 152, act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
-      ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
-      ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
-      ctx.fillText(ocAvail ? "\u26A1 OVERCLOCK ⚙" + ocCost : (canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL"), ux + bw / 2, y + bh / 2);
-      trayBtns.push({ x: ux, y, w: bw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
-      const sx2 = ux + bw + 8;
-      ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
-      ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
-      trayBtns.push({ x: sx2, y, w: bw, h: bh, action: "sell" });
+      drawTowerArt(30, rect.y + 28, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.66, t.branch);
+      ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1) + (t.oc ? "  ⚡" + t.oc : ""), 54, rect.y + 14);
+      ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
+      ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, rect.y + 28);
+      // damage-type tag (teaches the counterplay triangle)
+      const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+      ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, rect.y + 40);
+      // target mode toggle
+      const tmX = 168, tmY = rect.y + 34, tmW = 128, tmH = 16;
+      ctx.fillStyle = "rgba(55,224,208,0.12)"; rr(tmX, tmY - 8, tmW, tmH, 3); ctx.fill();
+      ctx.fillStyle = C.neonC; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("TARGET ▸ " + TARGET_LABEL[t.mode], tmX + tmW / 2, tmY);
+      trayBtns.push({ x: tmX, y: tmY - 9, w: tmW, h: tmH + 2, action: "target" });
+
+      const sell = Math.round(towerSpent(t) * sellRefund());
+      const y = rect.y + 66, bh = 40, ux = 12;
+      if (t.lvl === 1) {
+        // branch choice: two specialization buttons
+        const bw2 = 108, gap = 4;
+        ["a", "b"].forEach((key, i) => {
+          const br = spec.branches[key], x = ux + i * (bw2 + gap), afford = S.scrap >= br.cost;
+          ctx.fillStyle = afford ? "rgba(55,224,208,0.16)" : "#1c2228"; rr(x, y, bw2, bh, 4); ctx.fill();
+          ctx.strokeStyle = afford ? spec.accent : "rgba(255,255,255,0.06)"; ctx.lineWidth = 1; rr(x, y, bw2, bh, 4); ctx.stroke();
+          ctx.textAlign = "center"; ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(br.short, x + bw2 / 2, y + 12);
+          ctx.fillStyle = C.textDim; ctx.font = "600 7.5px system-ui"; ctx.fillText(br.desc, x + bw2 / 2, y + 24);
+          ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("⚙" + br.cost, x + bw2 / 2, y + 34);
+          trayBtns.push({ x, y, w: bw2, h: bh, action: "branch", branch: key, afford });
+        });
+        const sx2 = ux + 2 * bw2 + 2 * gap + 4, sw = W - sx2 - 12;
+        ctx.fillStyle = "#3a2020"; rr(sx2, y, sw, bh, 4); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = "#f0a090"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("SELL ⚙" + sell, sx2 + sw / 2, y + bh / 2);
+        trayBtns.push({ x: sx2, y, w: sw, h: bh, action: "sell" });
+      } else {
+        const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
+        const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
+        const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
+        const bw = 152, act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
+        ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
+        ctx.fillText(ocAvail ? "⚡ OVERCLOCK ⚙" + ocCost : (canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL"), ux + bw / 2, y + bh / 2);
+        trayBtns.push({ x: ux, y, w: bw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
+        const sx2 = ux + bw + 8;
+        ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
+        ctx.fillStyle = "#f0a090"; ctx.fillText("SELL  ⚙" + sell, sx2 + bw / 2, y + bh / 2);
+        trayBtns.push({ x: sx2, y, w: bw, h: bh, action: "sell" });
+      }
     }
   }
 
@@ -6893,7 +7114,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.30 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.31 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7245,7 +7466,7 @@
     if (S.screen !== "playing") return;
     ev.preventDefault();
     const s = evToScreen(ev); ptrs.set(ev.pointerId, s);
-    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM; previewFromPoint(s.x, s.y); }
+    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM && s.x < TRAY_X; previewFromPoint(s.x, s.y); }
     else if (ptrs.size === 2) { gest.mode = "pinch"; S.rangePreview = null; const ps = pinchState(); pinch = ps; }
   });
   canvas.addEventListener("pointermove", (ev) => {
@@ -7281,7 +7502,8 @@
   function previewFromPoint(sx, sy) {
     if (S.pending) return;
     S.rangePreview = null;
-    if (sy < PLAY_BOTTOM) return;
+    const _tr = trayRect();
+    if (sx < _tr.x || sy < _tr.y) return;
     for (const b of trayBtns) {
       if (!inBox(sx, sy, b)) continue;
       if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range * rangeMul() }; }
@@ -7294,7 +7516,7 @@
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
     for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (enemies.length >= CONGEST_CAP && S.wave >= 1 && (S.endless || S.wave < TOTAL_WAVES)) { S.banner = { text: "FIELD SATURATED", t: 1.4 }; Telemetry.ev("satBlocks"); Sound.err(); vibrate(40); } else { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
-    for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(W / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
+    for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
     for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
     for (const b of heroBtns) if (inBox(x, y, b)) {
       if (S.heroArm) S.heroArm = false;
@@ -7302,14 +7524,14 @@
       else if (hero.abil <= 0) doPulse(); else Sound.err();
       return;
     }
-    // armed airstrike: a tap in the play viewport calls it down
-    if (S.strikeArm) { if (y >= PLAY_TOP && y < PLAY_BOTTOM) { const w = screenToWorld(x, y); doStrike(w.x, w.y); } else S.strikeArm = false; return; }
+    // armed airstrike: a tap in the play viewport calls it down (landscape: not over the side panel)
+    if (S.strikeArm) { if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) { const w = screenToWorld(x, y); doStrike(w.x, w.y); } else S.strikeArm = false; return; }
     // armed hero deploy: tap a buildable plot to place the Commander
     if (S.heroArm) {
-      if (y >= PLAY_TOP && y < PLAY_BOTTOM) { const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE); if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) deployHero(c, r); else Sound.err(); }
+      if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) { const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE); if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) deployHero(c, r); else Sound.err(); }
       else S.heroArm = false; return;
     }
-    if (y >= trayTop()) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; }
+    { const _tr = trayRect(); if (x >= _tr.x && y >= _tr.y) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; } }
     // world tap — cancels any pending confirm first
     if (S.pending) { S.pending = null; S.rangePreview = null; }
     const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
@@ -8479,7 +8701,7 @@
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __trayTop: trayTop, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
