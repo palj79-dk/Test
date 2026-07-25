@@ -44,8 +44,10 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 - The Hero is **free to deploy**, levels up in-run (5 levels), hits air, reveals camo within 150 px,
   and has an Overload Pulse ability — i.e. it is strong and costs nothing, but nothing tells a new
   player it exists as a *tactic*.
-- User's observation is supported by the play-log: one V6.25 run finished with **`heroLvl: 0`** —
-  the Hero was never deployed for a whole 20-wave mission.
+- ~~Supported by a V6.25 run finishing with `heroLvl: 0`~~ — **superseded 2026-07-25**: the newer log
+  shows **`heroLvl: 5` in all four runs**, i.e. V6.26's labelled "HERO / DEPLOY · FREE" tray button
+  already fixed *discovery*. The point still stands (the guide never teaches the Hero) but it is
+  polish, not an urgent gap. Do not cite the heroLvl:0 run again.
 - Partially improved already by V6.26: the Hero is now a labelled tray button reading
   "HERO / DEPLOY · FREE" instead of an unlabelled circle floating over the map — but that is a
   passive hint, not guidance.

@@ -2,12 +2,59 @@
 
 Covers `docs/FEEDBACK-backlog.md` #1-#5, recorded against V6.27. **Plan only — nothing built yet.**
 
+## Play-log evidence (2026-07-25, 4 runs on V6.27)
+
+Four campaign runs, all on a **fresh account (`armory: 0`)**: Outpost + Serpentine on Normal, then both
+again on **Hard**. All four won — 0 leaks in three of them, 1 leak in the fourth.
+
+| Run | Map · Diff | Result | Core | Towers | byType | Alloy earned | activeMs |
+|---|---|---|---|---|---|---|---|
+| 1 | Outpost · Normal | victory | 20/20 | 10 | turret 8, cryo 2 | 561 | 271 s (+327 s paused) |
+| 2 | Serpentine · Normal | victory | 20/20 | 17 | turret 14, cryo 3 | 561 | 195 s |
+| 3 | Outpost · **Hard** | victory | 18/18 | 21 | turret 17, cryo 4 | 1010 | 267 s |
+| 4 | Serpentine · **Hard** | victory | 17/18 | 21 | turret 18, cryo 3 | 1009 | 286 s |
+
+### Finding 1 — the Armory is being ignored completely. **This is the headline.**
+`armory: 0` in **all four runs**. Roughly **3,140 Alloy earned and nothing spent** — the cheapest node
+costs 110. Everything V6.24-V6.26 built (the research tree, tower unlocks, the free/reversible fork) is,
+in practice, **invisible to the player**. This is the strongest possible confirmation of feedback #1, and
+it narrows it: the missing piece is not story, it is **"you have a second currency and a place to spend it."**
+
+### Finding 2 — consequence: the whole campaign is being played with two tower types
+Because nothing is researched, `byType` is **only turret + cryo** in every run. The gating works exactly
+as designed — but nothing pulls the player toward the Armory to open it up.
+
+### Finding 3 — and no difficulty wall forces the discovery either
+Both maps are Tier A/B (`mapHp: 1`), so the V6.17 world-wall has not bitten yet. Gun + cryo clears
+Serpentine on **Hard** with a single leak. Early-game balance is therefore *fine* — arguably too
+comfortable to create any pull. The wall only starts at ★3+, which the player has not reached.
+
+### Finding 4 — `activeMs` (V6.27) is validated in the field
+Run 1 records **271 s active vs 327 s paused** — cleanly separated, exactly the case that produced my
+earlier bad read. Runs 2 and 4 show `pausedMs: 0` with `activeMs == durationMs`. The metric can be trusted now.
+
+### Finding 5 — correction: the Hero *is* being used
+**`heroLvl: 5` in all four runs.** My earlier note citing a `heroLvl: 0` run as evidence for feedback #2
+is now **stale** — that was V6.25, before V6.26 turned the Hero into a labelled "HERO / DEPLOY · FREE"
+tray button. That change appears to have fixed discovery on its own. Feedback #2 still stands (the guide
+does not *teach* the Hero), but it is a polish item now, not an urgent one.
+
+### Minor observations (recorded, not acted on)
+- **Economy surplus on the easiest map:** run 1 ended with 4,617 unspent scrap against 3,185 spent. Hard
+  is much tighter (703-788 left), so difficulty is doing its job — but Normal/Outpost has real slack.
+- `repairs: 0` everywhere and `satBlocks: 0` — the repair button and congestion cap are not being exercised
+  at this level. `overclocks` fired once, in one run: the late-game scrap sink is barely used.
+- `earlySends` falls away as difficulty rises (6 → 3 → 1 → 0), which is the intended risk/reward behaviour.
+
+---
+
 ## The five points collapse into two themes
 
 | # | Point | Theme | Effort | Risk |
 |---|---|---|---|---|
 | 5 | Build row: 7 towers at 45.7 px | **Layout** | XS — already prototyped | Low |
 | 1 | No welcome / story / guidance | **Onboarding** | M | Low |
+| — | *(from log)* Armory never used — 3,140 Alloy unspent | **Onboarding** | XS | Low |
 | 2 | Hero never taught | **Onboarding** | S | Low |
 | 3 | Airstrike never taught | **Onboarding** | S | Low |
 | 4 | No landscape (phone + tablet) | **Layout** | L — architectural | **High** |
@@ -51,7 +98,21 @@ borrowed strip hits the tray; full build→confirm→place flow; locked towers s
 
 ## Iteration B — V6.29 · Onboarding (M) — covers #1, #2, #3
 
-Design principle: **no wall of text.** Mobile players skip intros. Two complementary surfaces:
+Design principle: **no wall of text.** Mobile players skip intros. Three surfaces, **reordered by the
+play-log**: the post-run nudge now leads, because it targets the one problem we can actually see happening.
+
+### B0 — Post-run Armory nudge (NEW, from the log — XS, highest impact)
+Not one of the five points, but the log makes it the most valuable single change available: the player
+finished four missions with ~3,140 unspent Alloy. The victory/gameover screens *already* have an Armory
+button — it is simply not compelling. Make the earned Alloy an explicit call to action:
+
+- On the run-end screen, show **"+561 ⬡ ALLOY EARNED · 561 unspent"** prominently.
+- When the wallet can afford the next node in any branch, name it:
+  **"Ready to research: Mortar (⬡120)"** with a direct button into the Armory.
+- Optional light badge on the menu's Armory button while affordable research is waiting.
+
+This is XS and could ship alongside Iteration A if you want the fix sooner. It should measurably move
+`armory` off 0 in the next log — that is the acceptance test.
 
 ### B1 — First-launch briefing (#1)
 Shown **once** on a fresh account (Store flag), **skippable**, and re-viewable from the Codex so it is
@@ -81,8 +142,10 @@ already non-blocking and one-time, and it currently holds only `timer`, `phantom
 These anchor cleanly onto the labelled tray buttons V6.26 introduced — that change is what makes a
 coach-mark pointing at them possible.
 
-**Evidence this is needed:** a full 20-wave V6.25 run in the play-log finished with **`heroLvl: 0`** —
-the Hero was never deployed once.
+**Evidence, updated:** the older V6.25 run that finished with `heroLvl: 0` is **superseded** — the
+2026-07-25 log shows **`heroLvl: 5` in all four runs**, so V6.26's labelled tray button already fixed
+Hero *discovery*. These tips are now polish (teach the ability well) rather than a fix for it being
+missed entirely. Priority drops accordingly; B0 takes the urgency.
 
 **Verify:** briefing shows once on a fresh account and never again; SKIP works and is visible; Codex
 re-entry works; both tips fire on their trigger and only once; no tip fires when the ability was already
