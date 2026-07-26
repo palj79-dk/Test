@@ -4041,10 +4041,20 @@
   // so it becomes a right-hand panel. In portrait TRAY_X is off-screen and nothing reads it.
   let TRAY_X = W, TRAY_W = 0;
   function layout() {
-    const ww = window.innerWidth || 360, wh = window.innerHeight || 640;
+    // visualViewport is the honest size on mobile browsers (it excludes the URL bar); innerWidth/Height
+    // can lag behind while that bar shows/hides.
+    const vv = window.visualViewport;
+    const ww = Math.round((vv && vv.width) || window.innerWidth || 360);
+    const wh = Math.round((vv && vv.height) || window.innerHeight || 640);
     LANDSCAPE = ww > wh;
     if (LANDSCAPE) {
-      W = 640; H = 360; HUD_H = 46; TRAY_H = 0; TRAY_W = 188; TRAY_X = W - TRAY_W;
+      // V6.33: the logical landscape space was hardcoded to 640x360 (16:9). Phone landscape viewports
+      // are far wider than that (an S25+ is ~2.7:1), so scale = min(w/W, h/H) became height-bound and
+      // left big pillarbox bars. Keep H fixed (so the HUD/panel keep their proportions) and derive W
+      // from the DEVICE aspect, clamped, so the canvas fills the width.
+      H = 360;
+      W = Math.max(560, Math.min(1120, Math.round(H * (ww / Math.max(1, wh)))));
+      HUD_H = 46; TRAY_H = 0; TRAY_W = 188; TRAY_X = W - TRAY_W;
       PLAY_TOP = HUD_H; PLAY_BOTTOM = H; PLAY_H = PLAY_BOTTOM - PLAY_TOP;
     } else {
       W = 360; H = 640; HUD_H = 56; TRAY_H = 118; TRAY_W = 0; TRAY_X = W;
@@ -4998,7 +5008,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.32",
+        ts: Date.now(), ver: "6.33",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5697,7 +5707,9 @@
   let __wasLandscape = LANDSCAPE;
   function resize() {
     layout();
-    const sc = Math.min(window.innerWidth / W, window.innerHeight / H), dpr = window.devicePixelRatio || 1;
+    const vv = window.visualViewport;
+    const vw = (vv && vv.width) || window.innerWidth, vh = (vv && vv.height) || window.innerHeight;
+    const sc = Math.min(vw / W, vh / H), dpr = window.devicePixelRatio || 1;
     canvas.style.width = W * sc + "px"; canvas.style.height = H * sc + "px";
     canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (window.G3D) G3D.resize(sc, dpr);
@@ -5709,7 +5721,10 @@
       fitCamera();
     }
   }
-  window.addEventListener("resize", resize); resize();
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 80));
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+  resize();
   // V2.4 bloom: half-res additive glow buffer (bilinear upscale = cheap blur)
   const glowCv = document.createElement("canvas");
   const gctx = glowCv.getContext("2d");
@@ -7126,7 +7141,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.32 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.33 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
