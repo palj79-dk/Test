@@ -197,3 +197,27 @@ sheet, with a ⚡N pip on the tower in the field.
 halen"**. Shipped: the gap timer freezes while >20% of the current wave is still queued and resumes in the
 tail; player early-sends unaffected. This is also the per-map/per-difficulty fit that was asked about —
 bigger waves spawn longer, so the block adapts on its own without a per-map constant.
+
+## 8. Three follow-ups after testing the new build menu — `DONE` (V6.37)
+
+**Recorded + resolved:** 2026-07-26 · against V6.36 · shipped in V6.37. Opened with "jeg har testet den
+nye byggemeny. det ser rimelig godt ud" — so the V6.36 panel itself is accepted; these are refinements.
+
+> "Tilføj at hero bygges fra byggemenyen og pulse fra menu linjen."
+
+V6.36 fixed *where* Hero and Strike live but left the Commander with its own placement mode (arm from the
+strip, then tap the map) — still a second way to place something. Shipped: the Commander is the first row
+of the build panel while none is deployed, and the strip button does exactly one thing, fire the Overload
+Pulse. `S.heroArm`, `drawHeroArm()` and the armed-map tap branch are deleted.
+
+> "når der klikkes på et stykke land kommer byggemenyen frem og når samme stykke land klikkes forsvinder
+> den igen. den skal også forsvinde når man klikker på et andet stykke land."
+
+The panel closed on a second tap of the *same* plot but silently retargeted on a *different* one. Shipped:
+strict toggle — any plot tap while it is open closes it; the next tap opens it on the new plot.
+
+> "it also seems that the heroes shoot area is always shown."
+
+Correct — V6.36's permanent ring was visual noise. Shipped: it appears when you tap the Commander (a
+toggle), for 2.5s after deploy or level-up (the level-up widens the range, so the flash is the point), and
+while the Pulse button is held — the same press-to-preview gesture the build and upgrade rows use.

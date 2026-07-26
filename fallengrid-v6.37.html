@@ -4833,7 +4833,7 @@
     waveActive: false, queue: [], speed: Store.get("speed", 1), selTile: null, selTower: null,
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
-    strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0, waveSize: 0,
+    strikeCd: 0, strikeArm: false, heroSel: false, heroRingT: 0, tut: -1, alloyAwarded: false, lastAlloy: 0, waveSize: 0,
     mapIndex: Store.get("map", 0), endless: false, campaign: false, isDaily: false, isLab: false,
     highEndless: Store.get("highEndless", 0),
   };
@@ -5043,7 +5043,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.36",
+        ts: Date.now(), ver: "6.37",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5096,7 +5096,7 @@
     S.scrap = Math.round((baseStartScrap() + B().scrap) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + B().core) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
     S.countdown = 0; S.waveSize = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
-    S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
+    S.strikeCd = 0; S.strikeArm = false; S.heroSel = false; S.heroRingT = 0; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     Telemetry.begin();
     S.leaked = false; S.usedStrike = false; S.builtTypes = {}; S.achChecked = false; S.newAch = []; S.medalChecked = false; S.medalMsg = ""; S.excavated = 0;
@@ -5117,12 +5117,12 @@
   function deployHero(c, r) {
     const p = center(c, r);
     hero = { c, r, x: p.x, y: p.y, lvl: 0, xp: 0, angle: -Math.PI / 2, cool: 0, recoil: 0, flash: 0, abil: 0, target: null, spawnT: 0.4 };
-    S.heroArm = false; burst(p.x, p.y, HERO.accent, 18); doShake(3, 0.2); Sound.place(); vibrate(20);
+    S.heroRingT = 2.5; burst(p.x, p.y, HERO.accent, 18); doShake(3, 0.2); Sound.place(); vibrate(20);
   }
   function heroGainXp(n) {
     if (!hero) return; hero.xp += n;
     while (hero.lvl < HERO_MAXLVL - 1 && hero.xp >= HERO.xp[hero.lvl]) {
-      hero.lvl++; burst(hero.x, hero.y - 14, HERO.accent, 20);
+      hero.lvl++; S.heroRingT = 2.5; burst(hero.x, hero.y - 14, HERO.accent, 20);
       floats.push({ x: hero.x, y: hero.y - 26, text: "LVL " + (hero.lvl + 1), life: 1.1, vy: -30, color: HERO.accent });
       Sound.up(); doShake(2, 0.15);
     }
@@ -6402,7 +6402,7 @@
     phantom:   "\u25c6 Phantom is CLOAKED — a Rail-Tesla, a Prism or your Hero reveals it for every tower",
     cinder:    "\u25c6 Cinder is FREEZE-IMMUNE — slow can't stop it; answer with raw firepower",
     insulator: "\u25c6 Insulator RESISTS ENERGY — Tesla & Cryo hit soft; use Auto-Gun or Mortar",
-    hero:      "\u2691 Commander is FREE to deploy — it fights on its own, levels up through the run, and reveals cloaked foes nearby",
+    hero:      "\u2691 Commander is FREE — pick a plot, then COMMANDER in the build menu. It fights on its own, levels up, and reveals cloaked foes",
     strike:    "\u2733 Airstrike is FREE and recharges — heavy damage, a stun, and it reveals camo in the blast",
   };
   let seenTips = Store.get("seenTips", {});
@@ -6615,16 +6615,6 @@
     ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(pw / 2 - 92, PLAY_TOP + 10, 184, 22, 5); ctx.fill();
     ctx.fillStyle = "#ff9a5a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("✷ TAP A TARGET ZONE", pw / 2, PLAY_TOP + 21);
-    ctx.restore();
-  }
-  function drawHeroArm() {
-    const pl = 0.5 + 0.5 * Math.sin(S.time * 6), ac = HERO.accent, pw = playW();
-    ctx.save();
-    ctx.strokeStyle = rgba(ac, 0.5 + pl * 0.4); ctx.lineWidth = 3; ctx.strokeRect(2, PLAY_TOP + 2, pw - 4, PLAY_H - 4);
-    ctx.fillStyle = rgba(ac, 0.05 + pl * 0.05); ctx.fillRect(0, PLAY_TOP, pw, PLAY_H);
-    ctx.fillStyle = "rgba(6,9,12,0.72)"; rr(pw / 2 - 108, PLAY_TOP + 10, 216, 22, 5); ctx.fill();
-    ctx.fillStyle = ac; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("⚑ TAP A PLOT TO DEPLOY HERO", pw / 2, PLAY_TOP + 21);
     ctx.restore();
   }
 
@@ -6954,12 +6944,14 @@
   }
   function drawCmdRow(rect, y0) {
     heroBtns = []; abilityBtns = [];
-    const ac = HERO.accent, dep = !!hero, hReady = dep ? hero.abil <= 0 : true;
+    // V6.37: the Commander is deployed from the build panel now, so this button is purely the
+    // Overload Pulse control — one button, one job, no arm-the-map mode hiding behind it.
+    const ac = HERO.accent, dep = !!hero, hReady = dep && hero.abil <= 0;
     if (LANDSCAPE) {
       const pad = 10, w = rect.w - 2 * pad, h = 27, gap = 5, x = rect.x + pad;
       let y = y0;
-      cmdBtn(x, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
-        dep ? "CMDR L" + (hero.lvl + 1) : "DEPLOY · FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
+      cmdBtn(x, y, w, h, ac, hReady, !dep ? "PULSE" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s",
+        dep ? "CMDR L" + (hero.lvl + 1) : "BUILD MENU", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
       heroBtns.push({ id: "hero", x: x, y: y, w: w, h: h });
       y += h + gap;
       const sReady = S.strikeCd <= 0;
@@ -6974,8 +6966,8 @@
       const y = y0, h = 32, w = (rect.w - 22 - 2 * 6) / 3;
       // HERO
       const hx = 11;
-      cmdBtn(hx, y, w, h, ac, hReady || S.heroArm, S.heroArm ? "CANCEL" : (!dep ? "HERO" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s"),
-        dep ? "COMMANDER L" + (hero.lvl + 1) : "DEPLOY · FREE", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
+      cmdBtn(hx, y, w, h, ac, hReady, !dep ? "PULSE" : hReady ? "PULSE" : Math.ceil(hero.abil) + "s",
+        dep ? "COMMANDER L" + (hero.lvl + 1) : "DEPLOY FROM BUILD MENU", dep && !hReady ? 1 - hero.abil / heroAbilCd() : 1);
       heroBtns.push({ id: "hero", x: hx, y: y, w: w, h: h });
       // STRIKE
       const sx2 = 11 + w + 6, sReady = S.strikeCd <= 0;
@@ -7003,14 +6995,29 @@
     prism:  "Chains · air · sees cloaked",
   };
   const BUILDP_W = 176;
+  // V6.37: the Commander is a build-panel row until it is on the field. It was the only thing you
+  // placed through a separate arm-the-map mode, which is exactly the split the player flagged.
+  const panelRows = () => (hero ? TOWER_ORDER : ["hero"].concat(TOWER_ORDER));
   function buildPanelRect() {
     const top = PLAY_TOP + 6, bot = (LANDSCAPE ? H : trayTop()) - 6;
-    const n = TOWER_ORDER.length, hdr = 26, pad = 8, gap = 5;
+    const n = panelRows().length, hdr = 26, pad = 8;
     const avail = Math.max(140, bot - top);
-    // rows shrink to fit rather than the panel scrolling — 7 towers is the whole roster, so the
-    // list is bounded and a 34px row still clears the tap minimum across its full 166px width.
-    const rowH = Math.max(28, Math.min(46, Math.floor((avail - hdr - pad - gap * (n - 1)) / n)));
+    // rows shrink to fit rather than the panel scrolling — the list is bounded (roster + hero), so a
+    // 30px row still clears the tap minimum across its full 166px width. Landscape with the hero row
+    // is the tight case; the gap tightens before the rows do.
+    const fit = (g) => Math.min(46, Math.floor((avail - hdr - pad - g * (n - 1)) / n));
+    let gap = 5, rowH = fit(gap);
+    if (rowH < 32) { gap = 3; rowH = fit(gap); }
+    rowH = Math.max(28, rowH);
     return { x: 6, y: top, w: BUILDP_W, h: Math.min(avail, hdr + n * rowH + gap * (n - 1) + pad), hdr, rowH, gap, pad };
+  }
+  // the Commander has no drawTowerArt entry — the chevron is its icon everywhere else in the UI
+  function drawHeroIcon(cx, cy, sc) {
+    ctx.save();
+    ctx.strokeStyle = HERO.accent; ctx.lineWidth = 2; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(cx, cy - 9 * sc); ctx.lineTo(cx - 8 * sc, cy + 7 * sc); ctx.lineTo(cx + 8 * sc, cy + 7 * sc); ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = HERO.accent; ctx.beginPath(); ctx.arc(cx, cy + 1.5 * sc, 2 * sc, 0, 7); ctx.fill();
+    ctx.restore();
   }
   const buildPanelHit = (x, y) => { if (!buildMenuOpen()) return false; const p = buildPanelRect(); return x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h; };
   function drawBuildPanel() {
@@ -7029,8 +7036,9 @@
     ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("✕", xx + xw / 2, xy + xh / 2);
     buildBtns.push({ x: xx - 5, y: xy - 4, w: xw + 10, h: xh + 9, action: "closebuild" });
     const y0 = p.y + p.hdr;
-    TOWER_ORDER.forEach((key, i) => {
+    panelRows().forEach((key, i) => {
       const x = p.x + 5, y = y0 + i * (p.rowH + p.gap), bw = p.w - 10, bh = p.rowH;
+      if (key === "hero") { drawHeroRow(x, y, bw, bh, slim); return; }
       const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret";
       const modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0)));
       const locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
@@ -7064,8 +7072,34 @@
     buildBtns.push({ x: p.x, y: p.y, w: p.w, h: p.h, action: "none" });
     ctx.restore();
   }
+  // the Commander row: free, no tier ladder, so it gets its own row painter rather than being
+  // forced through the tower shape
+  function drawHeroRow(x, y, bw, bh, slim) {
+    const st = HERO.levels[0], banned = S.tut === 0, ac = HERO.accent;
+    ctx.fillStyle = banned ? "#171d22" : "rgba(255,210,74,0.10)"; rr(x, y, bw, bh, 5); ctx.fill();
+    if (!banned) { ctx.strokeStyle = rgba(ac, 0.45); ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
+    ctx.save(); ctx.globalAlpha *= banned ? 0.35 : 1;
+    drawHeroIcon(x + 20, y + bh / 2, slim ? 0.85 : 1);
+    ctx.restore();
+    const tx = x + 42, y1 = y + (slim ? 11 : 13), y2 = y + (slim ? 25 : 28);
+    ctx.textAlign = "left"; ctx.fillStyle = banned ? C.textDim : C.text; ctx.font = "800 10px ui-monospace, monospace";
+    ctx.fillText("COMMANDER", tx, y1);
+    ctx.textAlign = "right"; ctx.fillStyle = banned ? C.textDim : ac; ctx.font = "800 9px ui-monospace, monospace";
+    ctx.fillText("\u2691", x + bw - 8, y1);
+    ctx.textAlign = "left"; ctx.fillStyle = banned ? C.textDim : "#8fe04a"; ctx.font = "800 10px ui-monospace, monospace";
+    ctx.fillText("FREE", tx, y2);
+    ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace";
+    ctx.fillText("DMG " + Math.round(st.dmg * heroDmgMul()) + " · RNG " + st.range, x + bw - 8, y2);
+    ctx.textAlign = "left";
+    if (!slim) { ctx.fillStyle = "rgba(186,202,212,0.6)"; ctx.font = "600 8px system-ui"; ctx.fillText("Levels up · air · sees cloaked", tx, y + 39); }
+    buildBtns.push({ x, y, w: bw, h: bh, action: "buildhero", afford: !banned, banned });
+  }
   function buildAction(b) {
     if (b.action === "none") return;
+    if (b.action === "buildhero") {
+      if (b.banned || hero || !S.selTile) { Sound.err(); vibrate(40); return; }
+      S.pending = { kind: "hero", c: S.selTile.c, r: S.selTile.r }; S.sheetAnim = 0; Sound.place(); vibrate(8); return;
+    }
     if (b.action === "closebuild") { S.selTile = null; S.rangePreview = null; Sound.place(); vibrate(8); return; }
     trayAction(b);
   }
@@ -7233,7 +7267,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.36 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.37 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7626,8 +7660,11 @@
     for (const b of buildBtns) {
       if (!inBox(sx, sy, b)) continue;
       if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range * rangeMul() }; }
+      else if (b.action === "buildhero" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: HERO.levels[0].range }; }
       return;
     }
+    // holding the Pulse button reveals the Commander's reach, the same way holding a build row does
+    for (const b of heroBtns) if (inBox(sx, sy, b) && hero) { S.rangePreview = { x: hero.x, y: hero.y, range: heroStats().range }; return; }
     const _tr = trayRect();
     if (sx < _tr.x || sy < _tr.y) return;
     for (const b of trayBtns) {
@@ -7643,35 +7680,29 @@
     for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (enemies.length >= CONGEST_CAP && S.wave >= 1 && (S.endless || S.wave < TOTAL_WAVES)) { S.banner = { text: "FIELD SATURATED", t: 1.4 }; Telemetry.ev("satBlocks"); Sound.err(); vibrate(40); } else { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
-    for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.heroArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
+    for (const b of abilityBtns) if (inBox(x, y, b)) { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); return; }
     for (const b of heroBtns) if (inBox(x, y, b)) {
-      if (S.heroArm) S.heroArm = false;
-      else if (!hero) { S.heroArm = true; S.strikeArm = false; S.selTile = S.selTower = S.pending = null; Sound.place(); }
-      else if (hero.abil <= 0) doPulse(); else Sound.err();
+      if (!hero) { S.banner = { text: "PICK A PLOT · BUILD MENU", t: 1.5 }; Sound.err(); vibrate(40); }
+      else if (hero.abil <= 0) doPulse();
+      else Sound.err();
       return;
     }
     // armed airstrike: a tap in the play viewport calls it down (landscape: not over the side panel)
     if (S.strikeArm) { if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) { const w = screenToWorld(x, y); doStrike(w.x, w.y); } else S.strikeArm = false; return; }
-    // armed hero deploy: tap a buildable plot to pick the spot. V6.36 — this used to drop the
-    // Commander instantly, which made it the one placement in the game with no preview and no
-    // confirm. It now raises the same pending sheet a tower does, complete with the range ring.
-    if (S.heroArm) {
-      if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) {
-        const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
-        if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) { S.pending = { kind: "hero", c, r }; S.heroArm = false; S.sheetAnim = 0; Sound.place(); vibrate(8); }
-        else { Sound.err(); vibrate(40); }
-      } else S.heroArm = false;
-      return;
-    }
     for (const b of buildBtns) if (inBox(x, y, b)) { buildAction(b); return; }
     { const _tr = trayRect(); if (x >= _tr.x && y >= _tr.y) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; } }
     // world tap — cancels any pending confirm first
     if (S.pending) { S.pending = null; S.rangePreview = null; }
     const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
     if (c < 0 || c >= COLS || r < 0 || r >= ROWS) { S.selTile = null; S.selTower = null; return; }
+    // V6.37: tapping the Commander toggles its range ring — the ring is no longer permanently on.
+    if (hero && hero.c === c && hero.r === r) { S.heroSel = !S.heroSel; S.selTile = null; S.selTower = null; Sound.place(); return; }
+    S.heroSel = false;
     const ex = towers.find((t) => t.c === c && t.r === r);
     if (ex) { S.selTile = null; S.selTower = towers.indexOf(ex); S.sheetAnim = 0; }
-    else if (buildable(c, r)) { if (S.selTile && S.selTile.c === c && S.selTile.r === r) { S.selTile = null; } else { S.selTower = null; S.selTile = { c, r }; S.sheetAnim = 0; } }
+    // V6.37: the build panel is a strict toggle — while it is open, ANY plot tap closes it, not just
+    // a second tap on the same plot. Picking a different plot means "close and re-pick", one tap each.
+    else if (buildable(c, r)) { if (S.selTile) { S.selTile = null; } else { S.selTower = null; S.selTile = { c, r }; S.sheetAnim = 0; } }
     else { S.selTile = null; S.selTower = null; if (buildableBase(c, r) && BLOCKED_SET.has(c + "," + r)) { S.pending = { kind: "excavate", c, r }; Sound.place(); vibrate(8); } }
   }
   function doPending() {
@@ -7705,6 +7736,7 @@
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
     } else if (pd.kind === "hero") {
       if (!hero) deployHero(pd.c, pd.r);
+      S.selTile = null;
     } else if (pd.kind === "sell") {
       const t = towers[pd.tower];
       if (t) { S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells"); towers.splice(pd.tower, 1); S.selTower = null; Sound.sell(); vibrate(18); }
@@ -8494,10 +8526,12 @@
     heroRing.rotation.x = -Math.PI / 2; heroRing.visible = false; scene.add(heroRing);
     function syncSel() {
       selRing.visible = selFill.visible = selTileM.visible = preRing.visible = preFill.visible = false;
-      heroRing.visible = !!hero;
-      if (hero) {
+      // V6.37: shown on demand — tap the Commander, or briefly after it deploys / levels up —
+      // instead of a ring permanently painted under it.
+      heroRing.visible = !!hero && (S.heroSel || S.heroRingT > 0);
+      if (heroRing.visible) {
         const ready = hero.abil <= 0;
-        heroRing.material.opacity = ready ? 0.26 + 0.14 * Math.sin(S.time * 5) : 0.13;
+        heroRing.material.opacity = ready ? 0.30 + 0.16 * Math.sin(S.time * 5) : 0.18;
         heroRing.position.set(hero.x, 1.4, hero.y); heroRing.scale.setScalar(HERO.levels[hero.lvl].range);
       }
       if (S.rangePreview) {
@@ -8749,7 +8783,7 @@
     resize3d(Math.min(window.innerWidth / W, window.innerHeight / H), window.devicePixelRatio || 1);
 
     return { buildMap, frame: frame3d, overlay, pick, project, resize: resize3d, scene, camera, renderer, applyCam,
-      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; }, setEco };
+      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; }, setEco, heroRingOn: () => heroRing.visible };
   })();
   window.G3D = G3D;
 
@@ -8770,6 +8804,7 @@
       stepSim(dtMs * S.speed);
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
+      if (S.heroRingT > 0) S.heroRingT = Math.max(0, S.heroRingT - raw);
       else if (!S.usedStrike && enemies.some((e) => e.alive)) queueTip("strike");
       if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { if (autoHold()) Telemetry.ev("holdMs", dtMs); else { S.countdown -= raw * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } } }
       if (S.screen !== "playing") render();
@@ -8786,7 +8821,6 @@
     // screen layer
     drawScreenFlash(); drawLowCore();
     if (S.screen === "playing" && S.strikeArm) drawStrikeArm();
-    if (S.screen === "playing" && S.heroArm) drawHeroArm();
     drawBossBar();
     drawBanner(raw);
     drawZoomButtons();
@@ -8822,7 +8856,7 @@
   // the pause screen resumes; only the main menu lets the OS handle exit.
   function onBack() {
     const s = S.screen;
-    if (s === "playing") { if (S.strikeArm || S.heroArm) { S.strikeArm = S.heroArm = false; render(); return true; } S.screen = "paused"; render(); return true; }
+    if (s === "playing") { if (S.strikeArm) { S.strikeArm = false; render(); return true; } if (S.heroSel) { S.heroSel = false; return true; } S.screen = "paused"; render(); return true; }
     if (s === "paused") { S.screen = "playing"; render(); return true; }
     if (s === "intro") { introFinish(false); return true; }   // back = dismiss, never exit the app
     if (s === "howto" || s === "armory" || s === "ach" || s === "daily" || s === "lab" || s === "log" || s === "freeplay" || s === "settings" || s === "campaign" || s === "gameover" || s === "victory" || s === "stats") { S.screen = "menu"; render(); return true; }
@@ -8850,7 +8884,7 @@
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
