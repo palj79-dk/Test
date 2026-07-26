@@ -108,3 +108,43 @@ reasonably expected both.
   This needs `trayTop()` used by the tray fill *and* by the tap gate (`if (y >= PLAY_BOTTOM)` today).
 - Interacts with **#4**: if landscape lands first, the tray layout changes anyway — worth sequencing
   these two together rather than solving the row twice.
+
+## 6. Siege Battery + Prism trivialise the mid campaign — `DONE` (V6.35)
+
+> "det ser ud som om de to nye tårne (prism og bombard) er for kraftige i de tidlige baner.
+> Overvej om de skal fjernes igen, kan låses på en eller anden måde så de først bliver mulige at
+> udvikle senere i spillet. eller noget helt tredje"
+
+> (on the chosen direction) "brug 'specialister + kampagne gate' — det er dog kun med disse tårne jeg
+> har kommet igennem de sidste to baner så måske ikke nødvendigt at skære i styrken"
+
+**Recorded + resolved:** 2026-07-26 · against V6.34 · shipped in V6.35.
+
+**Measured from the 2026-07-26 log (12 runs):**
+- V6.27, no research: `turret + cryo`, **10-21 towers** per map.
+- V6.29, armory 0.5: mixed roster (turret/cryo/tesla/mortar), 7-12 towers.
+- V6.32, armory 0.59+: **only prism + siege (+cryo)** — turret, mortar, pyre and tesla vanish entirely.
+  Crossroads/normal cleared with **5 towers**, 20/20 core. Gauntlet **brutal** cleared with **5 towers**
+  at **15/15 core**.
+
+So the defect was **roster collapse**, not just "strong early": once unlocked, nothing else was worth a plot.
+
+**Why the original V6.25 tuning missed it (my analysis error):** I balanced on **DPS per scrap** and
+concluded ~1.6-2.1× power for 1.7-1.9× cost. But `scrapSpent` stayed high (4.7k-9k) while tower counts
+fell to 5 — the binding resource on these maps is **build plots**, not scrap. On **DPS *per plot***
+siege/prism win decisively, and that is the metric that mattered.
+
+**Why we did NOT cut damage (user's counter-evidence, and it holds):** on the late brutal maps these
+towers were *needed*, not dominant — The Maw cost 6 core, **Blockade cost 12 of 25**, and Ground Zero
+was an outright **loss**. A flat nerf would have broken the top end.
+
+**What shipped instead — reshape coverage, keep punch:**
+- **All damage values unchanged** (Cataclysm 340, Ruination 760, Spectrum 190, Singularity 470).
+- **Range cut** on both: siege 172→148 (L1) and 222→190 (t4a); prism 238→202 and 302→256.
+- **Splash cut** on siege: 92→78 (L1), 152→118 (t4a).
+- **Campaign gate**: both capstones now carry `reqCamp: 12` — unbuyable until 12 missions are cleared,
+  regardless of Alloy. New `Tech.blockedBy()` drives it; the Armory shows "🔒 MISSION 12 REQUIRED"
+  instead of a dead button, and the post-run nudge never advertises a gated node.
+
+Net effect: they stay the late-game answer they need to be, but one of them can no longer cover a whole
+map, so the rest of the roster keeps a reason to exist.

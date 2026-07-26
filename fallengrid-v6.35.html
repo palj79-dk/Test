@@ -4140,16 +4140,16 @@
         b: { name: "Plasma", short: "PLASMA", desc: "pierces armor", cost: 130, dmg: 30, range: 118, rate: 300, burn: 5.0, burnT: 2.0, pierce: true, t4: { name: "Ion Torch", cost: 200, dmg: 60, range: 126, rate: 280, burn: 8.0, burnT: 2.2, pierce: true } },
       } },
     siege:  { name: "Siege Battery", short: "SIEGE", kind: "lob", art: "siege", dmgType: "explosive", metal: "#5c5240", metalLt: "#82755a", accent: "#ffb703", desc: "siege artillery",
-      levels: [ { cost: 155, dmg: 105, range: 172, rate: 1550, splash: 92, pierce: true }, { cost: 130, dmg: 165, range: 184, rate: 1470, splash: 100, pierce: true }, { cost: 200, dmg: 255, range: 198, rate: 1380, splash: 110, pierce: true } ],
+      levels: [ { cost: 155, dmg: 105, range: 148, rate: 1550, splash: 78, pierce: true }, { cost: 130, dmg: 165, range: 158, rate: 1470, splash: 84, pierce: true }, { cost: 200, dmg: 255, range: 170, rate: 1380, splash: 92, pierce: true } ],
       branches: {
-        a: { name: "Bombard", short: "BOMBARD", desc: "rapid wide barrage", cost: 210, dmg: 225, range: 208, rate: 1050, splash: 132, pierce: true, t4: { name: "Cataclysm", cost: 330, dmg: 340, range: 222, rate: 950, splash: 152, pierce: true } },
-        b: { name: "Breaker", short: "BREAKER", desc: "one colossal shell", cost: 265, dmg: 480, range: 202, rate: 1800, splash: 86, pierce: true, t4: { name: "Ruination", cost: 420, dmg: 760, range: 216, rate: 1700, splash: 98, pierce: true } },
+        a: { name: "Bombard", short: "BOMBARD", desc: "rapid barrage", cost: 210, dmg: 225, range: 178, rate: 1050, splash: 106, pierce: true, t4: { name: "Cataclysm", cost: 330, dmg: 340, range: 190, rate: 950, splash: 118, pierce: true } },
+        b: { name: "Breaker", short: "BREAKER", desc: "one colossal shell", cost: 265, dmg: 480, range: 174, rate: 1800, splash: 74, pierce: true, t4: { name: "Ruination", cost: 420, dmg: 760, range: 186, rate: 1700, splash: 84, pierce: true } },
       } },
     prism:  { name: "Prism", short: "PRISM", kind: "beam", art: "prism", dmgType: "energy", metal: "#3f4a72", metalLt: "#63719e", accent: "#a878ff", desc: "refracting beam",
-      levels: [ { cost: 165, dmg: 70, range: 238, rate: 880, chain: 2 }, { cost: 140, dmg: 110, range: 252, rate: 830, chain: 2 }, { cost: 205, dmg: 168, range: 270, rate: 770, chain: 3 } ],
+      levels: [ { cost: 165, dmg: 70, range: 202, rate: 880, chain: 2 }, { cost: 140, dmg: 110, range: 214, rate: 830, chain: 2 }, { cost: 205, dmg: 168, range: 230, rate: 770, chain: 3 } ],
       branches: {
-        a: { name: "Refraction", short: "REFRACT", desc: "chains far & wide", cost: 215, dmg: 128, range: 286, rate: 700, chain: 4, t4: { name: "Spectrum", cost: 340, dmg: 190, range: 302, rate: 640, chain: 5 } },
-        b: { name: "Lance", short: "LANCE", desc: "focused pierce beam", cost: 275, dmg: 300, range: 340, rate: 1080, pierce: true, t4: { name: "Singularity", cost: 430, dmg: 470, range: 368, rate: 1000, pierce: true } },
+        a: { name: "Refraction", short: "REFRACT", desc: "chains across a crowd", cost: 215, dmg: 128, range: 242, rate: 700, chain: 4, t4: { name: "Spectrum", cost: 340, dmg: 190, range: 256, rate: 640, chain: 5 } },
+        b: { name: "Lance", short: "LANCE", desc: "focused pierce beam", cost: 275, dmg: 300, range: 286, rate: 1080, pierce: true, t4: { name: "Singularity", cost: 430, dmg: 470, range: 306, rate: 1000, pierce: true } },
       } },
   };
   const TOWER_ORDER = ["turret", "cryo", "mortar", "tesla", "pyre", "siege", "prism"];
@@ -4216,6 +4216,10 @@
   // unlocked by researching. Capstones (Siege Battery / Prism) grant a placeholder effect for now — the
   // two NEW towers land in a later phase. Node `eff` sums into Tech.bonus and is read by the *Mul() getters.
   const TOWER_START = ["turret", "cryo"];
+  // V6.35: the two capstone towers also require campaign progress, so they arrive as a LATE reward
+  // instead of trivialising the mid campaign (a play-log showed 5 towers clearing Gauntlet/brutal
+  // at full core once they were unlocked at ~59% Armory).
+  const CAP_CAMP = 12;
   const TECH = [
     { id: "ord", name: "ORDNANCE", theme: "Raw firepower & heavy weapons", icon: "⚔", accent: "#f2b23a", nodes: [
       { id: "o_mortar", type: "unlock",   name: "Mortar",          desc: "Unlock the splash tower",  cost: 120, eff: { tower: "mortar" } },
@@ -4227,7 +4231,7 @@
         a: { name: "Precision",  desc: "+5% damage, +2% fire rate", eff: { dmg: 0.05, rate: 0.02 } },
         b: { name: "Saturation", desc: "+20% splash radius",        eff: { splash: 0.20 } } },
       { id: "o_rate2",  type: "weapon",   name: "Fire Control II", desc: "+14% fire rate",     cost: 430, eff: { rate: 0.14 } },
-      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "Unlock siege artillery — the armor answer", cost: 820, eff: { tower: "siege" } },
+      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "Unlock siege artillery — the armor answer", cost: 820, eff: { tower: "siege" }, reqCamp: CAP_CAMP },
     ] },
     { id: "arc", name: "ARC", theme: "Energy, crowd-control, shields", icon: "✦", accent: "#37e0d0", nodes: [
       { id: "a_tesla",  type: "unlock",   name: "Tesla",           desc: "Unlock long-range energy", cost: 140, eff: { tower: "tesla" } },
@@ -4239,7 +4243,7 @@
         a: { name: "Overload",   desc: "+5% tower damage", eff: { dmg: 0.05 } },
         b: { name: "Disruption", desc: "+6% fire rate",    eff: { rate: 0.06 } } },
       { id: "a_rate",   type: "weapon",   name: "Coolant",         desc: "+6% fire rate",    cost: 440, eff: { rate: 0.06 } },
-      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "Unlock the refracting beam tower", cost: 860, eff: { tower: "prism" } },
+      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "Unlock the refracting beam tower", cost: 860, eff: { tower: "prism" }, reqCamp: CAP_CAMP },
     ] },
     { id: "log", name: "LOGISTICS", theme: "Scrap, alloy, sustain", icon: "⬡", accent: "#8fe04a", nodes: [
       { id: "l_scrap1", type: "system",   name: "Reserves I",      desc: "+25 starting scrap", cost: 110, eff: { scrap: 25 } },
@@ -4289,9 +4293,16 @@
     totalNodes() { return TECH.reduce((a, b) => a + b.nodes.length, 0); },
     totalOwned() { return TECH.reduce((a, b, i) => a + this.owned(i), 0); },
     branchesComplete() { return TECH.reduce((a, b, i) => a + (this.owned(i) >= b.nodes.length ? 1 : 0), 0); },
+    // null = buyable; otherwise a short reason string the Armory shows instead of the button
+    blockedBy(bi) {
+      const node = this.next(bi); if (!node) return "done";
+      if (node.reqCamp && Store.get("camp", 0) < node.reqCamp) return "MISSION " + node.reqCamp + " REQUIRED";
+      return null;
+    },
     buy(bi) {
       if (devArmory != null) return false;
       const node = this.next(bi); if (!node || Meta.alloy < node.cost) return false;
+      if (node.reqCamp && Store.get("camp", 0) < node.reqCamp) return false;
       Meta.alloy -= node.cost; Meta.save();
       this.research[TECH[bi].id] = this.owned(bi) + 1; Store.set("research", this.research);
       this.recompute(); return true;
@@ -4318,7 +4329,9 @@
     let best = null;
     TECH.forEach((b, bi) => {
       const n = Tech.next(bi);
-      if (n && Meta.alloy >= n.cost && (!best || n.cost < best.node.cost)) best = { bi, node: n };
+      if (!n || Meta.alloy < n.cost) return;
+      if (Tech.blockedBy(bi)) return;            // V6.35: never advertise a campaign-gated node
+      if (!best || n.cost < best.node.cost) best = { bi, node: n };
     });
     return best;
   }
@@ -5014,7 +5027,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.34",
+        ts: Date.now(), ver: "6.35",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -7147,7 +7160,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.34 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.35 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7277,7 +7290,8 @@
           <div style="font-size:9px;letter-spacing:1px;color:${msDone ? "#4fe08a" : b.accent}">▸ ${ms}</div></button>`;
         if (!open) {
           const nrow = !node ? `<div style="text-align:center;color:#4fe08a;font-size:11px;padding:7px">✓ FULLY RESEARCHED</div>`
-            : `<div style="display:flex;align-items:center;gap:8px;padding:8px 11px"><span style="font-size:9px;color:${b.accent};letter-spacing:1px">NEXT</span><span style="font-weight:700;font-size:12px">${node.name}</span><span style="margin-left:auto;color:#8a978f;font-size:11px">⬡${node.cost}</span><button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="padding:6px 10px">RESEARCH</button></div>`;
+            : (() => { const blk = Tech.blockedBy(bi);
+                return `<div style="display:flex;align-items:center;gap:8px;padding:8px 11px"><span style="font-size:9px;color:${b.accent};letter-spacing:1px">NEXT</span><span style="font-weight:700;font-size:12px">${node.name}</span><span style="margin-left:auto;color:#8a978f;font-size:11px">⬡${node.cost}</span>${blk ? `<span style="font-size:9px;color:#f2b23a;letter-spacing:.5px">🔒 ${blk}</span>` : `<button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="padding:6px 10px">RESEARCH</button>`}</div>`; })();
           return `<div style="background:#121614;border:1px solid #232b27;border-radius:8px;margin:8px 0;overflow:hidden">${head}${nrow}</div>`;
         }
         let owned = n > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:8px 11px 2px">` + b.nodes.slice(0, n).map((nd) => `<span style="font-size:10px;padding:3px 6px;border:1px solid ${b.accent}55;border-radius:3px;color:#cdd">✓ ${nd.name}</span>`).join("") + `</div>` : "";
@@ -7289,12 +7303,13 @@
           const tw = node.eff && node.eff.tower;
           const role = tw ? `<div style="margin-top:6px;font-size:10px"><span style="background:${TOWERS[tw].accent};color:#06110d;font-weight:800;padding:2px 5px;border-radius:3px;font-size:8.5px">${TOWERS[tw].dmgType.toUpperCase()}</span> <span style="color:#9fb0a7">${TREE_ROLE[tw] || TOWERS[tw].desc}</span></div>` : "";
           const isFork = node.type === "fork";
+          const blk = Tech.blockedBy(bi);
           live = `<div style="margin:8px 11px;border:1.5px solid ${b.accent};border-radius:7px;padding:10px;background:${b.accent}14">
             <div style="font-size:9px;color:${b.accent};letter-spacing:1px">${GLY[node.type]} ${TYPE_UP[node.type]} · RESEARCH NOW</div>
             <div style="font-weight:800;font-size:14px;margin-top:3px">${node.name}</div>
             <div style="font-size:11px;color:#9fb0a7;margin-top:2px">${node.desc}</div>${role}
             ${isFork ? forkToggle(node, bi, false) : ""}
-            <div style="display:flex;align-items:center;margin-top:9px"><span style="color:${b.accent};font-weight:800">⬡ ${node.cost}</span><span style="color:#8a978f;font-size:10px;margin-left:4px">ALLOY</span><button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="margin-left:auto;padding:6px 12px">RESEARCH ▸</button></div></div>`;
+            <div style="display:flex;align-items:center;margin-top:9px"><span style="color:${b.accent};font-weight:800">⬡ ${node.cost}</span><span style="color:#8a978f;font-size:10px;margin-left:4px">ALLOY</span>${blk ? `<span style="margin-left:auto;font-size:9.5px;letter-spacing:.5px;color:#f2b23a">🔒 ${blk}</span>` : `<button class="btn small ${wallet >= node.cost && devArmory == null ? "" : "ghost"}" id="rb_${bi}" style="margin-left:auto;padding:6px 12px">RESEARCH ▸</button>`}</div></div>`;
         }
         const rest = b.nodes.slice(n + 1);
         let fog = "";
@@ -8734,7 +8749,7 @@
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
