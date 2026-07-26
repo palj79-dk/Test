@@ -55,6 +55,40 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      # V6.32 (C3): the Android project is generated here, so AndroidManifest.xml is not checked in
+      # and has to be patched after every `cap add`. Two things matter for landscape support:
+      #  1. screenOrientation=fullSensor  - allow BOTH orientations (never lock to portrait).
+      #  2. configChanges must include orientation|screenSize - without them Android destroys and
+      #     recreates the activity on rotation, the WebView reloads, and the player LOSES THE RUN.
+      - name: Allow both orientations (patch generated manifest)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          python3 - "$M" <<'PY'
+          import re, sys
+          p = sys.argv[1]
+          s = open(p, encoding="utf-8").read()
+          m = re.search(r'<activity\b[^>]*android:name="\.MainActivity"[^>]*>', s, re.S)
+          if not m:
+              print("FATAL: MainActivity not found in", p); sys.exit(1)
+          tag = m.group(0)
+          new = tag
+          if 'android:screenOrientation' in new:
+              new = re.sub(r'android:screenOrientation="[^"]*"', 'android:screenOrientation="fullSensor"', new)
+          else:
+              new = new[:-1].rstrip() + '\n            android:screenOrientation="fullSensor">'
+          cm = re.search(r'android:configChanges="([^"]*)"', new)
+          need = ["orientation", "screenSize", "screenLayout", "keyboardHidden"]
+          if cm:
+              have = cm.group(1).split("|")
+              merged = have + [k for k in need if k not in have]
+              new = new.replace(cm.group(0), 'android:configChanges="%s"' % "|".join(merged))
+          else:
+              new = new[:-1].rstrip() + '\n            android:configChanges="%s">' % "|".join(need)
+          s = s.replace(tag, new)
+          open(p, "w", encoding="utf-8").write(s)
+          print("patched MainActivity:\n" + new)
+          PY
+
       - name: Sync web assets
         run: npx cap sync android
 

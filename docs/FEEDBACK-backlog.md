@@ -66,7 +66,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 - Both #2 and #3 are "the game never teaches its two free active abilities", so they probably want a
   single onboarding beat rather than two separate ones — and it should tie in with #1.
 
-## 4. No landscape support — layout stays portrait when the phone is rotated — `OPEN`
+## 4. No landscape support — layout stays portrait when the phone is rotated — `DONE` (V6.30-V6.32)
 
 > "when I turn the phone the layout is still portrait. consider to make both portrait and landscape a
 > possibility (and for phone and tablet)"
