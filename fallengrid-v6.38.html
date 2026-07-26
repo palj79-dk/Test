@@ -5043,7 +5043,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.37",
+        ts: Date.now(), ver: "6.38",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6408,41 +6408,123 @@
   let seenTips = Store.get("seenTips", {});
   function queueTip(key) { if (!TIPS[key] || seenTips[key]) return; seenTips[key] = 1; Store.set("seenTips", seenTips); (S.tipQ || (S.tipQ = [])).push(TIPS[key]); }
   let tutSkipBtn = null;
+  // V6.38 GUIDED TOUR. Each step names one piece of UI, says what it is for, and spotlights the real
+  // element. A step with `done` waits for the player to perform the action; a step without one is a
+  // read-only card that advances on any tap. `msg`/`sub` may be functions so a step can follow the
+  // player mid-flow (plot -> tower row -> confirm) instead of stranding them on a stale instruction.
+  // `only` locks the build panel to a single row for that step.
+  const TUT = [
+    { id: "hud", msg: "THE TOP BAR",
+      sub: "\u2b21 Scrap builds and upgrades towers \u00b7 \u25c9 Core is your life \u2014 every leak costs one \u00b7 WAVE is your progress through the sector.",
+      spot: () => ({ x: 6, y: 4, w: 150, h: 32 }) },
+    { id: "build", only: "turret", done: () => towers.length > 0,
+      msg: () => S.pending ? "CONFIRM \u2713 BUILD" : (buildMenuOpen() ? "PICK AUTO-GUN" : "TAP THE GLOWING PLOT"),
+      sub: () => S.pending ? "The ring on the map is how far this tower can shoot. Cover the road, not the scenery."
+                           : "Grey tiles are build ground; the road is where they walk. Each row lists cost, damage, range and what it counters.",
+      spot: () => {
+        const cf = trayBtns.find((x) => x.action === "confirm"); if (cf) return cf;
+        const b = buildBtns.find((x) => x.tower === "turret"); if (b) return b;
+        const c = center(TUT_PLOT.c, TUT_PLOT.r); return { pt: worldToScreen(c.x, c.y) };
+      } },
+    { id: "upgrade", done: () => towers.some((t) => t.lvl >= 1),
+      msg: () => S.pending ? "CONFIRM \u2713 UPGRADE" : ((S.selTower != null && towers[S.selTower]) ? "TAP UPGRADE" : "TAP YOUR TOWER"),
+      sub: "Upgrading beats spreading thin. At level 3 a tower splits into two specialisations \u2014 that pick is yours.",
+      spot: () => {
+        const cf = trayBtns.find((x) => x.action === "confirm"); if (cf) return cf;
+        const up = trayBtns.find((x) => x.action === "upgrade"); if (up) return up;
+        const t = towers[0]; if (!t) return null; const c = center(t.c, t.r); return { pt: worldToScreen(c.x, c.y - 12) };
+      } },
+    { id: "hero", only: "hero", done: () => !!hero,
+      msg: () => S.pending ? "CONFIRM \u2713 DEPLOY" : (buildMenuOpen() ? "PICK COMMANDER" : "TAP ANOTHER PLOT"),
+      sub: "The Commander costs nothing. It fights on its own, levels up through the run, hits flyers and reveals cloaked foes near it.",
+      spot: () => {
+        const cf = trayBtns.find((x) => x.action === "confirm"); if (cf) return cf;
+        const hr = buildBtns.find((x) => x.action === "buildhero"); if (hr) return hr;
+        const p = freePlot(); if (!p) return null;                     // panel closed -> point at a plot
+        const c = center(p.c, p.r); return { pt: worldToScreen(c.x, c.y) };
+      } },
+    { id: "cmd", msg: "YOUR COMMAND BAR",
+      sub: "PULSE fires the Commander's blast \u00b7 STRIKE calls a free orbital hit that stuns and reveals camo \u00b7 CORE buys back integrity with scrap.",
+      spot: () => cmdStripRect() },
+    { id: "intel", msg: "WAVE INTEL",
+      sub: "What is coming, how many, and what shrugs off your damage. If it warns you, the board cannot answer that wave yet.",
+      spot: () => intelRect() },
+    { id: "deploy", done: () => S.wave >= 1,
+      msg: "TAP DEPLOY TO SEND WAVE 1",
+      sub: "Waves then arrive on a timer. Sending the next one early pays bonus scrap \u2014 the time you skip is the reward.",
+      spot: () => hudBtns.find((x) => x.id === "nextwave") },
+  ];
+  const tutStep = () => (S.tut >= 0 && S.tut < TUT.length ? TUT[S.tut] : null);
+  // any buildable, unoccupied tile — the tour points here when it needs a plot and the panel is shut
+  function freePlot() {
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+      if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) return { c, r };
+    return null;
+  }
+  // the build panel only offers what the current step is teaching
+  const tutAllows = (key) => { const st = tutStep(); return !st || !st.only || st.only === key; };
+  const tutVal = (v) => (typeof v === "function" ? v() : v);
+  function cmdStripRect() {
+    const y = cmdRowY();
+    return LANDSCAPE ? { x: TRAY_X + 8, y: y - 3, w: TRAY_W - 16, h: 97 } : { x: 9, y: y - 3, w: W - 18, h: 38 };
+  }
+  function intelRect() {
+    const r = trayRect();
+    return LANDSCAPE ? { x: r.x + 8, y: r.y + 4, w: r.w - 16, h: 126 } : { x: 9, y: r.y + 4, w: W - 18, h: 62 };
+  }
   function tutFinish() { S.tut = -1; Store.set("tutDone", true); tutSkipBtn = null; }
   function drawTutorial() {
     tutSkipBtn = null;
     if (S.tut < 0 || S.screen !== "playing") return;
-    if (S.wave >= 1) { tutFinish(); return; }              // deployed -> done
-    if (S.tut === 0 && towers.length >= 1) S.tut = 1;       // built -> upgrade nudge
-    if (S.tut === 1 && towers.some((t) => t.lvl >= 1)) S.tut = 2; // upgraded -> deploy nudge
-    const pulse = 0.5 + 0.5 * Math.sin(S.time * 4);
-    let msg = "", target = null, onHud = false;
-    if (S.tut === 0) { msg = "TAP THE PLOT, THEN PICK AUTO-GUN"; const c = center(TUT_PLOT.c, TUT_PLOT.r); target = worldToScreen(c.x, c.y); }
-    else if (S.tut === 1) { msg = "TAP YOUR TOWER, THEN UPGRADE"; if (towers[0]) { const c = center(towers[0].c, towers[0].r); target = worldToScreen(c.x, c.y - 12); } }
-    else { msg = "TAP DEPLOY TO SEND WAVE 1"; const b = hudBtns.find((x) => x.id === "nextwave"); if (b) { target = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; onHud = true; } }
-    // spotlight
-    if (target && target.x > -30 && target.x < W + 30 && target.y > 20 && target.y < H) {
+    while (S.tut < TUT.length && TUT[S.tut].done && TUT[S.tut].done()) S.tut++;
+    if (S.tut >= TUT.length || S.wave >= 1) { tutFinish(); return; }   // wave away -> the tour is over
+    const st = TUT[S.tut], pulse = 0.5 + 0.5 * Math.sin(S.time * 4), pw = playW();
+    const spot = st.spot ? st.spot() : null;
+    // spotlight: a ring + arrow for a spot on the map, a rounded outline for a UI element
+    if (spot) {
       ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pulse * 0.4); ctx.lineWidth = 3; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8;
-      if (onHud) { const b = hudBtns.find((x) => x.id === "nextwave"); rr(b.x - 3, b.y - 3, b.w + 6, b.h + 6, 5); ctx.stroke(); }
-      else {
-        const rad = 26 + pulse * 5; ctx.beginPath(); ctx.arc(target.x, target.y, rad, 0, 7); ctx.stroke();
-        const ay = target.y - rad - 6 - pulse * 4; ctx.fillStyle = rgba("#37e0d0", 0.85); ctx.shadowBlur = 6;
-        ctx.beginPath(); ctx.moveTo(target.x - 7, ay - 9); ctx.lineTo(target.x + 7, ay - 9); ctx.lineTo(target.x, ay); ctx.closePath(); ctx.fill();
-      }
+      if (spot.pt) {
+        const t = spot.pt;
+        if (t.x > -30 && t.x < W + 30 && t.y > PLAY_TOP && t.y < H) {
+          const rad = 26 + pulse * 5; ctx.beginPath(); ctx.arc(t.x, t.y, rad, 0, 7); ctx.stroke();
+          const ay = t.y - rad - 6 - pulse * 4; ctx.fillStyle = rgba("#37e0d0", 0.85); ctx.shadowBlur = 6;
+          ctx.beginPath(); ctx.moveTo(t.x - 7, ay - 9); ctx.lineTo(t.x + 7, ay - 9); ctx.lineTo(t.x, ay); ctx.closePath(); ctx.fill();
+        }
+      } else { rr(spot.x - 4, spot.y - 4, spot.w + 8, spot.h + 8, 6); ctx.stroke(); }
       ctx.restore();
     }
-    // instruction banner (below HUD so it never covers the deploy button)
-    ctx.save(); ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const pw = playW();
-    const bw = ctx.measureText(msg).width + 28, bx = pw / 2 - bw / 2, byy = PLAY_TOP + 52;
-    ctx.fillStyle = "rgba(6,9,12,0.85)"; rr(bx, byy - 13, bw, 26, 6); ctx.fill();
-    ctx.strokeStyle = rgba("#37e0d0", 0.45); ctx.lineWidth = 1; rr(bx, byy - 13, bw, 26, 6); ctx.stroke();
-    ctx.fillStyle = C.neonC; ctx.fillText(msg, pw / 2, byy);
+    // instruction card: headline + one explanatory line, parked at whichever end of the play area
+    // the spotlight is NOT, and kept clear of the build panel when that is open
+    const msg = tutVal(st.msg), sub = tutVal(st.sub);
+    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const bp = buildMenuOpen() ? buildPanelRect() : null;
+    const left = bp ? bp.x + bp.w + 8 : 8, avail = Math.max(150, pw - left - 8);
+    ctx.font = "600 9px system-ui";
+    const words = sub.split(" "), maxW = avail - 24, lines = []; let cur = "";
+    for (const w of words) { const t2 = cur ? cur + " " + w : w; if (ctx.measureText(t2).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t2; }
+    if (cur) lines.push(cur);
+    let wMax = 0; for (const l of lines) wMax = Math.max(wMax, ctx.measureText(l).width);
+    ctx.font = "800 11px ui-monospace, monospace"; wMax = Math.max(wMax, ctx.measureText(msg).width);
+    const bw = Math.min(avail, wMax + 24), bh = 26 + lines.length * 12 + 14;
+    const spotLow = spot ? (spot.pt ? spot.pt.y : spot.y + spot.h) : 0;
+    const atTop = spotLow > PLAY_TOP + PLAY_H * 0.5;                  // spotlight low -> card high
+    const bx = Math.max(left, left + avail / 2 - bw / 2);
+    const byy = atTop ? PLAY_TOP + 42 : (LANDSCAPE ? H : trayTop()) - bh - 10;
+    ctx.fillStyle = "rgba(6,9,12,0.92)"; rr(bx, byy, bw, bh, 6); ctx.fill();
+    ctx.strokeStyle = rgba("#37e0d0", 0.5); ctx.lineWidth = 1; rr(bx, byy, bw, bh, 6); ctx.stroke();
+    const cx = bx + bw / 2;
+    ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText(msg, cx, byy + 15);
+    ctx.fillStyle = "rgba(186,202,212,0.82)"; ctx.font = "600 9px system-ui";
+    lines.forEach((l, k) => ctx.fillText(l, cx, byy + 31 + k * 12));
+    ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
+    ctx.fillText((S.tut + 1) + "/" + TUT.length + (st.done ? "" : "  \u00b7  TAP TO CONTINUE"), cx, byy + bh - 9);
     // skip
-    const sw = 80, sh = 27, sx = pw - sw - 8, sy = PLAY_TOP + 6;
+    // SKIP is hit-tested before every other button, so it must clear the DEPLOY control — in
+    // landscape that button hangs ~7px below the shorter HUD and the two used to overlap.
+    const sw = 80, sh = 27, sx = pw - sw - 8, sy = Math.max(PLAY_TOP + 6, 60);
     ctx.fillStyle = "rgba(6,9,12,0.9)"; rr(sx, sy, sw, sh, 5); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.75); ctx.lineWidth = 1.5; rr(sx, sy, sw, sh, 5); ctx.stroke();
-    ctx.fillStyle = C.neonC; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("SKIP ✕", sx + sw / 2, sy + sh / 2);
+    ctx.fillStyle = C.neonC; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("SKIP \u2715", sx + sw / 2, sy + sh / 2);
     tutSkipBtn = { x: sx, y: sy, w: sw, h: sh };
     ctx.restore();
   }
@@ -7039,7 +7121,7 @@
     panelRows().forEach((key, i) => {
       const x = p.x + 5, y = y0 + i * (p.rowH + p.gap), bw = p.w - 10, bh = p.rowH;
       if (key === "hero") { drawHeroRow(x, y, bw, bh, slim); return; }
-      const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret";
+      const spec = TOWERS[key], l0 = spec.levels[0], tutLock = !tutAllows(key);
       const modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0)));
       const locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
       ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
@@ -7065,7 +7147,7 @@
         ctx.textAlign = "left";
         if (!slim) { ctx.fillStyle = "rgba(186,202,212,0.6)"; ctx.font = "600 8px system-ui"; ctx.fillText(TOWER_ROLE[key] || spec.desc, tx, y + 39); }
       }
-      if (S.tut === 0 && key === "turret") { const pu = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pu * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
+      if (tutStep() && tutStep().only === key) tutRowPulse(x, y, bw, bh);
       buildBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
     });
     // taps that land on the panel background must not fall through to the map behind it
@@ -7074,8 +7156,14 @@
   }
   // the Commander row: free, no tier ladder, so it gets its own row painter rather than being
   // forced through the tower shape
+  // the row the current tour step is asking for gets a pulsing outline
+  function tutRowPulse(x, y, bw, bh) {
+    const pu = 0.5 + 0.5 * Math.sin(S.time * 4);
+    ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pu * 0.4); ctx.lineWidth = 2.5;
+    ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore();
+  }
   function drawHeroRow(x, y, bw, bh, slim) {
-    const st = HERO.levels[0], banned = S.tut === 0, ac = HERO.accent;
+    const st = HERO.levels[0], banned = !tutAllows("hero"), ac = HERO.accent;
     ctx.fillStyle = banned ? "#171d22" : "rgba(255,210,74,0.10)"; rr(x, y, bw, bh, 5); ctx.fill();
     if (!banned) { ctx.strokeStyle = rgba(ac, 0.45); ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
     ctx.save(); ctx.globalAlpha *= banned ? 0.35 : 1;
@@ -7092,6 +7180,7 @@
     ctx.fillText("DMG " + Math.round(st.dmg * heroDmgMul()) + " · RNG " + st.range, x + bw - 8, y2);
     ctx.textAlign = "left";
     if (!slim) { ctx.fillStyle = "rgba(186,202,212,0.6)"; ctx.font = "600 8px system-ui"; ctx.fillText("Levels up · air · sees cloaked", tx, y + 39); }
+    if (tutStep() && tutStep().only === "hero") tutRowPulse(x, y, bw, bh);
     buildBtns.push({ x, y, w: bw, h: bh, action: "buildhero", afford: !banned, banned });
   }
   function buildAction(b) {
@@ -7239,6 +7328,19 @@
     { crest: "⌬", title: "THE GRID HAS FALLEN", body: "For a century the <b>Grid</b> held back the <b>Scourge</b>. Then, without warning, it went dark. You are a <b>Warden</b> — woken from cryo-sleep to relight it, sector by sector." },
     { crest: "☢", title: "HOLD THE LINE", body: "Machines walk the road toward your <b>Core</b>. Survive <b>20 waves</b> — every leak costs Core integrity, and losing it all ends the sector." },
     { crest: "⬡", title: "YOUR EDGE", body: "<b>Scrap</b> builds towers during a mission. <b>Alloy</b> is earned per run — spend it in the <b>Armory</b> to research permanent upgrades and unlock new towers. You start with only Auto-Gun + Cryo; the Armory opens the rest." },
+    // V6.38: a labelled wireframe of the real screen, so the first thing a player sees is a map of
+    // where everything lives. The in-mission tour then walks the same four regions live.
+    { crest: "▣", title: "YOUR SCREEN", body: `<div style="border:1px solid #2c3a42;border-radius:8px;overflow:hidden;font:700 9px ui-monospace,monospace;margin:0 0 10px">
+        <div style="background:#182027;padding:7px 9px;display:flex;justify-content:space-between;color:#dfe8ec"><span>⬡ SCRAP &nbsp;&nbsp; ◉ CORE</span><span style="color:#8a969c">WAVE 3/20</span></div>
+        <div style="padding:20px 9px;background:#11171c;color:#7d8f99;text-align:center;border-top:1px solid #2c3a42;border-bottom:1px solid #2c3a42">▉ &nbsp;BATTLEFIELD</div>
+        <div style="background:#141b21;padding:6px 9px;color:#37e0d0">▸ WAVE INTEL — what is coming</div>
+        <div style="background:#0e1418;padding:6px;display:flex;gap:5px">
+          <span style="flex:1;text-align:center;border:1px solid #3a4048;border-radius:3px;padding:4px 0;color:#ffd24a">PULSE</span>
+          <span style="flex:1;text-align:center;border:1px solid #3a4048;border-radius:3px;padding:4px 0;color:#ff9a5a">STRIKE</span>
+          <span style="flex:1;text-align:center;border:1px solid #3a4048;border-radius:3px;padding:4px 0;color:#8fe04a">CORE</span>
+        </div>
+      </div>
+      Tap a grey <b>plot</b> on the battlefield and the build menu slides in from the left. The bottom bar never changes: <b>wave intel</b> above, your two free abilities and <b>core repair</b> below. The next screen walks you through it live.` },
   ];
   function introFinish(begin) {
     Store.set("seenIntro", true);
@@ -7255,7 +7357,7 @@
     if (S.introCard == null) S.introCard = 0;
     const i = S.introCard, c = INTRO_CARDS[i], last = i === INTRO_CARDS.length - 1;
     const dots = INTRO_CARDS.map((_, k) => `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;margin:0 3px;background:${k === i ? "#37e0d0" : "#2c3a42"}"></span>`).join("");
-    show(`<div class="panel"><div class="crest">${c.crest}</div><div class="sub">BRIEFING ${i + 1}/${INTRO_CARDS.length}</div><h2 style="margin:0 0 10px">${c.title}</h2><p class="tag">${c.body}</p><div style="margin:2px 0 18px">${dots}</div><button class="btn primary" id="nx">${last ? "\u25b8 BEGIN MISSION 1" : "NEXT ▸"}</button><button class="btn ghost" id="sk">SKIP ✕</button></div>`);
+    show(`<div class="panel"><div class="crest">${c.crest}</div><div class="sub">BRIEFING ${i + 1}/${INTRO_CARDS.length}</div><h2 style="margin:0 0 10px">${c.title}</h2><div class="tag" style="text-align:left">${c.body}</div><div style="margin:2px 0 18px">${dots}</div><button class="btn primary" id="nx">${last ? "\u25b8 BEGIN MISSION 1" : "NEXT ▸"}</button><button class="btn ghost" id="sk">SKIP ✕</button></div>`);
     byId("nx").onclick = () => { if (last) introFinish(true); else { S.introCard++; render(); } };
     byId("sk").onclick = () => introFinish(false);
   }
@@ -7267,7 +7369,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.37 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.38 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7485,8 +7587,10 @@
         <li><b>Waves</b> come on a timer once you send the first — tap <b>DEPLOY</b> early for bonus scrap (the more time left, the bigger the reward).</li>
         <li><b>Frost</b> only slows foes a shot actually hits; extra frost towers stack with <b>diminishing returns</b>, and some foes are <b>freeze-immune</b>.</li>
         <li><b>Counter their kind</b> — see the <b>Towers</b> and <b>Threats</b> tabs for the full matchup chart.</li>
-        <li><b>Airstrike:</b> tap <b>✷</b>, then a target zone, for armor-piercing burst damage on a cooldown.</li>
-        <li><b>Commander:</b> tap <b>⚑</b> then a plot to deploy your hero — it auto-fires, levels up from the fight, and its <b>Pulse</b> stuns and blasts nearby foes.</li>
+        <li><b>The screen:</b> top bar = scrap, core and wave. Tap a grey plot and the <b>build menu</b> slides in from the left. The bottom bar is fixed: <b>wave intel</b> above, <b>PULSE / STRIKE / CORE</b> below.</li>
+        <li><b>Airstrike:</b> tap <b>STRIKE</b> in the bottom bar, then a target zone — armor-piercing burst damage, a stun, and it reveals camo. Free, on a cooldown.</li>
+        <li><b>Commander:</b> select a plot and pick <b>COMMANDER</b> in the build menu — it is free, auto-fires, levels up from the fight, hits flyers and reveals cloaked foes. <b>PULSE</b> in the bottom bar stuns and blasts everything around it. Tap the Commander on the map to see its range.</li>
+        <li><b>Overclock:</b> a maxed tower can take up to 3 overclock stacks for extra damage and fire rate — a ⚡ pip on the tower shows how many.</li>
         <li><b>Daily Op</b> is a fresh seeded challenge each day — build a streak. <b>Campaign</b> plays all maps in sequence.</li>
         <li><b>Camera:</b> pinch to zoom, drag to pan, or use the on-screen controls.</li>
         <li>Clear 20 waves to win, or push your luck in <b>Endless</b>. Each run earns <b>Alloy</b> for permanent <b>Armory</b> upgrades.</li>
@@ -7677,6 +7781,8 @@
   }
   function tap(x, y) {
     if (tutSkipBtn && inBox(x, y, tutSkipBtn)) { tutFinish(); return; }
+    // a read-only tour card (no `done` predicate) is dismissed by tapping anywhere
+    { const st = tutStep(); if (st && !st.done && S.screen === "playing") { S.tut++; Sound.place(); vibrate(8); return; } }
     for (const b of hudBtns) if (inBox(x, y, b)) { if (b.id === "speed") { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; Store.set("speed", S.speed); } else if (b.id === "pause") { S.screen = "paused"; render(); } else if (b.id === "repair") { const rc = repairCost(); if (S.core < (S.coreMax || S.core) && S.scrap >= rc) { S.scrap -= rc; S.core++; S.repairs = (S.repairs || 0) + 1; Telemetry.ev("repairs"); Telemetry.ev("repairScrap", rc); Sound.repair(); vibrate(12); const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+CORE", life: 1, vy: -30, color: "#8fe04a", big: true }); } else { Sound.err(); vibrate(40); } } else if (b.id === "nextwave") { if (enemies.length >= CONGEST_CAP && S.wave >= 1 && (S.endless || S.wave < TOTAL_WAVES)) { S.banner = { text: "FIELD SATURATED", t: 1.4 }; Telemetry.ev("satBlocks"); Sound.err(); vibrate(40); } else { if (S.wave >= 1 && S.countdown > 0 && (S.endless || S.wave < TOTAL_WAVES)) { const bonus = earlyCallBonus(); if (bonus > 0) { S.scrap += bonus; const bp = ROUTES[0][ROUTES[0].length - 1]; floats.push({ x: bp.x, y: bp.y - 12, text: "+" + bonus + " EARLY", life: 1.2, vy: -34, color: C.scrap, big: true }); Sound.up(); vibrate(18); } } if (S.waveActive) Telemetry.ev("overlapSends"); if (S.wave >= 1 && S.countdown > 0) Telemetry.ev("earlySends"); startWave(); } } else if (b.id === "strike") { if (S.strikeArm) S.strikeArm = false; else if (S.strikeCd <= 0) { S.strikeArm = true; S.selTile = S.selTower = S.pending = null; Sound.place(); } else Sound.err(); } return; }
     if (y < HUD_H) return;
     for (const b of zoomBtns) if (inBox(x, y, b)) { if (b.id === "in") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1.35); else if (b.id === "out") zoomAt(playW() / 2, PLAY_TOP + PLAY_H / 2, 1 / 1.35); else fitCamera(); return; }
@@ -8884,7 +8990,7 @@
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };

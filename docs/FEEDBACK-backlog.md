@@ -221,3 +221,28 @@ strict toggle — any plot tap while it is open closes it; the next tap opens it
 Correct — V6.36's permanent ring was visual noise. Shipped: it appears when you tap the Commander (a
 toggle), for 2.5s after deploy or level-up (the level-up widens the range, so the flash is the point), and
 while the Pulse button is held — the same press-to-preview gesture the build and upgrade rows use.
+
+## 9. The intro never teaches the UI, and the hero is never placed — `DONE` (V6.38)
+
+> "the intro guide where the user learns to play needs improvement. hero is not placed before start.
+> consider if the intro could be more explanatory of how to use the different parts of the UI and what
+> it means"
+
+**Recorded + resolved:** 2026-07-26 · against V6.37 · shipped in V6.38. Supersedes points #2 and #3 of
+this backlog, which only ever got a coach-mark each.
+
+**What was actually there (measured, not assumed):** the in-mission tutorial was **three hardcoded
+nudges** — build, upgrade, deploy — and then stopped. It never mentioned the Commander, the command bar,
+the wave intel, or what the numbers in the top bar mean. So the report is exact: a new player reached
+wave 1 with **no hero** and no model of half the screen. The V6.36/V6.37 restructure had also left the
+Codex Guide describing controls that no longer exist ("tap ✷ then a target zone", "tap ⚑ then a plot").
+
+**What shipped:** a 7-step guided tour that names one piece of UI per step, says what it is *for*, and
+spotlights the real element — top bar → build → upgrade → **Commander** → command bar → wave intel →
+DEPLOY. The Commander step is the direct answer to "hero is not placed before start": the tour does not
+reach DEPLOY until one is on the field. Plus a "YOUR SCREEN" briefing card with a labelled wireframe of
+the layout, and a corrected Codex Guide.
+
+**Bug caught while shooting the tour:** SKIP and DEPLOY overlapped by 5px in landscape, and SKIP is
+hit-tested first — so tapping the bottom of DEPLOY on the final step would have skipped the tutorial
+instead of sending the wave. Fixed, with a permanent assertion that the two never intersect.
