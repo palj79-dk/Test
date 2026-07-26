@@ -4201,6 +4201,18 @@
   // waiting for the next wave. While you are still fighting (enemies or spawns pending) it ticks normally.
   const GAP_FASTFWD = 5;
   const gapRate = () => (enemies.length === 0 && S.queue.length === 0) ? GAP_FASTFWD : 1;
+  // V6.36 soft block. A wave's spawn stream can outlast the 20s gap on the big late maps (wave 20
+  // takes ~34s to pour in), so the AUTO launch used to stack a fresh wave on top of one still
+  // spawning. The gap timer now HOLDS while the previous wave is still arriving and releases once its
+  // tail is out (>= 80% spawned) — the timer resumes rather than restarting, so nothing is lost.
+  // A player-initiated early send is untouched: overlapping on purpose is a deliberate risk.
+  const SPAWN_TAIL = 0.20;
+  function spawnBacklog() {
+    if (!S.waveSize) return 0;
+    let n = 0; for (const q of S.queue) if (q.w === S.wave) n++;
+    return n / S.waveSize;
+  }
+  const autoHold = () => spawnBacklog() > SPAWN_TAIL;
   const SLOW_ASYMPTOTE = 0.34, SLOW_STACK_K = 0.35; // landed frost hits stack with DIMINISHING returns toward this speed floor — each extra frost tower adds only a little
   const CONGEST_CAP = 45;   // wave launches (auto AND manual) pause while this many hostiles are already on the field (anti-spiral)
   // V6.3 aggression risk: a wave sent BEFORE its timer expires arrives tougher, scaled by the fraction of the gap skipped.
@@ -4223,51 +4235,51 @@
   const TECH = [
     { id: "ord", name: "ORDNANCE", theme: "Raw firepower & heavy weapons", icon: "⚔", accent: "#f2b23a", nodes: [
       { id: "o_mortar", type: "unlock",   name: "Mortar",          desc: "Unlock the splash tower",  cost: 120, eff: { tower: "mortar" } },
-      { id: "o_dmg1",   type: "weapon",   name: "Munitions I",     desc: "+5% tower damage",   cost: 150, eff: { dmg: 0.05 } },
-      { id: "o_rate1",  type: "weapon",   name: "Fire Control I",  desc: "+6% fire rate",      cost: 190, eff: { rate: 0.06 } },
-      { id: "o_splash", type: "weapon",   name: "Warheads",        desc: "+15% splash radius", cost: 230, eff: { splash: 0.15 } },
-      { id: "o_dmg2",   type: "weapon",   name: "Munitions II",    desc: "+8% tower damage",   cost: 320, eff: { dmg: 0.08 } },
-      { id: "o_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 300,
+      { id: "o_dmg1",   type: "weapon",   name: "Munitions I",     desc: "+5% tower damage",   cost: 165, eff: { dmg: 0.05 } },
+      { id: "o_rate1",  type: "weapon",   name: "Fire Control I",  desc: "+6% fire rate",      cost: 260, eff: { rate: 0.06 } },
+      { id: "o_splash", type: "weapon",   name: "Warheads",        desc: "+15% splash radius", cost: 390, eff: { splash: 0.15 } },
+      { id: "o_dmg2",   type: "weapon",   name: "Munitions II",    desc: "+8% tower damage",   cost: 670, eff: { dmg: 0.08 } },
+      { id: "o_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 720,
         a: { name: "Precision",  desc: "+5% damage, +2% fire rate", eff: { dmg: 0.05, rate: 0.02 } },
         b: { name: "Saturation", desc: "+20% splash radius",        eff: { splash: 0.20 } } },
-      { id: "o_rate2",  type: "weapon",   name: "Fire Control II", desc: "+14% fire rate",     cost: 430, eff: { rate: 0.14 } },
-      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "Unlock siege artillery — the armor answer", cost: 820, eff: { tower: "siege" }, reqCamp: CAP_CAMP },
+      { id: "o_rate2",  type: "weapon",   name: "Fire Control II", desc: "+14% fire rate",     cost: 1250, eff: { rate: 0.14 } },
+      { id: "o_cap",    type: "capstone", name: "Siege Battery",   desc: "Unlock siege artillery — the armor answer", cost: 2620, eff: { tower: "siege" }, reqCamp: CAP_CAMP },
     ] },
     { id: "arc", name: "ARC", theme: "Energy, crowd-control, shields", icon: "✦", accent: "#37e0d0", nodes: [
       { id: "a_tesla",  type: "unlock",   name: "Tesla",           desc: "Unlock long-range energy", cost: 140, eff: { tower: "tesla" } },
-      { id: "a_rng1",   type: "weapon",   name: "Targeting Optics I",  desc: "+6% range",  cost: 180, eff: { range: 0.06 } },
-      { id: "a_pyre",   type: "unlock",   name: "Pyre",            desc: "Unlock the burn tower",    cost: 240, eff: { tower: "pyre" } },
-      { id: "a_dmg",    type: "weapon",   name: "Capacitors",      desc: "+5% tower damage", cost: 300, eff: { dmg: 0.05 } },
-      { id: "a_rng2",   type: "weapon",   name: "Targeting Optics II", desc: "+14% range", cost: 380, eff: { range: 0.14 } },
-      { id: "a_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 320,
+      { id: "a_rng1",   type: "weapon",   name: "Targeting Optics I",  desc: "+6% range",  cost: 200, eff: { range: 0.06 } },
+      { id: "a_pyre",   type: "unlock",   name: "Pyre",            desc: "Unlock the burn tower",    cost: 320, eff: { tower: "pyre" } },
+      { id: "a_dmg",    type: "weapon",   name: "Capacitors",      desc: "+5% tower damage", cost: 510, eff: { dmg: 0.05 } },
+      { id: "a_rng2",   type: "weapon",   name: "Targeting Optics II", desc: "+14% range", cost: 800, eff: { range: 0.14 } },
+      { id: "a_fork",   type: "fork",     name: "Specialization",  desc: "Pick a doctrine · free to swap", cost: 770,
         a: { name: "Overload",   desc: "+5% tower damage", eff: { dmg: 0.05 } },
         b: { name: "Disruption", desc: "+6% fire rate",    eff: { rate: 0.06 } } },
-      { id: "a_rate",   type: "weapon",   name: "Coolant",         desc: "+6% fire rate",    cost: 440, eff: { rate: 0.06 } },
-      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "Unlock the refracting beam tower", cost: 860, eff: { tower: "prism" }, reqCamp: CAP_CAMP },
+      { id: "a_rate",   type: "weapon",   name: "Coolant",         desc: "+6% fire rate",    cost: 1280, eff: { rate: 0.06 } },
+      { id: "a_cap",    type: "capstone", name: "Prism",           desc: "Unlock the refracting beam tower", cost: 2750, eff: { tower: "prism" }, reqCamp: CAP_CAMP },
     ] },
     { id: "log", name: "LOGISTICS", theme: "Scrap, alloy, sustain", icon: "⬡", accent: "#8fe04a", nodes: [
       { id: "l_scrap1", type: "system",   name: "Reserves I",      desc: "+25 starting scrap", cost: 110, eff: { scrap: 25 } },
-      { id: "l_rew1",   type: "system",   name: "Salvage Rigs I",  desc: "+8% scrap per kill", cost: 150, eff: { reward: 0.08 } },
-      { id: "l_waveb",  type: "system",   name: "War Economy",     desc: "+25% wave-clear bonus", cost: 200, eff: { waveb: 0.25 } },
-      { id: "l_sell",   type: "system",   name: "Salvage Refit",   desc: "+10% sell refund",   cost: 260, eff: { sell: 0.10 } },
-      { id: "l_alloy",  type: "system",   name: "Contracts",       desc: "+15% Alloy earned",  cost: 340, eff: { alloyf: 0.15 } },
-      { id: "l_fork",   type: "fork",     name: "Doctrine",        desc: "Pick a doctrine · free to swap", cost: 300,
+      { id: "l_rew1",   type: "system",   name: "Salvage Rigs I",  desc: "+8% scrap per kill", cost: 165, eff: { reward: 0.08 } },
+      { id: "l_waveb",  type: "system",   name: "War Economy",     desc: "+25% wave-clear bonus", cost: 270, eff: { waveb: 0.25 } },
+      { id: "l_sell",   type: "system",   name: "Salvage Refit",   desc: "+10% sell refund",   cost: 440, eff: { sell: 0.10 } },
+      { id: "l_alloy",  type: "system",   name: "Contracts",       desc: "+15% Alloy earned",  cost: 710, eff: { alloyf: 0.15 } },
+      { id: "l_fork",   type: "fork",     name: "Doctrine",        desc: "Pick a doctrine · free to swap", cost: 720,
         a: { name: "Boomtown", desc: "+10% scrap/kill, +25% wave bonus", eff: { reward: 0.10, waveb: 0.25 } },
         b: { name: "Frugal",   desc: "+40 starting scrap, +5% sell",     eff: { scrap: 40, sell: 0.05 } } },
-      { id: "l_scrap2", type: "system",   name: "Reserves II",     desc: "+35 starting scrap", cost: 400, eff: { scrap: 35 } },
-      { id: "l_cap",    type: "capstone", name: "Field Requisition", desc: "+20% Alloy earned, +10% scrap/kill", cost: 760, eff: { alloyf: 0.20, reward: 0.10 } },
+      { id: "l_scrap2", type: "system",   name: "Reserves II",     desc: "+35 starting scrap", cost: 1160, eff: { scrap: 35 } },
+      { id: "l_cap",    type: "capstone", name: "Field Requisition", desc: "+20% Alloy earned, +10% scrap/kill", cost: 2430, eff: { alloyf: 0.20, reward: 0.10 } },
     ] },
     { id: "cmd", name: "COMMAND", theme: "Commander, Core & strikes", icon: "★", accent: "#6aa8ff", nodes: [
       { id: "c_core1",  type: "system",   name: "Reinforced Core I",  desc: "+5 starting Core", cost: 130, eff: { core: 5 } },
-      { id: "c_hero",   type: "system",   name: "Command Core",    desc: "+10% Commander damage", cost: 180, eff: { hero: 0.10 } },
-      { id: "c_strike", type: "system",   name: "Rapid Response",  desc: "−3s airstrike cooldown", cost: 240, eff: { strike: 3 } },
-      { id: "c_hrate",  type: "system",   name: "Battle Drills",   desc: "+8% Commander fire rate", cost: 300, eff: { hrate: 0.08 } },
-      { id: "c_pulse",  type: "system",   name: "Overcharge",      desc: "−2s pulse cooldown", cost: 360, eff: { pulse: 2 } },
-      { id: "c_fork",   type: "fork",     name: "Command Style",   desc: "Pick a doctrine · free to swap", cost: 320,
+      { id: "c_hero",   type: "system",   name: "Command Core",    desc: "+10% Commander damage", cost: 200, eff: { hero: 0.10 } },
+      { id: "c_strike", type: "system",   name: "Rapid Response",  desc: "−3s airstrike cooldown", cost: 320, eff: { strike: 3 } },
+      { id: "c_hrate",  type: "system",   name: "Battle Drills",   desc: "+8% Commander fire rate", cost: 510, eff: { hrate: 0.08 } },
+      { id: "c_pulse",  type: "system",   name: "Overcharge",      desc: "−2s pulse cooldown", cost: 760, eff: { pulse: 2 } },
+      { id: "c_fork",   type: "fork",     name: "Command Style",   desc: "Pick a doctrine · free to swap", cost: 770,
         a: { name: "Aggression", desc: "+15% Commander damage, −3s airstrike", eff: { hero: 0.15, strike: 3 } },
         b: { name: "Resilience", desc: "+10 Core, +25 starting scrap",              eff: { core: 10, scrap: 25 } } },
-      { id: "c_core2",  type: "system",   name: "Reinforced Core II", desc: "+5 starting Core", cost: 420, eff: { core: 5 } },
-      { id: "c_cap",    type: "capstone", name: "Second Strike",   desc: "−3s airstrike, +10% Commander damage", cost: 780, eff: { strike: 3, hero: 0.10 } },
+      { id: "c_core2",  type: "system",   name: "Reinforced Core II", desc: "+5 starting Core", cost: 1220, eff: { core: 5 } },
+      { id: "c_cap",    type: "capstone", name: "Second Strike",   desc: "−3s airstrike, +10% Commander damage", cost: 2500, eff: { strike: 3, hero: 0.10 } },
     ] },
   ];
   const BONUS_KEYS = ["scrap", "core", "dmg", "reward", "strike", "waveb", "hero", "rate", "range", "splash", "sell", "alloyf", "hrate", "pulse"];
@@ -4365,8 +4377,12 @@
   const sellRefund = () => SELL_REFUND + B().sell;
   // V6.13 scrap sinks (soak the late-game surplus): Overclock repeatedly buffs a maxed tower (+10% dmg per
   // stack, rising cost); Excavate clears a rubble obstacle to open a build plot (rising cost).
-  const OC_DMG = 0.10;
-  const overclockCost = (t) => Math.round(200 * Math.pow(1.5, t.oc || 0));
+  // V6.36: overclock was a bad deal — 200 scrap for +10% damage on ONE tower, against ~330 scrap for
+  // a whole maxed Auto-Gun. It was used 3 times across 13 logged runs. It is now cheaper per stack,
+  // buys fire rate as well as damage, and is capped at 3 stacks so it stays a top-up, not a strategy.
+  const OC_DMG = 0.15, OC_RATE = 0.06, OC_MAX = 3;
+  const overclockCost = (t) => Math.round(120 * Math.pow(1.7, t.oc || 0));
+  const ocAvailable = (t) => !!t && t.lvl >= 3 && (t.oc || 0) < OC_MAX;
   const excavateCost = () => Math.round(140 * Math.pow(1.4, S.excavated || 0));
   const alloyFindMul = () => 1 + B().alloyf;
   const heroRateMul = () => 1 - B().hrate;
@@ -4817,7 +4833,7 @@
     waveActive: false, queue: [], speed: Store.get("speed", 1), selTile: null, selTower: null,
     difficulty: Store.get("difficulty", "normal"), high: Store.get("high", 0),
     banner: { text: "", t: 0 }, countdown: 0, time: 0, sheetAnim: 1,
-    strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0,
+    strikeCd: 0, strikeArm: false, heroArm: false, tut: -1, alloyAwarded: false, lastAlloy: 0, waveSize: 0,
     mapIndex: Store.get("map", 0), endless: false, campaign: false, isDaily: false, isLab: false,
     highEndless: Store.get("highEndless", 0),
   };
@@ -5027,7 +5043,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.35",
+        ts: Date.now(), ver: "6.36",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5079,7 +5095,7 @@
     enemies = []; towers = []; projs = []; parts = []; floats = []; beams = []; booms = []; gibs = []; scorches = []; smoke = [];
     S.scrap = Math.round((baseStartScrap() + B().scrap) * modv("scrap")); S.core = Math.max(1, Math.round((diffCfg().core + B().core) * modv("core"))); S.coreMax = S.core; S.repairs = 0; S.wave = 0; S.kills = 0;
     S.waveActive = false; S.queue = []; S.selTile = null; S.selTower = null;
-    S.countdown = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
+    S.countdown = 0; S.waveSize = 0; S.banner = { text: "", t: 0 }; screenFlash = 0; S.pending = null; S.tip = null; S.tipQ = [];
     S.strikeCd = 0; S.strikeArm = false; S.heroArm = false; hero = null; S.alloyAwarded = false; S.lastAlloy = 0;
     S.tut = Store.get("tutDone", false) ? -1 : 0; // coach-marks on first play only
     Telemetry.begin();
@@ -5146,7 +5162,9 @@
     const rush = Math.max(0, Math.min(1, S.countdown / waveGap()));   // >0 only when sent before the timer expired (0 for auto-launch / wave 1)
     S.wave++;
     // append this wave's spawns to whatever is still in flight, so waves overlap when sent early / under pressure
-    S.queue = S.queue.concat(waveComp(S.wave).map((e) => ({ ...e, t: e.delay, w: S.wave, rush })));
+    const comp = waveComp(S.wave);
+    S.waveSize = comp.length;   // denominator for the V6.36 spawn-tail soft block
+    S.queue = S.queue.concat(comp.map((e) => ({ ...e, t: e.delay, w: S.wave, rush })));
     S.waveActive = true; S.countdown = waveGap(); if (S.wave === 1) queueTip("timer");
     if (S.wave === 2 && !hero) queueTip("hero");
     // survival salvage: paid for having outlasted the previous wave (wave 1 launch earns nothing yet)
@@ -5282,7 +5300,7 @@
     if (S.core <= 0) { S.core = 0; S.screen = "gameover"; if (S.endless && S.wave > S.highEndless) { S.highEndless = S.wave; Store.set("highEndless", S.highEndless); } awardAlloy(false); Telemetry.end("gameover"); Sound.lose(); vibrate([80, 60, 80]); doShake(11, 0.5); }
   }
   // L3 stats come from the chosen branch; levels[2] is a fallback if somehow unbranched
-  const tStats = (t) => { const sp = TOWERS[t.type]; let base; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; base = (t.lvl >= 3 && br.t4) ? br.t4 : br; } else base = sp.levels[t.lvl]; return t.oc ? Object.assign({}, base, { dmg: Math.round(base.dmg * (1 + t.oc * OC_DMG)) }) : base; };
+  const tStats = (t) => { const sp = TOWERS[t.type]; let base; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; base = (t.lvl >= 3 && br.t4) ? br.t4 : br; } else base = sp.levels[t.lvl]; return t.oc ? Object.assign({}, base, { dmg: Math.round(base.dmg * (1 + t.oc * OC_DMG)), rate: Math.round(base.rate / (1 + t.oc * OC_RATE)) }) : base; };
   function findTarget(t, p) {
     const st = tStats(t), air = canHitAir(TOWERS[t.type].kind); let best = null, score = -Infinity;
     for (const e of enemies) {
@@ -6376,50 +6394,7 @@
   }
 
   /* ---------------- SCREEN-SPACE UI ---------------- */
-  let hudBtns = [], trayBtns = [], zoomBtns = [], abilityBtns = [], heroBtns = [];
-  function drawHeroFab() {
-    heroBtns = [];
-    const cx = 34, cy = PLAY_BOTTOM - 92, R = 24, ac = HERO.accent, deployed = !!hero, armed = S.heroArm;
-    const ready = deployed ? hero.abil <= 0 : true, glow = armed || (deployed && ready) || (!deployed);
-    const pl = 0.5 + 0.5 * Math.sin(S.time * 6);
-    ctx.save();
-    ctx.fillStyle = "rgba(16,22,26,0.85)"; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
-    if (glow) { ctx.shadowColor = ac; ctx.shadowBlur = 6 + (armed || (deployed && ready) ? pl * 8 : 3); }
-    ctx.strokeStyle = glow ? ac : "rgba(255,255,255,0.15)"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
-    ctx.shadowBlur = 0;
-    if (deployed && !ready) { ctx.strokeStyle = rgba(ac, 0.85); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 1, -Math.PI / 2, -Math.PI / 2 + (1 - hero.abil / HERO.abilityCd) * 6.283); ctx.stroke(); }
-    // command chevron icon
-    ctx.strokeStyle = glow ? ac : C.textDim; ctx.lineWidth = 2; ctx.lineJoin = "round";
-    ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx - 8, cy + 7); ctx.lineTo(cx + 8, cy + 7); ctx.closePath(); ctx.stroke();
-    ctx.fillStyle = glow ? ac : C.textDim; ctx.beginPath(); ctx.arc(cx, cy + 1.5, 2, 0, 7); ctx.fill();
-    if (deployed) { ctx.fillStyle = ac; ctx.font = "800 8px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("L" + (hero.lvl + 1), cx + R - 5, cy - R + 4); }
-    ctx.fillStyle = glow ? ac : C.textDim; ctx.font = "800 7px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(armed ? "CANCEL" : !deployed ? "HERO" : ready ? "PULSE" : Math.ceil(hero.abil) + "s", cx, cy + R + 7);
-    ctx.restore();
-    heroBtns.push({ id: "hero", x: cx - R, y: cy - R, w: R * 2, h: R * 2 });
-  }
-  function drawAbility() {
-    abilityBtns = [];
-    const cx = 34, cy = PLAY_BOTTOM - 34, R = 24, ready = S.strikeCd <= 0, armed = S.strikeArm;
-    const pl = 0.5 + 0.5 * Math.sin(S.time * 6);
-    ctx.save();
-    // base
-    ctx.fillStyle = "rgba(16,22,26,0.85)"; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
-    if (ready || armed) { ctx.shadowColor = "#f2643a"; ctx.shadowBlur = 6 + (armed ? pl * 10 : 4); }
-    ctx.strokeStyle = ready || armed ? "#f2643a" : "rgba(255,255,255,0.15)"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
-    ctx.shadowBlur = 0;
-    // cooldown sweep
-    if (!ready) { ctx.strokeStyle = "rgba(242,100,58,0.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 1, -Math.PI / 2, -Math.PI / 2 + (1 - S.strikeCd / strikeMax()) * 6.283); ctx.stroke(); }
-    // icon: crosshair / burst
-    ctx.strokeStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();
-    ctx.beginPath(); for (const a of [0, 1.57, 3.14, 4.71]) { ctx.moveTo(cx + Math.cos(a) * 5, cy + Math.sin(a) * 5); ctx.lineTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11); } ctx.stroke();
-    ctx.fillStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.beginPath(); ctx.arc(cx, cy, 2, 0, 7); ctx.fill();
-    // label
-    ctx.fillStyle = ready || armed ? "#ff9a5a" : C.textDim; ctx.font = "800 7px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(armed ? "CANCEL" : ready ? "STRIKE" : Math.ceil(S.strikeCd) + "s", cx, cy + R + 7);
-    ctx.restore();
-    abilityBtns.push({ id: "strike", x: cx - R, y: cy - R, w: R * 2, h: R * 2 });
-  }
+  let hudBtns = [], trayBtns = [], zoomBtns = [], abilityBtns = [], heroBtns = [], buildBtns = [];
   // ---- onboarding coach-marks (non-blocking; auto-advance by observed state) ----
   // one-time contextual tips that teach the systems the coach-marks don't cover
   const TIPS = {
@@ -6482,7 +6457,10 @@
     for (const w of words) { const t2 = cur ? cur + " " + w : w; if (ctx.measureText(t2).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t2; }
     if (cur) lines.push(cur);
     const lh = 14, pad = 8, a = S.tip.t < 0.6 ? S.tip.t / 0.6 : 1;
-    const bw = Math.min(pw - 14, Math.max.apply(null, lines.map((l) => ctx.measureText(l).width)) + 24), bh = lines.length * lh + pad * 2, bx = pw / 2 - bw / 2, byy = PLAY_TOP + 22;
+    const bw = Math.min(pw - 14, Math.max.apply(null, lines.map((l) => ctx.measureText(l).width)) + 24), bh = lines.length * lh + pad * 2, bx = pw / 2 - bw / 2;
+    // V6.36: the build panel owns the top-left of the play area, so a tip drops to the bottom of
+    // the viewport while it is open rather than covering the first tower in the list.
+    const byy = buildMenuOpen() ? trayTop() - bh - 10 : PLAY_TOP + 22;
     ctx.globalAlpha = a;
     ctx.fillStyle = "rgba(6,9,12,0.9)"; rr(bx, byy, bw, bh, 6); ctx.fill();
     ctx.strokeStyle = rgba("#37e0d0", 0.5); ctx.lineWidth = 1; rr(bx, byy, bw, bh, 6); ctx.stroke();
@@ -6551,7 +6529,8 @@
       ctx.fillStyle = saturated ? "#ffd0d0" : "#06181a"; ctx.font = "800 11px ui-monospace, monospace"; ctx.textAlign = "center";
       const bonus = S.wave >= 1 ? earlyCallBonus() : 0;
       const rushPct = (!saturated && S.countdown > 0 && S.wave >= 1) ? Math.round((S.countdown / waveGap()) * RUSH_HP * 100) : 0;
-      ctx.fillText(saturated ? "\u26A0 FIELD FULL" : (S.countdown > 0 ? "\u25B6 " + Math.ceil(S.countdown) + "s" + (bonus > 0 ? " +" + bonus : "") + (rushPct > 0 ? " \u26A0" + rushPct + "%" : "") : "\u25B6 DEPLOY"), nwX + nwW / 2, rowY);
+      const held = !saturated && S.countdown > 0 && autoHold();   // timer frozen: previous wave still spawning
+      ctx.fillText(saturated ? "\u26A0 FIELD FULL" : (S.countdown > 0 ? "\u25B6 " + Math.ceil(S.countdown) + "s" + (held ? " \u23F8" : "") + (bonus > 0 ? " +" + bonus : "") + (rushPct > 0 ? " \u26A0" + rushPct + "%" : "") : "\u25B6 DEPLOY"), nwX + nwW / 2, rowY);
       hudBtns.push({ id: "nextwave", x: nwX - 6, y: nwY - 4, w: nwW + 12, h: nwH + 8 });
     } else { // all waves committed — mop-up counter
       ctx.fillStyle = "rgba(255,255,255,0.05)"; rr(nwX, nwY, nwW, nwH, 4); ctx.fill();
@@ -6560,6 +6539,23 @@
     }
   }
 
+  // V6.36: an overclocked tower looked identical to a plain one, so the stacks were invisible once
+  // the menu closed. A small ⚡N pip rides above each one.
+  function drawOverclockMarks() {
+    if (!towers.some((t) => t.oc)) return;
+    const pw = playW();
+    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const t of towers) {
+      if (!t.oc) continue;
+      const p = center(t.c, t.r), sp = worldToScreen(p.x, p.y - 26);
+      if (sp.y < PLAY_TOP + 6 || sp.y > PLAY_BOTTOM - 6 || sp.x < 12 || sp.x > pw - 12) continue;
+      const bw = 22, bh = 12;
+      ctx.fillStyle = "rgba(10,8,4,0.78)"; rr(sp.x - bw / 2, sp.y - bh / 2, bw, bh, 3); ctx.fill();
+      ctx.strokeStyle = "rgba(255,210,122,0.55)"; ctx.lineWidth = 1; rr(sp.x - bw / 2, sp.y - bh / 2, bw, bh, 3); ctx.stroke();
+      ctx.fillStyle = "#ffd27a"; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("⚡" + t.oc, sp.x, sp.y + 0.5);
+    }
+    ctx.restore();
+  }
   function drawZoomButtons() {
     zoomBtns = [];
     const bx = playW() - 34, by0 = PLAY_BOTTOM - 116, sz = 30, gap = 6;
@@ -6638,6 +6634,11 @@
     const pd = S.pending; if (!pd) return null;
     if (pd.kind === "build") { const sp = TOWERS[pd.tower]; return { sp, tp: pd.tower, lvl: 0, branch: null, cur: null, next: sp.levels[0], cost: sp.levels[0].cost, verb: "BUILD", name: sp.name }; }
     const t = towers[pd.tower]; if (!t) return null; const sp = TOWERS[t.type];
+    if (pd.kind === "overclock") {
+      const oc = (t.oc || 0) + 1, base = tStats(Object.assign({}, t, { oc: 0 }));
+      const next = Object.assign({}, base, { dmg: Math.round(base.dmg * (1 + oc * OC_DMG)), rate: Math.round(base.rate / (1 + oc * OC_RATE)) });
+      return { sp, tp: t.type, t, lvl: t.lvl, branch: t.branch, cur: tStats(t), next, cost: overclockCost(t), verb: "⚡ OVERCLOCK " + oc + "/" + OC_MAX, name: t.branch ? sp.branches[t.branch].name : sp.name };
+    }
     if (pd.kind === "upgrade") { const next = t.lvl < 1 ? sp.levels[t.lvl + 1] : sp.branches[t.branch].t4; const cost = t.lvl < 1 ? sp.levels[t.lvl + 1].cost : sp.branches[t.branch].t4.cost; return { sp, tp: t.type, t, lvl: t.lvl + 1, branch: t.branch, cur: tStats(t), next, cost, verb: "UPGRADE → L" + (t.lvl + 2), name: t.branch ? sp.branches[t.branch].name : sp.name }; }
     const br = sp.branches[pd.branch]; return { sp, tp: t.type, t, lvl: 2, branch: pd.branch, cur: tStats(t), next: br, cost: br.cost, verb: "SPECIALIZE", name: br.name };
   }
@@ -6715,10 +6716,54 @@
       trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
     }
   }
+  // V6.36: the Commander's own confirm sheet — it has no cost and no upgrade path, so it gets a
+  // purpose-built panel instead of being squeezed through pendingInfo()'s tower shape.
+  function drawHeroConfirm() {
+    const rect = trayRect(), pd = S.pending, st = HERO.levels[0], ac = HERO.accent;
+    const pl = center(pd.c, pd.r);
+    S.rangePreview = { x: pl.x, y: pl.y, range: st.range };
+    const dmg = Math.round(st.dmg * heroDmgMul());
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    if (LANDSCAPE) {
+      const pad = 8, cw = rect.w - 2 * pad, x0 = rect.x + pad;
+      ctx.fillStyle = ac; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("DEPLOY COMMANDER", x0, rect.y + 10);
+      ctx.fillStyle = C.text; ctx.font = "800 10.5px ui-monospace, monospace"; ctx.fillText(HERO.name + " · FREE", x0, rect.y + 26);
+      ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
+      ctx.fillText("DMG " + dmg + "   RNG " + st.range, x0, rect.y + 42);
+      ctx.fillText((st.rate / 1000).toFixed(1) + "s   PULSE " + st.pdmg, x0, rect.y + 54);
+      ctx.fillStyle = ac; ctx.font = "700 7.5px ui-monospace, monospace";
+      ctx.fillText("HITS AIR · REVEALS CLOAKED", x0, rect.y + 70);
+      ctx.fillText("LEVELS UP THROUGH THE RUN", x0, rect.y + 81);
+      const by = rect.y + 94, bh = 34;
+      ctx.fillStyle = ac; rr(x0, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = "#241a04"; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("✓ DEPLOY · FREE", x0 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: x0, y: by, w: cw, h: bh, action: "confirm", afford: true });
+      const cy = by + bh + 6;
+      ctx.fillStyle = "#3a2020"; rr(x0, cy, cw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✗ CANCEL", x0 + cw / 2, cy + bh / 2);
+      trayBtns.push({ x: x0, y: cy, w: cw, h: bh, action: "cancel" });
+    } else {
+      ctx.fillStyle = ac; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("DEPLOY COMMANDER", 12, rect.y + 13);
+      ctx.fillStyle = C.text; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText(HERO.name + "  ·  FREE", 12, rect.y + 30);
+      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace";
+      ctx.fillText("DMG " + dmg + "    RNG " + st.range + "    " + (st.rate / 1000).toFixed(1) + "s    PULSE " + st.pdmg, 12, rect.y + 45);
+      ctx.fillStyle = ac; ctx.font = "700 8px ui-monospace, monospace";
+      ctx.fillText("HITS AIR · REVEALS CLOAKED NEARBY · LEVELS UP IN-RUN", 12, rect.y + 59);
+      const by = rect.y + 74, bh = 38, cw = 206;
+      ctx.fillStyle = ac; rr(12, by, cw, bh, 4); ctx.fill();
+      ctx.textAlign = "center"; ctx.fillStyle = "#241a04"; ctx.font = "800 12px ui-monospace, monospace"; ctx.fillText("✓ DEPLOY  ·  FREE", 12 + cw / 2, by + bh / 2);
+      trayBtns.push({ x: 12, y: by, w: cw, h: bh, action: "confirm", afford: true });
+      const xx = 12 + cw + 8, xw = W - xx - 12;
+      ctx.fillStyle = "#3a2020"; rr(xx, by, xw, bh, 4); ctx.fill();
+      ctx.fillStyle = "#f0a090"; ctx.font = "800 14px ui-monospace, monospace"; ctx.fillText("✗", xx + xw / 2, by + bh / 2);
+      trayBtns.push({ x: xx, y: by, w: xw, h: bh, action: "cancel" });
+    }
+  }
   function drawConfirm() {
     trayBtns = [];
     if (S.pending.kind === "sell") { drawSellConfirm(); return; }
     if (S.pending.kind === "excavate") { drawExcavateConfirm(); return; }
+    if (S.pending.kind === "hero") { drawHeroConfirm(); return; }
     const info = pendingInfo();
     if (!info) { S.pending = null; S.rangePreview = null; drawTrayIdle(); return; }
     const rect = trayRect();
@@ -6777,14 +6822,19 @@
     }
   }
   const trayIsIdle = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !S.selTile;
-  // V6.28: 7+ towers need two rows. Rather than squeeze 42px rows into the fixed 118px band (hugging
-  // the gesture-nav edge), the tray grows upward while the build menu is open. 22px borrowed from a
-  // 466px play area, only while building, is imperceptible. Every hit-test goes through trayTop().
-  // V6.31 (C2): landscape's side panel has vertical room to spare, so this portrait-only space hack
-  // does not apply there — trayTop() just returns PLAY_TOP in landscape.
-  const BUILD_EXP = 22;
+  // V6.36: the tray's bottom CMD_H pixels are a permanent HERO / STRIKE / CORE strip. Everything
+  // above it swaps between wave intel, the tower menu and the confirm sheet — but those three
+  // buttons never move and never disappear. The tower palette is no longer a tray state at all; it
+  // is the slide-in panel below. TRAY_EXP buys the sheet states back the height the strip costs
+  // them, so the tower menu and confirm sheet keep exactly the layout they had.
+  // Landscape's side panel has vertical room to spare, so it needs no expansion — trayTop() just
+  // returns PLAY_TOP there and the strip is pinned to the panel's bottom edge.
+  const CMD_H = 40, TRAY_EXP = 46;
   const buildMenuOpen = () => !S.pending && !(S.selTower != null && towers[S.selTower]) && !!S.selTile;
-  const trayTop = () => LANDSCAPE ? PLAY_TOP : (buildMenuOpen() ? PLAY_BOTTOM - BUILD_EXP : PLAY_BOTTOM);
+  const traySheetOpen = () => !!S.pending || (S.selTower != null && !!towers[S.selTower]);
+  const trayTop = () => LANDSCAPE ? PLAY_TOP : (traySheetOpen() ? PLAY_BOTTOM - TRAY_EXP : PLAY_BOTTOM);
+  // landscape stacks three 27px buttons with 5px gaps (91px) above an 8px bottom margin
+  const cmdRowY = () => LANDSCAPE ? H - 99 : H - CMD_H;
   // Single source of truth for the tray's screen rectangle: a bottom sheet in portrait, a right-hand
   // side panel in landscape (a 640x360 space has no room for a full-width bottom band). Every tray
   // draw + hit-test function reads this instead of hardcoding PLAY_BOTTOM/W.
@@ -6807,8 +6857,8 @@
     ctx.globalAlpha = S.sheetAnim;
     if (S.pending) drawConfirm();
     else if (S.selTower != null && towers[S.selTower]) drawTowerMenu();
-    else if (S.selTile) drawBuildMenu();
-    else drawTrayIdle();
+    else drawTrayIdle();            // a selected plot keeps the intel bar — its palette is the left panel
+    drawCmdRow(rect, cmdRowY());    // drawn last: the sheets above reset trayBtns, the strip appends to it
     ctx.restore();
   }
   function drawTrayIdle() {
@@ -6822,7 +6872,7 @@
       ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
       ctx.fillText("▸ WAVE " + nw, x0, rect.y + 12);
       ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace";
-      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s left" : (S.waveActive ? "ENGAGED" : "—")), x0, rect.y + 24);
+      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s left" + (autoHold() ? " ⏸" : "") : (S.waveActive ? "ENGAGED" : "—")), x0, rect.y + 24);
       let y = rect.y + 34;
       // threat cards, stacked vertically (no room to go 3-across in a 188px panel)
       const ih = 28, gap = 4;
@@ -6848,11 +6898,10 @@
       else if (has("sentinel") && !boardCan("armor")) warn = "⚠ ARMORED · NEED PIERCE/EXPL";
       ctx.textAlign = "left";
       if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText(warn, x0, y + 6); }
+      else if (autoHold()) { ctx.fillStyle = "#9fd8ff"; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText("⏸ NEXT WAVE HELD", x0, y + 6); }
       else { ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace"; ctx.fillText("PINCH ZOOM · DRAG PAN", x0, y + 6); }
       y += 15;
       ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText("⬡ " + S.scrap, x0, y + 6);
-      y += 18;
-      drawCmdRow(rect, y);
     } else {
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       // ---- WAVE INTEL command bar (V6.26) ----
@@ -6861,7 +6910,7 @@
       ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace";
       ctx.fillText("▸ WAVE " + nw + (S.waveActive ? " ENGAGED" : " INBOUND"), 11, rect.y + 13);
       ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "800 9px ui-monospace, monospace";
-      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s" : "—"), W - 11, rect.y + 13);
+      ctx.fillText(S.wave < 1 ? "TAP DEPLOY" : (S.countdown > 0 ? Math.ceil(S.countdown) + "s" + (autoHold() ? " ⏸" : "") : "—"), W - 11, rect.y + 13);
       // threat cards
       const iy = rect.y + 22, ih = 38, iw = (W - 22 - 2 * 5) / 3;
       if (!intel.length) {
@@ -6886,11 +6935,10 @@
       const wy = rect.y + 68;
       ctx.textAlign = "left";
       if (warn) { ctx.fillStyle = C.danger; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(warn, 11, wy); }
+      else if (autoHold()) { ctx.fillStyle = "#9fd8ff"; ctx.font = "700 8.5px ui-monospace, monospace"; ctx.fillText("⏸ NEXT WAVE HELD · CURRENT ONE STILL SPAWNING", 11, wy); }
       else { ctx.fillStyle = C.textDim; ctx.font = "700 8.5px ui-monospace, monospace"; ctx.fillText("SELECT A BUILD PLOT · PINCH ZOOM · DRAG PAN", 11, wy); }
       ctx.textAlign = "right"; ctx.fillStyle = C.scrap; ctx.font = "800 9px ui-monospace, monospace";
       ctx.fillText("⬡ " + S.scrap, W - 11, wy);
-      // ---- action row: HERO / STRIKE / REPAIR as real buttons ----
-      drawCmdRow(rect, rect.y + 78);
     }
   }
   // V6.26: Hero / Airstrike / Repair as proper labelled tray buttons instead of circles floating
@@ -6940,61 +6988,86 @@
       if (hurt2) trayBtns.push({ action: "repair", x: rx2, y: y, w: w, h: h });
     }
   }
-  function drawBuildMenu() {
-    trayBtns = [];
-    const rect = trayRect();
-    ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    if (LANDSCAPE) {
-      const pad = 8;
-      ctx.fillStyle = C.neonC; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", rect.x + pad, rect.y + 11);
-      ctx.fillStyle = C.textDim; ctx.font = "700 7px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP AGAIN TO CANCEL", rect.x + rect.w - pad, rect.y + 11);
-      // 2 per row: the 188px panel has no room for 4-across, but plenty of vertical room for tall rows
-      const N = TOWER_ORDER.length, PER = 2, gap = 6;
-      const bw = (rect.w - 2 * pad - gap * (PER - 1)) / PER, bh = 56, y0 = rect.y + 20;
-      TOWER_ORDER.forEach((key, i) => {
-        const rw = Math.floor(i / PER), cl = i % PER;
-        const x = rect.x + pad + cl * (bw + gap), y = y0 + rw * (bh + 6);
-        const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
-        ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
-        if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
-        ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
-        drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
-        ctx.globalAlpha = 1;
+  // ---------- V6.36 BUILD PANEL (slides in from the left, over the play area) ----------
+  // The palette used to be a row of tiny cells in the tray, which meant selecting a plot hid the
+  // Hero/Strike/Core row and left the Airstrike reachable from two unrelated places. Off the tray it
+  // gets a full row per tower: big art, cost, the stats you are actually choosing between, and a
+  // plain-language role line — plus a close button, since "tap the plot again" was not discoverable.
+  const TOWER_ROLE = {
+    turret: "Cheap all-round · hits air",
+    cryo:   "Frost field · slows packs",
+    mortar: "Splash · strong vs swarms",
+    tesla:  "Long range · sees cloaked",
+    pyre:   "Short range · burn damage",
+    siege:  "Armor breaker · slow, huge",
+    prism:  "Chains · air · sees cloaked",
+  };
+  const BUILDP_W = 176;
+  function buildPanelRect() {
+    const top = PLAY_TOP + 6, bot = (LANDSCAPE ? H : trayTop()) - 6;
+    const n = TOWER_ORDER.length, hdr = 26, pad = 8, gap = 5;
+    const avail = Math.max(140, bot - top);
+    // rows shrink to fit rather than the panel scrolling — 7 towers is the whole roster, so the
+    // list is bounded and a 34px row still clears the tap minimum across its full 166px width.
+    const rowH = Math.max(28, Math.min(46, Math.floor((avail - hdr - pad - gap * (n - 1)) / n)));
+    return { x: 6, y: top, w: BUILDP_W, h: Math.min(avail, hdr + n * rowH + gap * (n - 1) + pad), hdr, rowH, gap, pad };
+  }
+  const buildPanelHit = (x, y) => { if (!buildMenuOpen()) return false; const p = buildPanelRect(); return x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h; };
+  function drawBuildPanel() {
+    buildBtns = [];
+    if (!buildMenuOpen() || (S.screen !== "playing" && S.screen !== "paused")) return;
+    const p = buildPanelRect(), slim = p.rowH < 40;
+    ctx.save();
+    ctx.translate(-(1 - S.sheetAnim) * 46, 0);
+    ctx.globalAlpha = 0.3 + 0.7 * S.sheetAnim;
+    ctx.fillStyle = "rgba(9,13,17,0.94)"; rr(p.x, p.y, p.w, p.h, 8); ctx.fill();
+    ctx.strokeStyle = "rgba(55,224,208,0.34)"; ctx.lineWidth = 1.2; rr(p.x, p.y, p.w, p.h, 8); ctx.stroke();
+    ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    ctx.fillStyle = C.neonC; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", p.x + 10, p.y + 14);
+    const xw = 28, xh = 20, xx = p.x + p.w - xw - 6, xy = p.y + 4;
+    ctx.fillStyle = "#3a2020"; rr(xx, xy, xw, xh, 4); ctx.fill();
+    ctx.fillStyle = "#f0a090"; ctx.font = "800 12px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("✕", xx + xw / 2, xy + xh / 2);
+    buildBtns.push({ x: xx - 5, y: xy - 4, w: xw + 10, h: xh + 9, action: "closebuild" });
+    const y0 = p.y + p.hdr;
+    TOWER_ORDER.forEach((key, i) => {
+      const x = p.x + 5, y = y0 + i * (p.rowH + p.gap), bw = p.w - 10, bh = p.rowH;
+      const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret";
+      const modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0)));
+      const locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
+      ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
+      if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
+      ctx.save();
+      ctx.globalAlpha *= banned ? 0.35 : (afford ? 1 : 0.5);
+      drawTowerArt(x + 20, y + bh / 2 + 4, key, 0, -Math.PI / 2, 0, 0, false, slim ? 0.52 : 0.62);
+      ctx.restore();
+      const tx = x + 42, y1 = y + (slim ? 11 : 13), y2 = y + (slim ? 25 : 28);
+      ctx.textAlign = "left"; ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 10px ui-monospace, monospace";
+      ctx.fillText(spec.short, tx, y1);
+      const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
+      ctx.textAlign = "right"; ctx.fillStyle = banned ? C.textDim : dtCol; ctx.font = "800 9px ui-monospace, monospace";
+      ctx.fillText(DMG_SYM[spec.dmgType], x + bw - 8, y1);
+      ctx.textAlign = "left";
+      if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("⊘ BANNED THIS OP", tx, y2); }
+      else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("🔒 RESEARCH IN ARMORY", tx, y2); }
+      else {
+        coin(tx + 4, y2, 4);
+        ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), tx + 12, y2);
+        ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace";
+        ctx.fillText("DMG " + l0.dmg + " · RNG " + Math.round(l0.range * rangeMul()), x + bw - 8, y2);
         ctx.textAlign = "left";
-        ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 8.5px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 19);
-        if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText("⊘ OFF", x + 34, y + 34); }
-        else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText("🔒 LOCK", x + 34, y + 34); }
-        else { coin(x + 37, y + 34, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 9.5px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 34); }
-        ctx.textAlign = "center";
-        if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
-        trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
-      });
-    } else {
-      const tt = rect.y;
-      ctx.fillStyle = C.neonC; ctx.font = "800 11px ui-monospace, monospace"; ctx.fillText("▸ CONSTRUCT", 12, tt + 13);
-      ctx.fillStyle = C.textDim; ctx.font = "700 9px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("TAP PLOT AGAIN TO CANCEL", W - 12, tt + 13);
-      // 4 per row: cells go from ~46px wide to ~82px, i.e. clear of the 48px tap minimum
-      const N = TOWER_ORDER.length, PER = 4, rows = Math.ceil(N / PER), gap = 6;
-      const bw = Math.min(82, (W - 16 - gap * (PER - 1)) / PER), bh = rows > 1 ? 46 : 74, y0 = tt + 24;
-      TOWER_ORDER.forEach((key, i) => {
-        const rw = Math.floor(i / PER), cl = i % PER, inRow = Math.min(PER, N - rw * PER);
-        const sx = (W - (bw * inRow + gap * (inRow - 1))) / 2, x = sx + cl * (bw + gap), y = y0 + rw * (bh + 5);
-        const spec = TOWERS[key], l0 = spec.levels[0], tutLock = S.tut === 0 && key !== "turret", modBan = !!(activeMod && (activeMod.ban === key || (activeMod.allowedTowers && activeMod.allowedTowers.indexOf(key) < 0))), locked = !Tech.isUnlocked(key), banned = tutLock || modBan || locked, afford = !banned && S.scrap >= l0.cost;
-        ctx.fillStyle = afford ? C.trayCellHi : "#171d22"; rr(x, y, bw, bh, 5); ctx.fill();
-        if (afford) { ctx.strokeStyle = "rgba(55,224,208,0.4)"; ctx.lineWidth = 1; rr(x, y, bw, bh, 5); ctx.stroke(); }
-        ctx.globalAlpha = banned ? 0.3 : (afford ? 1 : 0.45);
-        drawTowerArt(x + 18, y + bh / 2 + 3, key, 0, -Math.PI / 2, 0, 0, false, 0.5);
-        ctx.globalAlpha = 1;
-        ctx.textAlign = "left";
-        ctx.fillStyle = afford ? C.text : C.textDim; ctx.font = "800 9px ui-monospace, monospace"; ctx.fillText(spec.short, x + 34, y + 16);
-        if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("⊘ OFF", x + 34, y + 31); }
-        else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("🔒 LOCKED", x + 34, y + 31); }
-        else { coin(x + 37, y + 31, 4); ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), x + 45, y + 31); }
-        ctx.textAlign = "center";
-        if (S.tut === 0 && key === "turret") { const pl = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pl * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
-        trayBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
-      });
-    }
+        if (!slim) { ctx.fillStyle = "rgba(186,202,212,0.6)"; ctx.font = "600 8px system-ui"; ctx.fillText(TOWER_ROLE[key] || spec.desc, tx, y + 39); }
+      }
+      if (S.tut === 0 && key === "turret") { const pu = 0.5 + 0.5 * Math.sin(S.time * 4); ctx.save(); ctx.strokeStyle = rgba("#37e0d0", 0.55 + pu * 0.4); ctx.lineWidth = 2.5; ctx.shadowColor = C.neonC; ctx.shadowBlur = 8; rr(x - 2, y - 2, bw + 4, bh + 4, 6); ctx.stroke(); ctx.restore(); }
+      buildBtns.push({ x, y, w: bw, h: bh, action: "build", tower: key, afford, banned });
+    });
+    // taps that land on the panel background must not fall through to the map behind it
+    buildBtns.push({ x: p.x, y: p.y, w: p.w, h: p.h, action: "none" });
+    ctx.restore();
+  }
+  function buildAction(b) {
+    if (b.action === "none") return;
+    if (b.action === "closebuild") { S.selTile = null; S.rangePreview = null; Sound.place(); vibrate(8); return; }
+    trayAction(b);
   }
   function towerSpent(t) { const spec = TOWERS[t.type]; return spec.levels[0].cost + (t.lvl >= 1 ? spec.levels[1].cost : 0) + (t.lvl >= 2 && t.branch ? spec.branches[t.branch].cost : 0) + (t.lvl >= 3 && t.branch && spec.branches[t.branch].t4 ? spec.branches[t.branch].t4.cost : 0); }
   function drawTowerMenu() {
@@ -7037,11 +7110,11 @@
       } else {
         const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
         const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
-        const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
+        const ocAvail = !canUp && ocAvailable(t), ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
         const act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
         ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(x0, y, cw, bh, 4); ctx.fill();
         ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 11px ui-monospace, monospace";
-        ctx.fillText(ocAvail ? "⚡ OC ⚙" + ocCost : (canUp ? "UPGRADE ⚙" + upCost : "MAX LEVEL"), x0 + cw / 2, y + bh / 2);
+        ctx.fillText(ocAvail ? "⚡ OC " + ((t.oc || 0) + 1) + "/" + OC_MAX + " ⚙" + ocCost : (canUp ? "UPGRADE ⚙" + upCost : "MAX LEVEL"), x0 + cw / 2, y + bh / 2);
         trayBtns.push({ x: x0, y: y, w: cw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
         y += bh + 6;
         ctx.fillStyle = "#3a2020"; rr(x0, y, cw, bh, 4); ctx.fill();
@@ -7083,11 +7156,11 @@
       } else {
         const canT4 = t.lvl === 2 && t.branch && spec.branches[t.branch].t4;
         const canUp = t.lvl < 1 || canT4, upCost = canUp ? (t.lvl < 1 ? spec.levels[t.lvl + 1].cost : spec.branches[t.branch].t4.cost) : 0, upAfford = canUp && S.scrap >= upCost;
-        const ocAvail = !canUp && t.lvl >= 3, ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
+        const ocAvail = !canUp && ocAvailable(t), ocCost = ocAvail ? overclockCost(t) : 0, ocAfford = ocAvail && S.scrap >= ocCost;
         const bw = 152, act = ocAvail ? "overclock" : "upgrade", aff = ocAvail ? ocAfford : upAfford;
         ctx.fillStyle = aff ? (ocAvail ? "#f2b23a" : C.neonC) : "#1c2228"; rr(ux, y, bw, bh, 4); ctx.fill();
         ctx.textAlign = "center"; ctx.fillStyle = aff ? "#06181a" : C.textDim; ctx.font = "800 12px ui-monospace, monospace";
-        ctx.fillText(ocAvail ? "⚡ OVERCLOCK ⚙" + ocCost : (canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL"), ux + bw / 2, y + bh / 2);
+        ctx.fillText(ocAvail ? "⚡ OC " + ((t.oc || 0) + 1) + "/" + OC_MAX + "  ⚙" + ocCost : (canUp ? "UPGRADE  ⚙" + upCost : "MAX LEVEL"), ux + bw / 2, y + bh / 2);
         trayBtns.push({ x: ux, y, w: bw, h: bh, action: act, afford: aff, canUp: ocAvail ? true : canUp });
         const sx2 = ux + bw + 8;
         ctx.fillStyle = "#3a2020"; rr(sx2, y, bw, bh, 4); ctx.fill();
@@ -7160,7 +7233,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.35 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.36 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7514,7 +7587,7 @@
     if (S.screen !== "playing") return;
     ev.preventDefault();
     const s = evToScreen(ev); ptrs.set(ev.pointerId, s);
-    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM && s.x < TRAY_X; previewFromPoint(s.x, s.y); }
+    if (ptrs.size === 1) { gest.mode = "tap"; gest.downX = s.x; gest.downY = s.y; gest.prevX = s.x; gest.prevY = s.y; gest.moved = false; gest.inPlay = s.y >= PLAY_TOP && s.y < PLAY_BOTTOM && s.x < TRAY_X && !buildPanelHit(s.x, s.y); previewFromPoint(s.x, s.y); }
     else if (ptrs.size === 2) { gest.mode = "pinch"; S.rangePreview = null; const ps = pinchState(); pinch = ps; }
   });
   canvas.addEventListener("pointermove", (ev) => {
@@ -7550,6 +7623,11 @@
   function previewFromPoint(sx, sy) {
     if (S.pending) return;
     S.rangePreview = null;
+    for (const b of buildBtns) {
+      if (!inBox(sx, sy, b)) continue;
+      if (b.action === "build" && S.selTile) { const p = center(S.selTile.c, S.selTile.r); S.rangePreview = { x: p.x, y: p.y, range: TOWERS[b.tower].levels[0].range * rangeMul() }; }
+      return;
+    }
     const _tr = trayRect();
     if (sx < _tr.x || sy < _tr.y) return;
     for (const b of trayBtns) {
@@ -7574,11 +7652,18 @@
     }
     // armed airstrike: a tap in the play viewport calls it down (landscape: not over the side panel)
     if (S.strikeArm) { if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) { const w = screenToWorld(x, y); doStrike(w.x, w.y); } else S.strikeArm = false; return; }
-    // armed hero deploy: tap a buildable plot to place the Commander
+    // armed hero deploy: tap a buildable plot to pick the spot. V6.36 — this used to drop the
+    // Commander instantly, which made it the one placement in the game with no preview and no
+    // confirm. It now raises the same pending sheet a tower does, complete with the range ring.
     if (S.heroArm) {
-      if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) { const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE); if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) deployHero(c, r); else Sound.err(); }
-      else S.heroArm = false; return;
+      if (y >= PLAY_TOP && y < PLAY_BOTTOM && x < TRAY_X) {
+        const w = screenToWorld(x, y), c = Math.floor(w.x / TILE), r = Math.floor(w.y / TILE);
+        if (buildable(c, r) && !towers.some((t) => t.c === c && t.r === r)) { S.pending = { kind: "hero", c, r }; S.heroArm = false; S.sheetAnim = 0; Sound.place(); vibrate(8); }
+        else { Sound.err(); vibrate(40); }
+      } else S.heroArm = false;
+      return;
     }
+    for (const b of buildBtns) if (inBox(x, y, b)) { buildAction(b); return; }
     { const _tr = trayRect(); if (x >= _tr.x && y >= _tr.y) { for (const b of trayBtns) if (inBox(x, y, b)) { trayAction(b); return; } return; } }
     // world tap — cancels any pending confirm first
     if (S.pending) { S.pending = null; S.rangePreview = null; }
@@ -7597,19 +7682,29 @@
       const { c, r } = S.selTile; S.scrap -= cost; Telemetry.ev("builds"); Telemetry.ev("scrapSpent", cost);
       towers.push({ c, r, type: pd.tower, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" });
       (S.builtTypes || (S.builtTypes = {}))[pd.tower] = 1;
-      S.selTile = null; Sound.place(); vibrate(18);
+      // V6.36: focus follows the build — the tower you just placed is selected, so its upgrade menu
+      // is one tap away instead of forcing a second hunt for the plot you just tapped.
+      S.selTile = null; S.selTower = towers.length - 1; S.sheetAnim = 0; Sound.place(); vibrate(18);
     } else if (pd.kind === "upgrade") {
       const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
       const cost = t.lvl < 1 ? TOWERS[t.type].levels[t.lvl + 1].cost : TOWERS[t.type].branches[t.branch].t4.cost;
       if (S.scrap < cost) { Sound.err(); vibrate(40); return; }
       S.scrap -= cost; t.lvl++; Sound.up(); vibrate(18); Telemetry.ev("upgrades"); Telemetry.ev("scrapSpent", cost);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 9);
+    } else if (pd.kind === "overclock") {
+      const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
+      const c = overclockCost(t);
+      if (S.scrap < c || !ocAvailable(t)) { Sound.err(); vibrate(40); return; }
+      S.scrap -= c; t.oc = (t.oc || 0) + 1; Telemetry.ev("upgrades"); Telemetry.ev("scrapSpent", c); Telemetry.ev("overclocks");
+      const p = center(t.c, t.r); burst(p.x, p.y - 12, "#ffd27a", 10); floats.push({ x: p.x, y: p.y - 22, text: "\u26A1OC " + t.oc, life: 1, vy: -28, color: "#ffd27a" }); Sound.up(); vibrate(12);
     } else if (pd.kind === "branch") {
       const t = towers[pd.tower]; if (!t) { S.pending = null; return; }
       const br = TOWERS[t.type].branches[pd.branch];
       if (S.scrap < br.cost) { Sound.err(); vibrate(40); return; }
       S.scrap -= br.cost; t.lvl = 2; t.branch = pd.branch; Sound.up(); vibrate([12, 30]); Telemetry.ev("branches"); Telemetry.ev("scrapSpent", br.cost);
       const p = center(t.c, t.r); burst(p.x, p.y - 12, TOWERS[t.type].accent, 14); floats.push({ x: p.x, y: p.y - 22, text: br.short, life: 1, vy: -30, color: TOWERS[t.type].accent });
+    } else if (pd.kind === "hero") {
+      if (!hero) deployHero(pd.c, pd.r);
     } else if (pd.kind === "sell") {
       const t = towers[pd.tower];
       if (t) { S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells"); towers.splice(pd.tower, 1); S.selTower = null; Sound.sell(); vibrate(18); }
@@ -7638,11 +7733,8 @@
       if (!b.canUp) { Sound.err(); vibrate(40); return; }
       S.pending = { kind: "upgrade", tower: S.selTower }; Sound.place(); vibrate(8);
     } else if (b.action === "overclock") {
-      const t = towers[S.selTower]; if (!t) return;
-      const c = overclockCost(t);
-      if (S.scrap < c) { Sound.err(); vibrate(40); return; }
-      S.scrap -= c; t.oc = (t.oc || 0) + 1; Telemetry.ev("upgrades"); Telemetry.ev("scrapSpent", c); Telemetry.ev("overclocks");
-      const p = center(t.c, t.r); burst(p.x, p.y - 12, "#ffd27a", 10); floats.push({ x: p.x, y: p.y - 22, text: "\u26A1OC " + t.oc, life: 1, vy: -28, color: "#ffd27a" }); Sound.up(); vibrate(12);
+      if (!b.canUp) { Sound.err(); vibrate(40); return; }
+      S.pending = { kind: "overclock", tower: S.selTower }; Sound.place(); vibrate(8);
     } else if (b.action === "branch") {
       S.pending = { kind: "branch", tower: S.selTower, branch: b.branch }; Sound.place(); vibrate(8);
     } else if (b.action === "confirm") {
@@ -8396,8 +8488,18 @@
     preRing.rotation.x = -Math.PI / 2; preRing.visible = false; scene.add(preRing);
     const preFill = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0xf2b23a, transparent: true, opacity: 0.06, depthWrite: false }));
     preFill.rotation.x = -Math.PI / 2; preFill.visible = false; scene.add(preFill);
+    // V6.36: the Commander is the only unit that never showed its reach. A permanent gold ring sits
+    // under it — dim while the pulse recharges, breathing once the pulse is ready.
+    const heroRing = new T.Mesh(GEO.ringThin, new T.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.26, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    heroRing.rotation.x = -Math.PI / 2; heroRing.visible = false; scene.add(heroRing);
     function syncSel() {
       selRing.visible = selFill.visible = selTileM.visible = preRing.visible = preFill.visible = false;
+      heroRing.visible = !!hero;
+      if (hero) {
+        const ready = hero.abil <= 0;
+        heroRing.material.opacity = ready ? 0.26 + 0.14 * Math.sin(S.time * 5) : 0.13;
+        heroRing.position.set(hero.x, 1.4, hero.y); heroRing.scale.setScalar(HERO.levels[hero.lvl].range);
+      }
       if (S.rangePreview) {
         const pv = S.rangePreview;
         preRing.visible = preFill.visible = true;
@@ -8669,7 +8771,7 @@
       if (shake.t > 0) shake.t -= raw;
       if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - raw);
       else if (!S.usedStrike && enemies.some((e) => e.alive)) queueTip("strike");
-      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= raw * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
+      if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { if (autoHold()) Telemetry.ev("holdMs", dtMs); else { S.countdown -= raw * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } } }
       if (S.screen !== "playing") render();
     }
 
@@ -8679,6 +8781,7 @@
     G3D.frame(so, raw, dtMs);
     G3D.overlay();
     if ((S.screen === "playing" || S.screen === "paused") && BLOCKED_SET.size) drawObstacles();
+    if (S.screen === "playing" || S.screen === "paused") drawOverclockMarks();
 
     // screen layer
     drawScreenFlash(); drawLowCore();
@@ -8687,9 +8790,7 @@
     drawBossBar();
     drawBanner(raw);
     drawZoomButtons();
-    // V6.26: while the tray shows the command bar the Hero/Strike buttons live THERE, so the
-    // floating map-edge circles only appear in the build/upgrade/confirm tray states.
-    if (S.screen === "playing" || S.screen === "paused") { if (!trayIsIdle()) { drawAbility(); drawHeroFab(); } }
+    drawBuildPanel();
     drawHUD();
     drawTray(raw);
     drawTutorial();
@@ -8744,12 +8845,12 @@
       for (; i < maxIters && S.screen === "playing"; i++) {
         stepSim(stepMs); const d = stepMs / 1000;
         if (S.strikeCd > 0) S.strikeCd = Math.max(0, S.strikeCd - d);
-        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP) { S.countdown -= d * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
+        if ((S.endless || S.wave < TOTAL_WAVES) && S.countdown > 0 && enemies.length < CONGEST_CAP && !autoHold()) { S.countdown -= d * gapRate(); if (S.countdown <= 0) { S.countdown = 0; Telemetry.ev("autoLaunches"); startWave(); } }
       }
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };

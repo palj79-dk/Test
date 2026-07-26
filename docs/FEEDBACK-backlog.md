@@ -148,3 +148,52 @@ was an outright **loss**. A flat nerf would have broken the top end.
 
 Net effect: they stay the late-game answer they need to be, but one of them can no longer cover a whole
 map, so the rest of the roster keeps a reason to exist.
+
+## 7. Six points from the clean-account run — `DONE` (V6.36)
+
+**Recorded + resolved:** 2026-07-26 · against V6.35 · shipped in V6.36. All six came in one message with a
+13-run play-log from a freshly reset account.
+
+> "when building, focus must change to the newly build tower so I can upgrade it."
+
+Shipped: `doPending` selects the tower it just pushed.
+
+> "it seems that I have maxed Armery out after 9 rounds of campaign - except the ones locked until map 12.
+> can you verfi that this is a general case or that there are an issue when I reset my player?"
+
+**Answered from the log: general case, not a reset bug.** Alloy earned per run was
+561/561/1001/1001/1000/1001/1000/1000/1351 = **8,476** by run 9, against **8,990** of reachable (un-gated)
+nodes — the log's `armory: 0.91` is correct arithmetic. The defect was the *pricing*: the tree totalled
+**10,670**, i.e. 2.4× under the ~25,700 the design target called for. V6.36 re-costed it to **25,380**.
+
+> "it is a bit confusing that the hero and airstike is two different places. also the airstrike is partly
+> gotten by the build menu. can you instead keep the bottom line with hero, strike and core and then have
+> the build menu starting above that line or maybe as a menu sliding in from the left? the sliding menu
+> will also give room for larger scans/more info. also in the build menu an exit bottom is needed."
+
+**Root cause found:** HERO/STRIKE/CORE were a *tray state*, and selecting a plot swapped them for floating
+circles at the map edge — hence "two different places". User chose **"Panel der glider ind fra venstre"**.
+Shipped: permanent command strip + left-sliding build panel with big rows, per-tower info and a ✕.
+
+> "hero has no indication of range. also the mechanisms for placing the hero is different from placing towers."
+
+Shipped: hero deploy goes through the same pending-confirm sheet as a tower (with the range ring on the
+target plot), and a deployed Commander carries a permanent range ring.
+
+> "overclocking needs a confirmation as well as a way to se when a tower is overclocked. also evaluate if
+> the time is and effect is correlating with the gain"
+
+**Measured:** 200 scrap for +10% damage on one tower vs ~330 for a whole maxed Auto-Gun, used **3 times in
+13 runs**. Shipped: 120 × 1.7ⁿ for +15% damage **and** +6% fire rate, capped at 3 stacks, behind a confirm
+sheet, with a ⚡N pip on the tower in the field.
+
+> "consider if the time between waves have to be fitted for the individual map and possible also difficulty.
+> is seems that for the more advanced maps and largewqvs that they new Annie's are sent while the old wave
+> is still been send into the map. or a block that said a new wave (unless sent by the player) can not be
+> sent while previous wave is still being sent - but can be sent right in the tail of it."
+
+**Confirmed and quantified:** spawn time vs the 20s `WAVE_GAP` — wave 12 = 17.1s (no overlap), wave 14 =
+**20.4s** (overlap starts), wave 18 = 30.7s, wave 20 = **34.3s**. User chose **"Blød spærring: vent til
+halen"**. Shipped: the gap timer freezes while >20% of the current wave is still queued and resumes in the
+tail; player early-sends unaffected. This is also the per-map/per-difficulty fit that was asked about —
+bigger waves spawn longer, so the block adapts on its own without a per-map constant.
