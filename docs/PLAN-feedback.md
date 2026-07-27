@@ -1,6 +1,21 @@
 # Fallen Grid — Plan for feedback points 1-5
 
-Covers `docs/FEEDBACK-backlog.md` #1-#5, recorded against V6.27. **Plan only — nothing built yet.**
+Covers `docs/FEEDBACK-backlog.md` #1-#5, recorded against V6.27.
+
+> **STATUS: ✅ ALL SHIPPED — this document is now a record of the reasoning, not a to-do list.**
+> Written as a plan against V6.27; every iteration below has landed. What shipped for each point, and
+> the measurement behind it, lives in `docs/FEEDBACK-backlog.md`; the implementation detail is in the
+> `HANDOFF.md` changelog under each version.
+>
+> | Iteration | Points | Shipped in |
+> |---|---|---|
+> | A — onboarding | #1 welcome, #2 hero, #3 airstrike | **V6.29** (briefing, run-end Armory nudge, hero/strike coach-marks) |
+> | B — build row | #5 cramped 7-tower row | **V6.28** (two rows of four + tray expansion) |
+> | C — landscape | #4 phone + tablet, both orientations | **V6.30 (C1)**, **V6.31 (C2)**, **V6.32 (C3)**, then **V6.33/V6.34** for aspect fill |
+>
+> **Two of these were later rebuilt on further feedback, and the newer design wins:** the build row
+> became a slide-in left panel in **V6.36** (#5's layout here is superseded), and the onboarding became
+> a 7-step guided tour in **V6.38** (points #2/#3 here got one coach-mark each; see backlog #9).
 
 ## Play-log evidence (2026-07-25, 4 runs on V6.27)
 

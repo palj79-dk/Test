@@ -1,5 +1,14 @@
 # Fallen Grid — Monetization Implementeringsplan (V7-linjen)
 
+> ⚠ **STALE ANCHORS — re-derive before using.** The code anchors quoted below were taken from
+> `fallengrid-v6.7.html`. The current build is **V6.38**, and the in-mission UI has been rebuilt since:
+> the tray is now a permanent HERO/STRIKE/CORE command strip with a slide-in build panel (V6.36-V6.38),
+> the Armory is a research tree rather than flat talents (V6.24), and the layout constants are live
+> orientation-aware bindings rather than fixed numbers (V6.30-V6.34). Treat the snippets as *intent*,
+> not as copy-paste targets, and grep the current file for each insertion point. The plan itself —
+> which surfaces to monetize and which to leave alone — is unaffected and still the design of record
+> for a future **V7** line. Nothing here is implemented in any shipped build.
+
 > Status: **PLAN — ikke implementeret.** Læs `SPEC.md` først (design + balance + compliance).
 > Kodeeksemplerne her bruger de faktiske anker-strenge fra `fallengrid-v6.7.html`,
 > så de kan omsættes direkte til `rep(old, new)`-byggescripts som alle tidligere iterationer.

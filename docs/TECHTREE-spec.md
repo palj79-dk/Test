@@ -1,6 +1,12 @@
 # Fallen Grid — Armory → Research Tree (Tech Tree) Spec
 
-**Status:** ✅ **ALL PHASES SHIPPED — P1 in `fallengrid-v6.24.html`, P2+P3 in `fallengrid-v6.25.html`** (HTML test builds, no APK). Framework, gating, free/reversible fork, overview-first UI and Alloy-refund migration went in with P1; **Siege Battery** (Ordnance capstone) and **Prism** (Arc capstone) are now real towers with full stat lines, in-run a/b forks, bespoke art, dedicated SFX and Codex entries. Remaining work is the balance/costing pass, pending an on-device play-log. Below is the design of record.
+**Status:** ✅ **ALL PHASES SHIPPED AND BALANCED.** P1 (framework, gating, free/reversible fork, overview-first UI, Alloy-refund migration) in `fallengrid-v6.24.html`; P2+P3 (**Siege Battery** and **Prism** as real towers with full stat lines, in-run a/b forks, bespoke art, dedicated SFX and Codex entries) in `fallengrid-v6.25.html`. The balance and costing passes that were still open then have since landed, both driven by on-device play-logs:
+
+- **V6.35 — roster collapse.** Once the two capstones unlocked, they were the *only* towers worth a plot. Fixed by cutting **coverage, not damage** (range and splash down; every damage figure unchanged) plus a **campaign gate**, `reqCamp: 12`, on both capstones.
+- **V6.36 — costing.** The tree totalled **10,670 Alloy** against the ~25,700 this document's §5 called for, so a player maxed it around mission 9 of 25. Re-costed to **25,380** by scaling with ladder position, leaving the opening untouched. See §5.
+
+Below is the design of record. Where a later version changed something, the section says so inline.
+
 **Author context:** requested 2026-07-24 — "turn the Armory into a tech tree with branches, tower upgrades, and more advanced towers; later steps hidden, the step you research and the branch type known; investigate how others have done it."
 
 ### Locked decisions (2026-07-24)
@@ -67,7 +73,7 @@ I looked at the designs closest to what you're describing — a persistent, bran
 
 ### 3.1 One-paragraph pitch
 
-Replace the flat 14-talent Armory with a **Research Tree of 4 themed branches**. Each branch is a ladder of nodes bought with Alloy. A branch's **theme is always shown**. Within a branch, purchased nodes show ✓, the **single next node is fully revealed** (name, effect, cost — "RESEARCH NOW"), and **all deeper nodes are masked** — shown as a silhouette with only their **category tag** (⬢ UNLOCK / ⚔ WEAPON / ⬡ SYSTEM / ✦ CAPSTONE) visible. New players **start with the Auto-Gun only**; every other tower — and two brand-new advanced towers — is unlocked by researching down a branch.
+Replace the flat 14-talent Armory with a **Research Tree of 4 themed branches**. Each branch is a ladder of nodes bought with Alloy. A branch's **theme is always shown**. Within a branch, purchased nodes show ✓, the **single next node is fully revealed** (name, effect, cost — "RESEARCH NOW"), and **all deeper nodes are masked** — shown as a silhouette with only their **category tag** (⬢ UNLOCK / ⚔ WEAPON / ⬡ SYSTEM / ✦ CAPSTONE) visible. New players **start with Auto-Gun + Cryo** (decision D1, shipped as `TOWER_START = ["turret", "cryo"]`); every other tower — and two brand-new advanced towers — is unlocked by researching down a branch.
 
 ### 3.2 The four branches
 

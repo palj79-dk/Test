@@ -3,6 +3,24 @@
 > Gemt på brugerens anmodning: skal genbesøges når spillet skifter fra TEST til RELEASE.
 > Flere menupunkter findes i dag **kun til test** — se tjeklisten nederst.
 
+> **STATUS ved V6.38 — læs dette først. Teksten nedenfor er et fastfrosset øjebliksbillede fra V6.14
+> og er bevidst ikke omskrevet;** den er værd at have som datestemplet kritik. Men to tal er forældede,
+> og noget af kritikken er siden besvaret:
+>
+> **Forældede tal:** "18 baner" → **25**. "5 tårne" → **7** (Siege Battery og Prism kom i V6.25).
+> "10+ fjendetyper" → **13**.
+>
+> **Besvaret siden:** kritikpunkt 1 (sværhedsgraden behandlet symptomatisk) fik sit strukturelle svar i
+> V6.24's research-tree — tårne er nu låst bag forskning, så Armory er en reel spærring og ikke kun en
+> bonus — plus V6.35's kampagne-gate og V6.36's re-prissætning til 25.380 Alloy, som får træet til at
+> række hele de 25 baner. Kritikpunkt 3 (systemer > dybde) er delvist besvaret af V6.36-V6.38, der
+> byggede kamp-UI'et om til én permanent kommandolinje, ét byggepanel og én sammenhængende guided tour.
+>
+> **Stadig åbent, uændret:** kritikpunkt 2 — balancen hviler stadig på **én tester** plus en
+> headless-sim, og der er stadig ingen data om nye spilleres bølge 1-10 ud over egne play-logs.
+> **Og hele tjeklisten nederst er urørt:** dev-menupunkterne er stadig eksponeret, og `DEV_BUILD` er
+> stadig `true`. Intet af det må med i en offentlig udgivelse.
+
 ## Overordnet dom
 
 Et usædvanligt indholdsrigt og teknisk ambitiøst projekt, langt forbi prototype-stadiet —

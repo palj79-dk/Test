@@ -7,6 +7,10 @@ solution — that comes later, when asked).
 
 Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built · `DONE` = shipped (with version).
 
+Points are kept in the order they were raised, with the original wording and the measurement that
+settled them. Where a later point rebuilt an earlier answer, the earlier heading says so — the newest
+entry always describes what the game does today.
+
 ---
 
 ## 1. No welcome / onboarding when the game starts — `DONE` (V6.29)
@@ -29,7 +33,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 
 ---
 
-## 2. The starting guide never teaches the Hero — `DONE` (V6.29)
+## 2. The starting guide never teaches the Hero — `DONE` (V6.29) · **superseded by #9 (V6.38)**
 
 > "at start the guide does not help to use the hero. As the hero can clear the first waves single
 > tower this could be improved."
@@ -52,7 +56,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
   "HERO / DEPLOY · FREE" instead of an unlabelled circle floating over the map — but that is a
   passive hint, not guidance.
 
-## 3. The Airstrike is never introduced either — `DONE` (V6.29)
+## 3. The Airstrike is never introduced either — `DONE` (V6.29) · **superseded by #9 (V6.38)**
 
 > "also introduce the strike"
 
@@ -84,7 +88,7 @@ Status legend: `OPEN` = recorded, untouched · `PLANNED` = spec'ed, not built ·
 - Worth deciding at planning time: true landscape layout vs. letterboxed portrait-locked. The
   ask is for the former.
 
-## 5. Build menu still shows 7 towers on one cramped row — `DONE` (V6.28)
+## 5. Build menu still shows 7 towers on one cramped row — `DONE` (V6.28) · **layout replaced in V6.36**
 
 > "når jeg bygger er der stadig 7 tårne på linje. de er meget små. syntes du havde ordnet det"
 

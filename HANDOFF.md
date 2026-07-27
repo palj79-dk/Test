@@ -1,10 +1,18 @@
-# Fallen Grid — Specification & Handoff (v3)
+# Fallen Grid — Specification & Handoff
 
-Single-file HTML5 canvas tower defense, post-apocalyptic sci-fi theme, portrait mobile-first, intended to ship on Google Play via a Capacitor WebView wrapper. This document is the source of truth for continuing the work. Part 0 is the operating contract. Part 1 is the technical spec (updated to current code). Part 2 is the continuation brief: quality assessment, backlog, changelog. Part 3 is the **Visual & Map Direction V2** — the re-evaluation of graphics ("how do we get a 3D-rendered look?") and map layout, with a phased implementation plan.
+Single-file HTML5 tower defense, post-apocalyptic sci-fi theme, portrait mobile-first, intended to ship on Google Play via a Capacitor WebView wrapper. This document is the source of truth for continuing the work. Part 0 is the operating contract. Part 1 is the technical spec. Part 2 is the continuation brief: quality assessment, backlog, changelog. Part 3 is the **Visual & Map Direction V2** — the re-evaluation of graphics and map layout. Part 4 is the real-3D architecture. Parts 5 and 6 are the V4/V5 retention and balance lines. **The changelog runs to the bottom of the file; the newest entry is always last.**
 
-The deliverable file is `fallengrid-v3.html` (real-3D build — see Part 4; the older 2D builds are kept frozen alongside). Everything lives in one file inside a single IIFE. No build step, no CDN: three.js r147 is embedded inline. WebGL via three.js for the world + Canvas2D for UI + WebAudio.
+> **HOW TO READ THIS FILE.** Parts 1-6 were written at the version named in each section and are kept as
+> written, so the changelog stays honest about what was believed when. Where a later iteration changed
+> something a Part describes, the Part carries an inline note pointing at the version that changed it.
+> **When a Part and a changelog entry disagree, the changelog entry wins.** For anything you are about
+> to touch, read the newest changelog entries first, then grep the current build.
 
-**Current state (v3).** All original backlog items are closed: graphics pass 1, strategic depth, audio, onboarding, meta-progression, endless + 5-map roster with biomes, balance pass, and the Hero/Commander. The game is mechanically a genre-standard TD with retention. The open front is **presentation ceiling and map composition** — the subject of Part 3.
+**Current deliverable: `fallengrid-v6.38.html`.** Everything lives in one file inside a single IIFE. No build step, no CDN: three.js r147 is embedded inline. WebGL via three.js for the world + Canvas2D for UI + WebAudio. Frozen predecessors kept alongside for changelog reference: `fallengrid-v3.html` (V3.6, first real-3D build), `fallengrid-v2.5.html` (last 2D build), `fallengrid.html` (V2.4). **The filename version must match the version label inside the file** — the APK workflow selects by version sort and fails the build if they disagree.
+
+**Current state (V6.38).** Content is complete and the presentation front is closed: 25 sectors in four geometry tiers, 7 towers with a/b specialisations and L4 tiers, 13 enemies with tactical traits, Commander + Airstrike, campaign with mastery medals, Daily Op with rule-changing modifiers, Challenge Lab, Endless, achievements, Codex, per-run telemetry, and a 4-branch 32-node Armory research tree (25,380 Alloy end to end). Both orientations are supported on phone and tablet with aspect-derived layout. The V6.36-V6.38 line rebuilt the in-mission UI around player feedback: a permanent HERO/STRIKE/CORE command strip, a slide-in build panel, and a guided onboarding tour that walks the whole interface.
+
+**Open fronts.** (1) Balance still rests on one tester plus a headless sim — see `docs/ANALYSIS-prerelease.md`. (2) The pre-release checklist in that document is unstarted: dev options are still exposed and `DEV_BUILD` is still on. (3) Monetization is specced but deferred to a V7 line — see `docs/monetization/`.
 
 ---
 
@@ -32,11 +40,13 @@ Twenty-wave tower defense. The player defends a reactor (Core) against waves of 
 
 The engine separates two spaces. Get this wrong and everything else breaks.
 
-**Screen space** is a fixed 360x640 logical canvas. The HUD (top) and tray (bottom) are drawn here and never move. The canvas is letterboxed to the device via a uniform scale in `resize()`, with `devicePixelRatio` applied through `ctx.setTransform`.
+**Screen space** is a logical canvas. The HUD (top) and tray (bottom/side) are drawn here and never move. The canvas is scaled to the device by a uniform factor in `resize()`, with `devicePixelRatio` applied through `ctx.setTransform`.
+
+> **Updated V6.30 (C1) / V6.33 / V6.34.** This was a fixed **360x640**. It is now **orientation-aware and aspect-derived**: `W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W` are live `let` bindings recomputed by `layout()` from `resize()`, so all 228 references pick up new values with no call-site changes. **Portrait** holds `W = 360` and derives `H = clamp(round(360 · vh/vw), 600, 900)`, giving the extra height to the play area. **Landscape** holds `H = 360` and derives `W = clamp(round(360 · vw/vh), 560, 1120)`, with the tray becoming a 188px right-hand side panel (`TRAY_X`, `TRAY_W`) instead of a bottom band. Read the viewport from `visualViewport` where available — `innerWidth/innerHeight` lag while the mobile URL bar animates. Two helpers are the single source of truth and should be used instead of raw constants: **`playW()`** (`LANDSCAPE ? TRAY_X : W`) for anything anchored to the right edge of the *play viewport*, and **`trayRect()`** for the tray rectangle in either orientation.
 
 **World space** is the map, independent of the screen. World origin `(0,0)` is the map's top-left corner. The map spans `WORLD_W x WORLD_H` = `704 x 1024`. All gameplay entities live in world coordinates.
 
-A camera projects world into the on-screen play viewport, the screen rectangle from `y = PLAY_TOP (56)` to `y = PLAY_BOTTOM (522)`, full width.
+A camera projects world into the on-screen play viewport: the screen rectangle from `y = PLAY_TOP` to `y = PLAY_BOTTOM`, spanning `playW()` horizontally (full width in portrait, up to the side panel in landscape). All four are live bindings — see the V6.30/V6.33/V6.34 note above.
 
 ```
 cam = { x, y, zoom }   // x,y = world coord at viewport top-left; zoom = screen px per world unit
@@ -51,11 +61,16 @@ Zoom limits: `MINZOOM = min(W/WORLD_W, PLAY_H/WORLD_H) * 0.98`, `MAXZOOM = 1.9`.
 ## 1.3 Layout constants
 
 ```
-W = 360, H = 640
-HUD_H = 56          PLAY_TOP = 56
-TRAY_H = 118        PLAY_BOTTOM = 522    PLAY_H = 466
-TILE = 64  COLS = 11  ROWS = 16   WORLD_W = 704  WORLD_H = 1024
+TILE = 64                       (COLS/ROWS/WORLD_W/WORLD_H are per-map, see 1.5)
+portrait   W = 360   H = clamp(round(360 * vh/vw), 600, 900)
+           HUD_H = 56   TRAY_H = 118   TRAY_W = 0     TRAY_X = W
+           PLAY_TOP = HUD_H   PLAY_BOTTOM = H - TRAY_H
+landscape  H = 360   W = clamp(round(360 * vw/vh), 560, 1120)
+           HUD_H = 46   TRAY_H = 0     TRAY_W = 188   TRAY_X = W - TRAY_W
+           PLAY_TOP = HUD_H   PLAY_BOTTOM = H
 ```
+
+> **Updated V6.30 (C1) / V6.33 / V6.34.** These were fixed constants (`W = 360, H = 640, PLAY_BOTTOM = 522, PLAY_H = 466`, and the map was a fixed `11x16` grid). They are now live `let` bindings recomputed by `layout()`, and the grid is per-map. Do not hardcode any of them, in code **or in tests** — assert the *relationship* (the tray sits at `PLAY_BOTTOM`, the panel stays inside `PLAY_TOP..PLAY_BOTTOM`) rather than a number, which is what let the whole suite survive two geometry changes unedited.
 
 ## 1.4 Terrain (pre-rendered, baked once)
 
@@ -129,7 +144,9 @@ Ten types in `ENEMIES`. `statsFor(type, wave)` applies HP mul `1 + 0.14*w + 0.01
 
 ## 1.9 Active ability — Airstrike
 
-`STRIKE_CD = 30 - Meta.val("strike")` effective (`strikeMax()`), `STRIKE_R = 92`. Bottom-left circular FAB with a cooldown sweep. Tap to arm (`S.strikeArm`), then a tap in the play viewport calls `doStrike(wx, wy)`: layered explosions + `explosive`, `pierce` AoE that hits air and ground, brief `stunT`, shake + flash. Armed state shows a red reticle overlay ("TAP A TARGET ZONE") and the FAB reads CANCEL.
+`STRIKE_CD = 30 - Meta.val("strike")` effective (`strikeMax()`), `STRIKE_R = 92`. Tap to arm (`S.strikeArm`), then a tap in the play viewport calls `doStrike(wx, wy)`: layered explosions + `explosive`, `pierce` AoE that hits air and ground, brief `stunT`, shake + flash. Armed state shows a red reticle overlay ("TAP A TARGET ZONE") and the button reads CANCEL.
+
+> **Updated V6.26 / V6.36.** The control was a bottom-left circular FAB floating over the map. It became a labelled tray button in V6.26, and in V6.36 it moved into the **permanent command strip** (`drawCmdRow`, pinned to the tray's bottom edge) alongside PULSE and CORE — the strip is drawn in every tray state, so the Airstrike is never hidden and no longer exists in two places at once. `drawAbility()`/`drawHeroFab()` are deleted.
 
 ## 1.10 The wave-progression guarantee (do not regress)
 
@@ -145,15 +162,21 @@ Two independent guards make a freeze impossible; both must remain:
 
 ## 1.12 Input model
 
-Pointer events with a `ptrs` Map for multitouch. Tap vs pan by `DRAG_THRESH = 8px`; two-finger pinch zoom + pan. `tap(x, y)` priority order: tutorial skip → HUD buttons → zoom buttons → ability FAB → armed-airstrike placement → tray buttons → world tile. Build flow is plot-first. A document-level `pointerdown` calls `Sound.resume()` to satisfy mobile audio autoplay policy.
+Pointer events with a `ptrs` Map for multitouch. Tap vs pan by `DRAG_THRESH = 8px`; two-finger pinch zoom + pan. Build flow is plot-first.
+
+`tap(x, y)` priority order **as of V6.38**: tutorial skip → a read-only tour card (swallows the tap and advances) → HUD buttons → zoom buttons → STRIKE → PULSE → armed-airstrike placement → **build-panel buttons** → tray buttons → world tile. The build panel pushes a full-panel `action: "none"` entry last so a tap on its background is absorbed instead of falling through to the map, and `gest.inPlay` excludes the panel so a drag starting on it cannot pan the camera. **Order matters:** anything hit-tested before another control steals its taps — V6.31 caught the DEPLOY button shadowing the landscape side panel, and V6.38 caught SKIP overlapping DEPLOY by 5px. A document-level `pointerdown` calls `Sound.resume()` to satisfy mobile audio autoplay policy.
 
 ## 1.13 Persistence and audio
 
-`Store` wraps `localStorage` with an in-memory fallback. Persists `sfx`, `music`, `haptics`, `eco`, `speed`, `map`, `camp`, `difficulty`, `high`, `highEndless`, `tutDone`, `alloy`, `talents`. `Sound` is a procedural WebAudio synth: a master gain → `DynamicsCompressor` chain, oscillator layers plus filtered noise bursts for gun/tesla/cryo/boom/hit/place/up/sell/err/leak/shield/strike/wave/win/lose (all gated by the persisted **SFX** flag), and an ambient music bed (detuned drone + LFO-swept lowpass + filtered wind) gated by the **independent, persisted Music flag**, started on entering play and faded out otherwise. Haptics (`vibrate()`) are gated by the persisted `haptics` flag. All guarded in try/catch.
+`Store` wraps `localStorage` with an in-memory fallback. Persists (V6.38, 28 keys): `sfx`, `music`, `haptics`, `eco`, `speed`, `map`, `camp`, `difficulty`, `customDiff`, `high`, `highEndless`, `medals`, `ach`, `astat`, `alloy`, `talents` (legacy, migrated), `research`, `spec`, `tutDone`, `seenIntro`, `seenTips`, `ddone`, `dlast`, `dstreak`, `logEnabled`, `telemetry`, `devArmory`, `devUnlock`. `Sound` is a procedural WebAudio synth: a master gain → `DynamicsCompressor` chain, oscillator layers plus filtered noise bursts for gun/tesla/cryo/boom/hit/place/up/sell/err/leak/shield/strike/wave/win/lose (all gated by the persisted **SFX** flag), and an ambient music bed (detuned drone + LFO-swept lowpass + filtered wind) gated by the **independent, persisted Music flag**, started on entering play and faded out otherwise. Haptics (`vibrate()`) are gated by the persisted `haptics` flag. All guarded in try/catch.
 
 ## 1.14 Onboarding
 
-First-play coach-marks (`S.tut`, persisted `tutDone`). Three non-blocking steps that advance by observed state: spotlight a build plot → the placed tower (upgrade) → the Deploy button, each with a pulsing ring/arrow + banner and a SKIP button. Deploying completes it. `drawTutorial()` uses `worldToScreen` for world targets.
+First-play coach-marks (`S.tut`, persisted `tutDone`), plus a one-time first-launch briefing (`INTRO_CARDS`, persisted `seenIntro`) that is re-readable from the Codex.
+
+**V6.38 guided tour.** `TUT` is a 7-step array walking the whole interface: top bar → build → upgrade → **Commander** → command bar → wave intel → DEPLOY. Each step names one piece of UI, says what it is for, and spotlights the real element. A step with a `done()` predicate waits for the player to perform the action; a step without one is a read-only card that advances on any tap. Two properties keep it from rotting: `msg`/`sub` may be **functions**, so a step follows the player mid-flow (plot → tower row → confirm) instead of stranding them on a stale instruction if they back out; and every `spot()` falls back down a chain (confirm button → panel row → a free plot) so **no step can leave the player without a pointer** — asserted in the suite. `only` on a step locks the build panel to the row being taught via `tutAllows()`. Deploying wave 1 completes the tour. `drawTutorial()` uses `worldToScreen` for world targets and parks its card at whichever end of the play area the spotlight is not.
+
+> Superseded: the three-step version (build → upgrade → deploy) described here before V6.38 never mentioned the Commander, the command bar, the wave intel, or the HUD — a new player reached wave 1 with no hero.
 
 ## 1.15 Meta-progression (Armory)
 
@@ -169,6 +192,8 @@ First-play coach-marks (`S.tut`, persisted `tutDone`). Three non-blocking steps 
 | waveb | War Economy | +25/50/75% wave bonus (`waveBonusMul`) | `updSpawns` |
 
 Armory is an HTML overlay (screen `"armory"`) reachable from the main menu and both end screens; rows show current→next effect, level pips, and hex-cost buy buttons. `Meta.buy(id)` deducts Alloy and persists.
+
+> **Superseded V6.24 — this whole flat-talent model is gone.** The Armory is a **research tree**: `TECH` is 4 themed branches (ORDNANCE / ARC / LOGISTICS / COMMAND) of 8 distinct nodes each. Purchased nodes show ✓, the single next node is fully revealed, and everything deeper is fogged to a category tag — so you always know the *kind* of thing coming without knowing the specifics. Each branch carries one **free, reversible** a/b specialization fork (Alloy buys reaching it; flipping the choice is free, so combinations can be tried). New accounts start with `TOWER_START = ["turret", "cryo"]`; Mortar, Tesla and Pyre are unlocked by researching, and the two capstone towers (Siege Battery, Prism) additionally require `reqCamp: 12` campaign missions, enforced by `Tech.blockedBy()`. `Meta` is now a thin Alloy wallet; `Tech.bonus` aggregates node effects and every `*Mul()` getter reads it through `B()`. **Costs total 25,380 Alloy** (re-costed in V6.36 — see `docs/TECHTREE-spec.md` §5, and the V6.36 changelog entry for why the original 10,670 was wrong). Design of record: `docs/TECHTREE-spec.md`.
 
 ## 1.16 Debug hook
 
@@ -205,7 +230,7 @@ Used by the headless/Playwright harnesses. `build(c,r,type)` places a tower for 
     Verified: all 5 maps route-sim to gameover (gameplay untouched), no errors, 60fps in heavy combat on Twin Gates, guards intact. **V2.3 sprite baking SHIPPED**: `bakeSprites()` renders static tower bases (`towerBaseArt`) and enemy bodies (`enemyStatic`, per type incl. armor plating) once at 3x into offscreen canvases (`SPRITES`, `bakeSprite`/`drawSprite`; `ctx` is `let` and retargeted during baking so all shared helpers bake). Frame keeps only animated parts vector: legs/boots/arms/treads/rotor blades, rotating heads/cannon, and glows. Per-enemy sheen/underside overlays are baked generic sprites (`fx_sheen`/`fx_under`) blitted scaled by r — the frame loop constructs no per-entity gradients. Baked sprites carry an extra wear+rim pass (`wearPass`). Verified: no errors, walk anim intact, 57-59fps at max stress on software rendering. **V2.4 bloom/post pass SHIPPED**: a half-res glow buffer (`glowCv`/`renderGlow`) collects pure-glow emitters as cheap sprite blits (pool glows, breach/base/tower/hero/orb glows via baked `gl_*` sprites, beam impacts, boom flashes) under the same camera transform, then composites additively (`compositeGlow`, `lighter`) — bilinear upscale doubles as the blur. Plus drifting cloud shadows (`fx_cloud` sprite, multiply) and a per-biome screen-space color grade (`drawGrade`) that covers entities. **Adaptive quality** (`FX`/`fxTick`): bloom and clouds default on and auto-degrade (bloom first, then clouds) when the rolling 90-frame average exceeds 19ms, so weak devices settle at full frame rate (measured: 58.8fps settled on software rendering; capable GPUs keep everything). Do not re-run shadowBlur-heavy passes inside the glow layer — blits only. **Remaining: V2.5 optional tilt (only if still needed).**
 13. **Difficulty rebalance + Brutal tier** — a greedy-player sim (builds/upgrades/branches with real scrap, uses hero + airstrike) showed every scenario cleared wave 20 with near-perfect core, even old-Hard without hero/strike. Fixes: quadratic HP curve, +25% speed creep, denser waves, heavier leak costs (tanks 2, boss 6), and the three-tier `DIFFS` table (Normal/Hard/Brutal) with count/reward/core/alloy knobs. Measured after tuning (same near-optimal AI): Normal full-kit comfortable, Hard full-kit 18 core (humans will bleed), Brutal full-kit 9 core and 8-tower builds DIE — Brutal is the maxed-talents tier. Re-run `scratch`-style sims via `__GAME.sim` after any future data change.
 14. **Behavior enemies + 2 maps + Campaign mode** — (a) `mender` (radius heal pulse with cross-glow/ring fx + `gl_heal` bloom hint, wave 9+) and `splitter` (bursts into 3 `spawnling` fragments on kill, wave 11+); trait flags flow through `statsFor`, heal logic in `updEnemies`, split in `hurt()` so leaks don't split. Baked statics + animated bodies for both (mender pods/cross plates, splitter sac with squirming inner blobs + stubby legs). (b) `Gauntlet` 9×18 ash switchback ladder and `Delta` 13×18 toxic **3-entrance** map whose routes T-merge — roster is now 7, all in the menu picker. (c) **Campaign**: `⚔ Campaign · Mission N/7` menu button resumes from persisted `camp`; victory becomes "Mission N Secured" with a Next Mission button (or CAMPAIGN COMPLETE on map 7); Deploy/Endless clear `S.campaign`. Verified: both new maps route-sim to gameover, Delta uses all 3 routes, heal + split observed in a wave-12 sim, campaign start→victory→next→resume→complete flow, 60fps in combat on both maps, zero pageerrors, guards intact.
-15. **V2.5 in a new file (`fallengrid-v25.html`; `fallengrid.html` frozen at V2.4)** — (a) the oblique tilt experiment — **since reverted to full 2D after user playtest; see Part 3 V2.5 for the verdict** (`TILT = 1` now; scaffolding inert); (b) **3 more maps → 10**: `Spiral` ★★ ember (single route spiraling to a center base), `Fracture` ★★★★ rust (2 gates, one bridge crossing + T-merge final), `Terminus` ★★★★★ ash finale (15×22, 3 entrances, two bridge crossings + merges); campaign is Mission N/10; (c) the free-play map picker is now a **styled `<select>` dropdown** (`#mapsel`) replacing the button grid — campaign is unaffected (it always resumes from `camp`). Verified: 154-probe screen↔world round-trip exact under tilt, tap selects the intended tile, all 10 maps no-tower route-sim to gameover, Terminus spawns on all 3 routes, campaign flow to CAMPAIGN COMPLETE on map 10, 56–60fps in heavy combat, zero pageerrors, guards intact.
+15. **V2.5 in a new file (`fallengrid-v2.5.html`; `fallengrid.html` frozen at V2.4)** — (a) the oblique tilt experiment — **since reverted to full 2D after user playtest; see Part 3 V2.5 for the verdict** (`TILT = 1` now; scaffolding inert); (b) **3 more maps → 10**: `Spiral` ★★ ember (single route spiraling to a center base), `Fracture` ★★★★ rust (2 gates, one bridge crossing + T-merge final), `Terminus` ★★★★★ ash finale (15×22, 3 entrances, two bridge crossings + merges); campaign is Mission N/10; (c) the free-play map picker is now a **styled `<select>` dropdown** (`#mapsel`) replacing the button grid — campaign is unaffected (it always resumes from `camp`). Verified: 154-probe screen↔world round-trip exact under tilt, tap selects the intended tile, all 10 maps no-tower route-sim to gameover, Terminus spawns on all 3 routes, campaign flow to CAMPAIGN COMPLETE on map 10, 56–60fps in heavy combat, zero pageerrors, guards intact.
 16. **V3.0 REAL 3D — `fallengrid-v3.html`** — the documented WebGL exit, taken on user request. three.js r147 (UMD, 607KB) is embedded inline so the game stays a single offline file; the world is a true 3D scene (perspective camera at ~55°, extruded terrain, procedural low-poly meshes, one shadow-casting sun, per-biome sky/fog) while **all game logic, UI panels, HUD, audio, and the sim harness are unchanged** from V2.5. Full architecture in **Part 4**. Verified: 100-tile raycast round-trip exact, taps select the intended tile, all 10 maps route-sim to gameover, campaign flow, distinct biomes, zero pageerrors, ~40fps on SwiftShader *software* GL after adaptive quality (real GPUs run full quality).
 17. **V3.1 polish pass on the 3D build** — ACES filmic tone mapping (exposure 1.05) + PCFSoft shadows with a stronger sun/ambient ratio for punchier shading; per-biome **gradient sky** background; additive **glow sprites** on every emitter (reactor core with pulse, breach lava, toxic pools, tesla orbs, cryo dome emissive pulse, tower accent + level studs, muzzle flashes, explosion flashes as camera-facing billboards, orb halos); terrain got **broken-slab height jitter** (0/1.1/2.2 steps — towers/hero/tile-highlight sit on `tileH`), **curb lip strips** where ground meets sunken roads, and stronger color mottling with patch tints; enemies got **swinging legs** driven by `e.walk`, spawn pop-in, spinning wraith ring; gatling barrels spin while targeting; 50 drifting dust motes; screen-space vignette on the UI canvas; pulsing selection ring. Verified: tap accuracy still exact (100/100 + real tap), route sims, campaign, zero pageerrors; software-GL fps unchanged after the adaptive ladder (real GPUs run full quality).
 18. **V3.2 material/grounding polish (close-up quality)** — evaluation at max zoom showed towers reading as flat-shaded primitives on plastic slabs with nothing grounding them. Fixes: a **procedural PMREM environment map** (sky-gradient equirect canvas → `PMREMGenerator`) set as `scene.environment`, so **PBR `MeshStandardMaterial` metal** on towers (`std(col, rough, metal)`, roughness ~0.4 / metalness ~0.7) and the hero catch real specular/reflection; tower bases rebuilt as **beveled octagonal machined mounts** (dark foot + bevel + plinth, `rotation.y = π/8`) replacing the flat 50×50 pad; **contact-AO discs** (soft radial-black ground decals, `aoDisc`) under every tower, the hero, and all ground enemies (disc counter-offsets the spawn pop so it stays flat on the ground); a tiling **grunge texture** on the terrain via world-planar UVs (`toMesh(..., uvScale)`, `1/96`) multiplied over the vertex colors to kill the flat-plastic ground; exposure 1.05→1.12, hemi 0.72→0.55, sun 1.35→1.5 for more directional contrast now that the env map fills shadows. Verified: 100/100 tap round-trip + real tap, all 10 route sims, campaign, zero pageerrors, guards intact; software-GL fps ~23 on the largest map (PBR costs more per pixel in software rasterization — adaptive ladder already degrades there; real GPUs run PBR at full rate).
@@ -383,14 +408,21 @@ Copied from `fallengrid-v3.html` (V3.6 art baseline) as **V4.0**; each solution 
 ## 2.1 Where things are
 
 ```
-fallengrid-v3.html   the current build — REAL 3D (three.js r147 embedded), 10 maps, campaign, dropdown — ship this
-fallengrid-v25.html  the V2.5 build (full-2D Canvas2D, 10 maps, dropdown picker) — kept as the 2D fallback
-fallengrid.html      the V2.4 build (7 maps, button-grid picker) — frozen, kept per user request
-HANDOFF.md           this document (source of truth)
-README.md            repo readme
+fallengrid-v6.38.html  the current build — ship this. REAL 3D, 25 maps, 7 towers, research tree
+fallengrid-v3.html     frozen: V3.6, the first real-3D build (see Part 4)
+fallengrid-v2.5.html   frozen: V2.5, the last full-2D Canvas2D build
+fallengrid.html        frozen: V2.4
+HANDOFF.md             this document (source of truth)
+README.md              repo readme — orientation for a newcomer
+docs/TECHTREE-spec.md  design of record for the Armory research tree
+docs/FEEDBACK-backlog.md  play-test feedback, each point with the measurement and what shipped
+docs/PLAN-feedback.md     the plan those points were built from (all shipped)
+docs/ANALYSIS-prerelease.md  critical pre-release review + the release checklist (unstarted)
+docs/monetization/     deferred V7 monetization plan and spec
+app/ + .github/workflows/android.yml   Capacitor wrapper and the APK build
 ```
-New work goes into `fallengrid-v3.html` (see Part 4 for its renderer architecture); the older files are frozen.
-Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed; verification scripts are ephemeral (see 2.7).
+Each iteration is a **new version-numbered copy** (`git mv fallengrid-v6.38.html fallengrid-v6.39.html`), so every shipped build stays reproducible. **The filename version must match the version label inside the file** — the APK workflow selects by `sort -V` and fails the build if they disagree. That guard exists because `fallengrid-v2.5.html` (meaning V2.5) version-sorted as 25 and beat v6.38, so the APK would have silently bundled a 2D build from months earlier; it is now `fallengrid-v2.5.html`.
+Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed; verification scripts live in the scratchpad (see 2.7).
 
 ## 2.2 Edit and verify loop
 
@@ -418,7 +450,7 @@ Mechanically the game is at genre standard: depth (counterplay triangle, branche
 2. **Camera feel & accessibility** — pan inertia, zoom easing, colorblind-safe enemy/HP palette, larger-touch-target option.
 3. **Android port** — Capacitor scaffold, icons/splash, signed AAB (done by the user locally).
 
-Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1, Visual Direction V2.1–V2.5 (V2.5 in `fallengrid-v25.html`), difficulty tiers, behavior enemies + campaign (14–15), REAL 3D V3.0–V3.3 (three.js, PBR, env map, normal maps, EffectComposer post — in `fallengrid-v3.html`).
+Done and verified: endless + map roster (Plan A), balance pass + sim harness (Plan C), Hero/Commander (Plan B), biomes, graphics uplift pass 1, Visual Direction V2.1–V2.5 (V2.5 in `fallengrid-v2.5.html`), difficulty tiers, behavior enemies + campaign (14–15), REAL 3D V3.0–V3.3 (three.js, PBR, env map, normal maps, EffectComposer post — in `fallengrid-v3.html`).
 
 ---
 
@@ -493,7 +525,7 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
 
 ### V2.5 — Optional tilt (projection C) — TRIED AND REVERTED (decision final)
 
-**Outcome.** Implemented in `fallengrid-v25.html` (`TILT = 0.85` ground foreshortening in both camera transforms, all screen↔world conversions symmetric, `uprightAt(y)` counter-scaling entities/floats/base upright) and verified mechanically sound (154-tile round-trip exact, taps accurate, 56–60fps). **User playtest verdict: rejected.** Squashing top-down-authored terrain does not create perspective — the map still reads flat 2D while ground-plane ellipses (tower range rings) imply a perspective that isn't there; the cues contradict. Reverted to `TILT = 1` (exact full-2D math; the scaffolding remains inert in the file with a comment recording the verdict).
+**Outcome.** Implemented in `fallengrid-v2.5.html` (`TILT = 0.85` ground foreshortening in both camera transforms, all screen↔world conversions symmetric, `uprightAt(y)` counter-scaling entities/floats/base upright) and verified mechanically sound (154-tile round-trip exact, taps accurate, 56–60fps). **User playtest verdict: rejected.** Squashing top-down-authored terrain does not create perspective — the map still reads flat 2D while ground-plane ellipses (tower range rings) imply a perspective that isn't there; the cues contradict. Reverted to `TILT = 1` (exact full-2D math; the scaffolding remains inert in the file with a comment recording the verdict).
 **Lesson recorded.** An affine y-squash cannot tilt art that was authored top-down; the projection must be baked into the art itself. A genuinely 3D view is the documented **WebGL exit** (Part 3 "Out of scope") — a renderer rewrite behind the same game state — not a camera transform. Do not re-attempt tilt-by-scale.
 **Presentation direction.** The game commits to the polished top-down look (V2.1–V2.4 extrusion/light/bake/bloom), where circles are circles and all cues agree.
 
@@ -505,15 +537,19 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
 
 ## 2.7 Definition of done for any change
 
-1. **Syntax + hex.** Extract the largest `<script>` to `_ex.js`, `node -c _ex.js`, and scan for malformed hex:
-   ```bash
-   python3 - <<'EOF'
-   import re; html=open("fallengrid.html").read()
-   open("_ex.js","w").write(max(re.findall(r'<script>(.*?)</script>', html, re.S), key=len))
-   EOF
-   node -c _ex.js && grep -oE '#[0-9a-fA-F]{3,8}' _ex.js | sort -u | awk '{n=length($0)-1; if(n!=3&&n!=6&&n!=8) print "BAD HEX:",$0}'
-   ```
-2. **Headless logic/render.** Playwright + Chromium (`/opt/pw-browsers/...`) driving `__GAME`: assert waves resolve, auto-advance fires, wave 2 auto-starts with no input, no NaN in `S`/enemies across several waves (incl. a boss shield wave), and capture at least one screenshot confirming the change renders. Watch `pageerror`/console for zero errors.
+1. **Syntax + hex.** Run `scratchpad/gamecheck.sh <file>`. It selects the game block by the markers
+   `PLAY_BOTTOM` **and** `function drawTray`, hard-fails unless exactly one block matches, then runs
+   `node --check` on it and scans for malformed hex literals.
+
+   > **Corrected — this step used to say "extract the largest `<script>`".** The file has four script
+   > blocks and the largest is **three.js (607 KB)**, not the game (~395 KB). For an unknown number of
+   > iterations that check was validating the vendored library and never the code being changed. No bad
+   > code reached a build (the Playwright suites execute the real game with a `pageerror` listener and
+   > would have caught a parse error), but the check itself was worthless. **Never select a script block
+   > by size.**
+2. **Headless logic/render.** Playwright + Chromium (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, args `--no-sandbox --enable-unsafe-swiftshader`) driving `__GAME`: assert waves resolve, auto-advance fires, no NaN in `S`/enemies across several waves (incl. a boss shield wave), and capture at least one screenshot confirming the change renders. Watch `pageerror`/console for zero errors. **Write a new `verifyNNN.py` for the iteration's own claims, and re-run every existing suite** (core regression plus the per-feature suites) against the new file — the standing set as of V6.38 is core + V6.25, V6.26, V6.28, V6.29, V6.30, V6.31, V6.32, V6.35, V6.36, V6.37, V6.38.
+
+   > **Two RAF traps, both of which have cost a debugging session.** (a) The tray, HUD and build panel are drawn by `requestAnimationFrame`, **not** by `render()` — wait ~250-300ms before reading `__GAME.trayBtns` / `buildBtns` / `hudBtns`, or they are stale or empty. DOM overlay screens do come from `render()` and can be read immediately. (b) Seed `localStorage.setItem('seenIntro','true')` before reloading, or a suite that clears storage lands on the first-launch briefing instead of the game — and since V6.38, seed `tutDone` too if the suite drives the UI directly, because the tour's first card legitimately swallows a tap.
 3. **Performance.** Sample frame times; hold ~60fps. Never move baked terrain work into the per-frame path.
 4. **Guards.** The two wave-progression guards in 1.10 remain intact.
 5. State any balance or UX assumption made.

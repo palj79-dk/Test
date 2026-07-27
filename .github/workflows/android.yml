@@ -47,8 +47,18 @@ jobs:
 
       - name: Bundle the latest game build as index.html
         run: |
+          # `sort -V` only picks the right file while every build follows the SAME dotted scheme.
+          # The frozen V2.5 build used to be named fallengrid-v25.html, which version-sorts as 25 and
+          # beat v6.38 — the APK would silently have shipped a 2D build from months earlier. It is
+          # now fallengrid-v2.5.html. The guard below makes that class of mistake fail loudly instead
+          # of shipping: the file the workflow picked must SELF-REPORT the version in its own name.
           latest=$(ls -1 ../fallengrid-v*.html | sort -V | tail -1)
-          echo "Bundling $latest"
+          fver=$(echo "$latest" | sed -E 's#.*/fallengrid-v([0-9.]+)\.html#\1#')
+          echo "Bundling $latest (expects to self-report V$fver)"
+          if ! grep -q "V${fver} ·" "$latest"; then
+            echo "::error::$latest does not carry the label 'V$fver' — wrong file picked, or the in-game version label was not bumped."
+            exit 1
+          fi
           mkdir -p www
           cp "$latest" www/index.html
 
