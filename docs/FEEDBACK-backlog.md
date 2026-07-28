@@ -226,6 +226,41 @@ Correct — V6.36's permanent ring was visual noise. Shipped: it appears when yo
 toggle), for 2.5s after deploy or level-up (the level-up widens the range, so the flash is the point), and
 while the Pulse button is held — the same press-to-preview gesture the build and upgrade rows use.
 
+## 10. The play-log export does nothing in the app — `DONE` (V6.39)
+
+> "the export player log does not work in the app. I have instead inserted a screenshot of the Armery
+> after 8 passed rounds of campaign."
+
+**Recorded + resolved:** 2026-07-28 · against V6.38 · shipped in V6.39.
+
+**Root cause:** the export built a `blob:` URL and clicked a synthetic `<a download>`. Android's WebView
+has **no download manager** — an anchor download only reaches native code through
+`WebView.setDownloadListener`, which is not wired, and `blob:` URLs never reach that listener anyway.
+The whole body sat inside `catch (e) {}`, so it failed **silently**.
+
+**Why the tests never caught it:** they run in desktop Chromium, where anchor downloads work. The test
+environment had a capability the target platform lacks. Worth remembering for anything else that
+depends on a browser feature: *passing in Playwright is not evidence it works in the APK.*
+
+Shipped: clipboard-first export with a visible success/failure line, a raw selectable text box as a
+manual fallback, and the file-download button hidden inside the app instead of silently failing.
+
+## 11. Command branch is dead weight — `OPEN` (observed V6.38, not yet actioned)
+
+Not a user complaint — an observation from the screenshot in #10, recorded so it is not lost.
+
+After 8 Hard missions: Ordnance 7/8, Arc 7/8, Logistics 7/8, **Command 0/8**. The user has never
+opened Command, and the reason is structural rather than a matter of taste. Five of its eight nodes
+buff the Commander and the Airstrike, and two add Core. The user clears Hard maps with almost no
+leaks, so Core is worthless to them and the hero and strike are marginal because the towers do the
+work. **Command only pays off when you are losing.** The other three branches are unconditional
+multipliers on damage, fire rate, range and economy, so they are always correct purchases.
+
+Fixing it changes what the branch *is*, so it needs an explicit decision. Three directions:
+give Command something unconditional (an extra Airstrike charge, a build plot, an economy node);
+make the Commander genuinely load-bearing so its buffs matter; or accept it as a deliberate
+"insurance" branch for struggling players and stop treating 32/32 as the intended end state.
+
 ## 9. The intro never teaches the UI, and the hero is never placed — `DONE` (V6.38)
 
 > "the intro guide where the user learns to play needs improvement. hero is not placed before start.

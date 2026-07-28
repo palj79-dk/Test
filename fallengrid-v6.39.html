@@ -5043,7 +5043,7 @@
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.38",
+        ts: Date.now(), ver: "6.39",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5079,14 +5079,44 @@
       const avgWave = n ? Math.round(r.reduce((a, x) => a + (x.wave || 0), 0) / n * 10) / 10 : 0;
       return { n, wins, winPct: n ? Math.round(wins / n * 100) : 0, avgWave };
     },
-    exportJSON() {
+    exportText() { return JSON.stringify(this.runs, null, 2); },
+    // V6.39: clipboard first. It is the only route that works in BOTH a desktop browser and the
+    // Android WebView, and it puts the log straight where it needs to go — pasteable. The async
+    // Clipboard API needs a secure context; Capacitor serves the app from https://localhost, so it
+    // qualifies. execCommand("copy") covers older WebViews. `done(ok, how, kb)` always fires, so the
+    // UI can tell the truth either way — the old empty catch is why this failed invisibly for weeks.
+    copyJSON(done) {
+      const txt = this.exportText(), kb = Math.max(1, Math.round(txt.length / 1024));
+      const fin = (ok, how) => { try { done && done(ok, how, kb); } catch (e) {} };
+      const legacy = () => {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = txt; ta.setAttribute("readonly", "");
+          ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+          document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+          const ok = document.execCommand("copy"); ta.remove();
+          fin(!!ok, ok ? "clipboard" : "none");
+        } catch (e) { fin(false, "none"); }
+      };
       try {
-        const blob = new Blob([JSON.stringify(this.runs, null, 2)], { type: "application/json" });
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(() => fin(true, "clipboard"), legacy);
+          return;
+        }
+      } catch (e) {}
+      legacy();
+    },
+    // File download. Kept for desktop browsers, where it is the nicer route; deliberately NOT offered
+    // inside the app, because there it silently does nothing and we cannot detect that from JS.
+    downloadJSON() {
+      try {
+        const blob = new Blob([this.exportText()], { type: "application/json" });
         const url = URL.createObjectURL(blob), a = document.createElement("a");
         a.href = url; a.download = "fallengrid-playlog-" + new Date().toISOString().slice(0, 10) + ".json";
         document.body.appendChild(a); a.click();
         setTimeout(() => { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 200);
-      } catch (e) {}
+        return true;
+      } catch (e) { return false; }
     },
   };
   function reset() {
@@ -7295,6 +7325,10 @@
 
   /* ---------------- OVERLAYS ---------------- */
   const overlay = document.getElementById("overlay");
+  // Capacitor injects window.Capacitor into the WebView; a plain browser has none. Used only to
+  // decide whether the file-download button is worth offering.
+  const isNativeApp = () => { try { return !!(window.Capacitor && (window.Capacitor.isNativePlatform ? window.Capacitor.isNativePlatform() : true)); } catch (e) { return false; } };
+  let logRaw = false;   // Play Log: reveal the raw JSON in a selectable box
   const show = (h) => { overlay.innerHTML = h; overlay.style.display = "flex"; };
   const hide = () => { overlay.style.display = "none"; overlay.innerHTML = ""; };
   const byId = (id) => document.getElementById(id);
@@ -7369,7 +7403,7 @@
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.38 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.39 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7702,11 +7736,20 @@
       }).join("") || `<div class="sub" style="margin:16px 0">No runs logged yet — play a round.</div>`;
       show(`<div class="panel"><h2>Play Log</h2>
         <div class="wallet">${sm.n} runs · ${sm.winPct}% win · avg wave ${sm.avgWave}</div>
-        <div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0">Stored locally on this device. Export the JSON to share it.</div>
-        <div style="max-height:44vh;overflow-y:auto">${rows}</div>
-        <button class="btn primary" id="exp">\u2913 Export JSON</button>
+        <div class="sub" style="margin:0 0 8px;text-transform:none;letter-spacing:0">Stored locally on this device. Copy the JSON to share it.</div>
+        <div style="max-height:${logRaw ? 18 : 40}vh;overflow-y:auto">${rows}</div>
+        ${logRaw ? `<textarea id="raw" readonly style="width:100%;height:22vh;margin:8px 0 0;background:#0b1116;color:#9fb2bd;border:1px solid #2c3a42;border-radius:6px;font:600 9px ui-monospace,monospace;padding:6px;box-sizing:border-box">${Telemetry.exportText().replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea>` : ""}
+        <div class="sub" id="expmsg" style="margin:8px 0 0;text-transform:none;letter-spacing:0;min-height:14px">&nbsp;</div>
+        <button class="btn primary" id="exp">\u29c9 Copy JSON</button>
+        <div class="row">${isNativeApp() ? "" : `<button class="btn small ghost" id="dl">\u2913 Save file</button>`}<button class="btn small ghost" id="rawt">${logRaw ? "Hide" : "Show"} raw</button></div>
         <div class="row"><button class="btn small ghost" id="clr">Clear Log</button><button class="btn small ghost" id="m">Back</button></div></div>`);
-      byId("exp").onclick = () => Telemetry.exportJSON();
+      byId("exp").onclick = () => Telemetry.copyJSON((ok, how, kb) => {
+        const el = byId("expmsg"); if (!el) return;
+        if (ok && how === "clipboard") { el.style.color = "#8fe04a"; el.textContent = "\u2713 Copied " + sm.n + " runs (" + kb + " KB) — paste it anywhere."; }
+        else { el.style.color = "#e0533f"; el.textContent = "\u2717 Clipboard blocked. Tap \u201cShow raw\u201d, long-press the text and copy it by hand."; }
+      });
+      if (byId("dl")) byId("dl").onclick = () => Telemetry.downloadJSON();
+      byId("rawt").onclick = () => { logRaw = !logRaw; render(); if (logRaw && byId("raw")) { byId("raw").focus(); byId("raw").select(); } };
       byId("clr").onclick = () => { if (confirm("Clear the local play log?")) { Telemetry.clear(); render(); } };
       byId("m").onclick = () => { S.screen = "settings"; render(); };
     }
@@ -8992,7 +9035,7 @@
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
     __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
-    deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
+    __exportText: () => Telemetry.exportText(), __copyJSON: (cb) => Telemetry.copyJSON(cb), __isNativeApp: isNativeApp, deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
 })();
 </script>
