@@ -5184,7 +5184,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.40",
+        ts: Date.now(), ver: "6.41",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5556,303 +5556,6 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     for (const s of scorches) s.a -= dt * 0.04; scorches = scorches.filter((s) => s.a > 0.04);
     for (const f of floats) { f.y += f.vy * dt; f.vy *= 0.92; f.life -= dt; }
     floats = floats.filter((f) => f.life > 0);
-  }
-
-  /* ---------------- TERRAIN PRE-RENDER ---------------- */
-  const TS = 1.5, TMARGIN = 44, CLIFF_H = 20; // baked margin around the island + cliff face height
-  let terrain = null, VOID_COL = "#05070a";
-  function buildTerrain() {
-    const cv = document.createElement("canvas");
-    cv.width = Math.round((WORLD_W + 2 * TMARGIN) * TS); cv.height = Math.round((WORLD_H + 2 * TMARGIN) * TS);
-    const g = cv.getContext("2d"); g.scale(TS, TS); g.translate(TMARGIN, TMARGIN);
-    // void backdrop across the whole canvas (the island floats over this)
-    VOID_COL = darken(BM.skyBot, 0.5);
-    g.fillStyle = VOID_COL; g.fillRect(-TMARGIN, -TMARGIN, WORLD_W + 2 * TMARGIN, WORLD_H + 2 * TMARGIN);
-    // faint distant silhouettes in the void
-    g.fillStyle = rgba(BM.skyTop, 0.5);
-    for (let i = 0; i < 10; i++) { const hx = hash2(i * 3, 91), hy = hash2(i * 7, 47); const bx = -TMARGIN + hx * (WORLD_W + 2 * TMARGIN), by = -TMARGIN + hy * (WORLD_H + 2 * TMARGIN); if (bx > -6 && bx < WORLD_W + 6 && by > -6 && by < WORLD_H + 6) continue; g.fillRect(bx, by, 14 + hx * 22, 5 + hy * 9); }
-    // jagged island rim: build perimeter polygon (used for base fill now, faces after tiles)
-    const RIM = [], stepE = 32, jag = (v, a) => 3 + hash2(Math.round(v) * 7 + a * 5, a * 13 + Math.round(v)) * 9;
-    for (let x = 0; x <= WORLD_W; x += stepE) RIM.push([x, -jag(x, 1)]);
-    for (let y = 0; y <= WORLD_H; y += stepE) RIM.push([WORLD_W + jag(y, 2), y]);
-    for (let x = WORLD_W; x >= 0; x -= stepE) RIM.push([x, WORLD_H + jag(x, 3)]);
-    for (let y = WORLD_H; y >= 0; y -= stepE) RIM.push([-jag(y, 4), y]);
-    const rimPath = () => { g.beginPath(); RIM.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); };
-    // cliff SIDE faces first (extruded downward: visible below the island)
-    const CLIFF = 20, rock = darken(BM.ashEdge, 0.25);
-    g.save(); g.translate(0, CLIFF);
-    rimPath(); g.fillStyle = darken(rock, 0.35); g.fill();
-    g.restore();
-    g.save(); g.translate(0, CLIFF * 0.55);
-    rimPath(); g.fillStyle = rock; g.fill();
-    g.restore();
-    // island top base fill (jagged edge ground)
-    rimPath(); g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.4); g.fill();
-    // backdrop tone across the island top
-    const sky = g.createLinearGradient(0, 0, 0, WORLD_H);
-    sky.addColorStop(0, BM.skyTop); sky.addColorStop(1, BM.skyBot);
-    g.fillStyle = sky; g.fillRect(0, 0, WORLD_W, WORLD_H);
-    // tiles
-    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      const x = c * TILE, y = r * TILE;
-      PATH_SET.has(c + "," + r) ? roadTile(g, x, y, c, r) : groundTile(g, x, y, c, r);
-    }
-    // baked contact shadow where ground meets the sunken road (depth)
-    const dep = 15;
-    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      if (PATH_SET.has(c + "," + r)) continue;
-      const x = c * TILE, y = r * TILE;
-      if (PATH_SET.has(c + "," + (r - 1))) { const gr = g.createLinearGradient(0, y, 0, y + dep); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y, TILE, dep); }
-      if (PATH_SET.has(c + "," + (r + 1))) { const gr = g.createLinearGradient(0, y + TILE, 0, y + TILE - dep); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y + TILE - dep, TILE, dep); }
-      if (PATH_SET.has((c - 1) + "," + r)) { const gr = g.createLinearGradient(x, 0, x + dep, 0); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x, y, dep, TILE); }
-      if (PATH_SET.has((c + 1) + "," + r)) { const gr = g.createLinearGradient(x + TILE, 0, x + TILE - dep, 0); gr.addColorStop(0, "rgba(0,0,0,0.33)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x + TILE - dep, y, dep, TILE); }
-    }
-    // decor sorted by row for overlap
-    DECOR.slice().sort((a, b) => a.r - b.r).forEach((d) => {
-      const x = d.c * TILE, y = d.r * TILE;
-      if (d.type === "wreck") drawWreck(g, x, y, d.seed);
-      else if (d.type === "pool") drawPool(g, x, y);
-      else if (d.type === "barrel") drawBarrel(g, x, y, d.seed);
-      else if (d.type === "rubble") drawRubble(g, x, y, d.seed);
-      else if (d.type === "building") drawBuilding(g, x, y, d.seed);
-      else if (d.type === "dropship") drawDropship(g, x, y, d.seed);
-      else if (d.type === "sandbags") drawSandbags(g, x, y, d.seed);
-      else if (d.type === "deadtree") drawDeadtree(g, x, y, d.seed);
-      else drawCrater(g, x, y);
-    });
-    // cliff strata on the visible (south) face + lit rim along the island edge
-    g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = 1.4;
-    for (let x = 8; x < WORLD_W; x += 26) {
-      const h0 = hash2(x, 77), yTop = WORLD_H + jag(x, 3);
-      g.beginPath(); g.moveTo(x, yTop + 4 + h0 * 5); g.lineTo(x + 14 + h0 * 8, yTop + 5 + h0 * 6); g.stroke();
-      if (h0 > 0.55) { g.beginPath(); g.moveTo(x + 4, yTop + 11 + h0 * 5); g.lineTo(x + 12, yTop + 12 + h0 * 5); g.stroke(); }
-    }
-    rimPath(); g.strokeStyle = "rgba(" + BM.light + ",0.28)"; g.lineWidth = 2; g.stroke();
-    rimPath(); g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 0.8; g.stroke();
-    // baked directional light: warm from upper-left, cool shadow lower-right (consistent light source)
-    const lg = g.createLinearGradient(0, 0, WORLD_W, WORLD_H);
-    lg.addColorStop(0, "rgba(" + BM.light + ",0.12)"); lg.addColorStop(0.4, "rgba(" + BM.light + ",0)"); lg.addColorStop(1, "rgba(" + BM.shade + ",0.32)");
-    g.fillStyle = lg; g.fillRect(0, 0, WORLD_W, WORLD_H);
-    // grime vignette
-    const vg = g.createRadialGradient(WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.2, WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.75);
-    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(6,8,10,0.5)");
-    g.fillStyle = vg; g.fillRect(0, 0, WORLD_W, WORLD_H);
-    terrain = cv;
-  }
-  function groundTile(g, x, y, c, r) {
-    // organic tone: hash-jittered around mid ash (no hard checkerboard)
-    const h = hash2(c * 2 + 1, r * 2 + 3);
-    g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
-    // soft dirt patch bleeding across the tile edge to break the grid
-    const hp = hash2(c * 5 + 2, r * 3 + 7);
-    if (hp > 0.42) {
-      const px = x + hash2(c * 11, r * 5) * TILE, py = y + hash2(c * 7, r * 13) * TILE, pr = 22 + hash2(c, r) * 34;
-      const pg2 = g.createRadialGradient(px, py, 2, px, py, pr);
-      const dark = hp > 0.72; pg2.addColorStop(0, dark ? "rgba(20,18,15,0.28)" : rgba(BM.ash1, 0.2)); pg2.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = pg2; g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill();
-    }
-    // cracks
-    g.strokeStyle = BM.ashEdge; g.lineWidth = 1;
-    for (let i = 0; i < 2; i++) {
-      const h1 = hash2(c * 9 + i, r * 5 + i), h2 = hash2(c * 3 + i, r * 13 + i);
-      const sx = x + 6 + h1 * (TILE - 12), sy = y + 6 + h2 * (TILE - 12);
-      g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + (h1 - 0.5) * 16, sy + (h2 - 0.5) * 16); g.lineTo(sx + (h2 - 0.5) * 22, sy + (h1 - 0.3) * 20); g.stroke();
-    }
-    // speckle
-    g.fillStyle = "rgba(0,0,0,0.12)";
-    for (let i = 0; i < 3; i++) { const hx = hash2(c * 7 + i, r * 11 + i), hy = hash2(c * 13 + i, r * 3 + i); g.beginPath(); g.arc(x + 6 + hx * (TILE - 12), y + 6 + hy * (TILE - 12), 1 + hx, 0, 7); g.fill(); }
-  }
-  function roadNeighbors(c, r) { return { u: PATH_SET.has(c + "," + (r - 1)), d: PATH_SET.has(c + "," + (r + 1)), l: PATH_SET.has((c - 1) + "," + r), rt: PATH_SET.has((c + 1) + "," + r) }; }
-  function roadTile(g, x, y, c, r) {
-    const h = hash2(c * 2 + 1, r * 2 + 3);
-    g.fillStyle = mix(BM.ashEdge, BM.ash1, 0.34 + h * 0.5); g.fillRect(x, y, TILE, TILE);
-    const n = roadNeighbors(c, r), cx = x + TILE / 2, cy = y + TILE / 2, half = TILE / 2, pad = 3;
-    const ring = (px, py, ri, ro, a0, a1, style) => { g.beginPath(); g.arc(px, py, ro, a0, a1); g.arc(px, py, Math.max(0.1, ri), a1, a0, true); g.closePath(); g.fillStyle = style; g.fill(); };
-    const cnt = (n.u ? 1 : 0) + (n.d ? 1 : 0) + (n.l ? 1 : 0) + (n.rt ? 1 : 0);
-    // curved corner: exactly one vertical + one horizontal neighbor -> quarter-annulus road
-    if (cnt === 2 && (n.u || n.d) && (n.l || n.rt)) {
-      let px, py, a0, a1;
-      if (n.u && n.rt) { px = x + TILE; py = y; a0 = Math.PI / 2; a1 = Math.PI; }
-      else if (n.u && n.l) { px = x; py = y; a0 = 0; a1 = Math.PI / 2; }
-      else if (n.d && n.rt) { px = x + TILE; py = y + TILE; a0 = Math.PI; a1 = Math.PI * 1.5; }
-      else { px = x; py = y + TILE; a0 = Math.PI * 1.5; a1 = Math.PI * 2; }
-      const Ri = pad, Ro = TILE - pad, mid = (Ri + Ro) / 2;
-      ring(px, py, Ri - 2, Ro + 2, a0, a1, darken(BM.road, 0.55)); // curb
-      ring(px, py, Ri, Ro, a0, a1, BM.road);                        // asphalt
-      // trench walls: shadow near the north-most wall, light on the sun-facing one
-      if (py === y) { ring(px, py, Ri, Ri + 9, a0, a1, "rgba(0,0,0,0.3)"); ring(px, py, Ro - 7, Ro, a0, a1, "rgba(" + BM.light + ",0.1)"); }
-      else { ring(px, py, Ro - 9, Ro, a0, a1, "rgba(0,0,0,0.3)"); ring(px, py, Ri, Ri + 7, a0, a1, "rgba(" + BM.light + ",0.1)"); }
-      // curved tire tracks + center dashes
-      g.strokeStyle = "rgba(0,0,0,0.16)"; g.lineWidth = 3.5;
-      g.beginPath(); g.arc(px, py, mid - 7, a0, a1); g.stroke();
-      g.beginPath(); g.arc(px, py, mid + 7, a0, a1); g.stroke();
-      g.strokeStyle = BM.roadLine; g.globalAlpha = 0.5; g.lineWidth = 3; g.setLineDash([9, 12]);
-      g.beginPath(); g.arc(px, py, mid, a0, a1); g.stroke();
-      g.setLineDash([]); g.globalAlpha = 1;
-      return;
-    }
-    // raised curb (darker) just outside the asphalt for a channeled read
-    g.fillStyle = darken(BM.road, 0.55);
-    g.fillRect(cx - (half - pad + 2), cy - (half - pad + 2), (half - pad + 2) * 2, (half - pad + 2) * 2);
-    if (n.u) g.fillRect(cx - (half - pad + 2), y, (half - pad + 2) * 2, half);
-    if (n.d) g.fillRect(cx - (half - pad + 2), cy, (half - pad + 2) * 2, half);
-    if (n.l) g.fillRect(x, cy - (half - pad + 2), half, (half - pad + 2) * 2);
-    if (n.rt) g.fillRect(cx, cy - (half - pad + 2), half, (half - pad + 2) * 2);
-    g.fillStyle = BM.road;
-    g.fillRect(cx - (half - pad), cy - (half - pad), (half - pad) * 2, (half - pad) * 2);
-    if (n.u) g.fillRect(cx - (half - pad), y, (half - pad) * 2, half);
-    if (n.d) g.fillRect(cx - (half - pad), cy, (half - pad) * 2, half);
-    if (n.l) g.fillRect(x, cy - (half - pad), half, (half - pad) * 2);
-    if (n.rt) g.fillRect(cx, cy - (half - pad), half, (half - pad) * 2);
-    // trench walls: shadow cast from the NW walls onto the asphalt, lit SE inner walls
-    const inn = half - pad;
-    const x0 = n.l ? x : cx - inn, x1 = n.rt ? x + TILE : cx + inn;
-    const y0 = n.u ? y : cy - inn, y1 = n.d ? y + TILE : cy + inn;
-    if (!n.u) { const sh = g.createLinearGradient(0, cy - inn, 0, cy - inn + 9); sh.addColorStop(0, "rgba(0,0,0,0.42)"); sh.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = sh; g.fillRect(x0, cy - inn, x1 - x0, 9); }
-    if (!n.l) { const sh = g.createLinearGradient(cx - inn, 0, cx - inn + 9, 0); sh.addColorStop(0, "rgba(0,0,0,0.42)"); sh.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = sh; g.fillRect(cx - inn, y0, 9, y1 - y0); }
-    if (!n.d) { const lt = g.createLinearGradient(0, cy + inn, 0, cy + inn - 7); lt.addColorStop(0, "rgba(" + BM.light + ",0.16)"); lt.addColorStop(1, "rgba(" + BM.light + ",0)"); g.fillStyle = lt; g.fillRect(x0, cy + inn - 7, x1 - x0, 7); }
-    if (!n.rt) { const lt = g.createLinearGradient(cx + inn, 0, cx + inn - 7, 0); lt.addColorStop(0, "rgba(" + BM.light + ",0.16)"); lt.addColorStop(1, "rgba(" + BM.light + ",0)"); g.fillStyle = lt; g.fillRect(cx + inn - 7, y0, 7, y1 - y0); }
-    // cracks in asphalt
-    g.strokeStyle = lighten(BM.road, 0.12); g.lineWidth = 1;
-    for (let i = 0; i < 2; i++) { const h1 = hash2(c * 5 + i, r * 9 + i), h2 = hash2(c * 11 + i, r * 3 + i); g.beginPath(); g.moveTo(x + 8 + h1 * (TILE - 16), y + 8 + h2 * (TILE - 16)); g.lineTo(x + 8 + h2 * (TILE - 16), y + 8 + h1 * (TILE - 16)); g.stroke(); }
-    // worn tire tracks along travel direction
-    g.fillStyle = "rgba(0,0,0,0.16)";
-    if (n.l || n.rt) { g.fillRect(x0, cy - 9, x1 - x0, 3.5); g.fillRect(x0, cy + 5, x1 - x0, 3.5); }
-    if (n.u || n.d) { g.fillRect(cx - 9, y0, 3.5, y1 - y0); g.fillRect(cx + 5, y0, 3.5, y1 - y0); }
-    // faded center dashes along travel direction
-    g.fillStyle = BM.roadLine; g.globalAlpha = 0.5;
-    const horiz = n.l || n.rt;
-    if (horiz && !(n.u || n.d)) g.fillRect(cx - 8, cy - 1.5, 16, 3);
-    else if ((n.u || n.d) && !(n.l || n.rt)) g.fillRect(cx - 1.5, cy - 8, 3, 16);
-    g.globalAlpha = 1;
-  }
-  function drawPool(g, x, y) {
-    const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = darken(BM.toxic, 0.5); g.beginPath(); g.ellipse(cx, cy, 15, 11, 0, 0, 7); g.fill();
-    g.fillStyle = BM.toxic; g.beginPath(); g.ellipse(cx, cy, 11, 8, 0, 0, 7); g.fill();
-    g.fillStyle = rgba(lighten(BM.toxic, 0.4), 0.5); g.beginPath(); g.ellipse(cx - 3, cy - 2, 4, 3, 0, 0, 7); g.fill();
-  }
-  function grr(g, x, y, w, h, rad) { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); }
-  function drawBarrel(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.34)"; g.beginPath(); g.ellipse(cx + 3, cy + 13, 12, 4.5, 0, 0, 7); g.fill();
-    const body = s > 0.5 ? "#6a7a3a" : C.rust;
-    const bg = g.createLinearGradient(cx - 9, 0, cx + 9, 0); bg.addColorStop(0, darken(body, 0.35)); bg.addColorStop(0.35, lighten(body, 0.18)); bg.addColorStop(1, darken(body, 0.45));
-    g.fillStyle = bg; grr(g, cx - 9, cy - 13, 18, 26, 3); g.fill();
-    g.fillStyle = "rgba(0,0,0,0.3)"; g.fillRect(cx - 9, cy - 5, 18, 2.5); g.fillRect(cx - 9, cy + 4, 18, 2.5);
-    g.fillStyle = darken(body, 0.55); g.beginPath(); g.ellipse(cx, cy - 13, 9, 3, 0, 0, 7); g.fill();
-    g.fillStyle = lighten(body, 0.3); g.beginPath(); g.ellipse(cx - 2, cy - 13, 5, 1.6, 0, 0, 7); g.fill();
-    g.fillStyle = "#f2b23a"; g.fillRect(cx - 9, cy - 2, 18, 4); // hazard band
-    g.fillStyle = "rgba(0,0,0,0.5)"; for (let i = 0; i < 3; i++) g.fillRect(cx - 8 + i * 6, cy - 2, 3, 4);
-    g.fillStyle = C.neonG; g.globalAlpha = 0.9; g.beginPath(); g.arc(cx, cy + 8, 2.2, 0, 7); g.fill(); g.globalAlpha = 1;
-  }
-  function drawRubble(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2 + 3;
-    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(cx, cy + 7, 15, 5, 0, 0, 7); g.fill();
-    const con = mix(C.concrete, BM.ash1, 0.25);
-    for (let i = 0; i < 5; i++) {
-      const h = hash2(x + i * 5, y + i * 3), h2 = hash2(x * 2 + i, y + i * 7);
-      const bx = cx - 13 + h * 24, by = cy - 3 + h2 * 10, bw = 6 + h * 7, bh = 5 + h2 * 6;
-      g.fillStyle = darken(con, 0.3); grr(g, bx, by, bw, bh, 1.5); g.fill();
-      g.fillStyle = i % 2 ? con : lighten(con, 0.12); grr(g, bx, by - 1.5, bw, bh, 1.5); g.fill();
-      g.fillStyle = "rgba(255,255,255,0.14)"; g.fillRect(bx + 1, by - 1, bw - 3, 1.4);
-    }
-    // rebar
-    g.strokeStyle = C.rustDark; g.lineWidth = 1.2; g.beginPath(); g.moveTo(cx - 9, cy - 3); g.lineTo(cx - 3, cy - 8); g.moveTo(cx + 4, cy + 1); g.lineTo(cx + 11, cy - 4); g.stroke();
-  }
-  function drawCrater(g, x, y) {
-    const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = darken(BM.ash1, 0.35); g.beginPath(); g.ellipse(cx, cy, 16, 11, 0, 0, 7); g.fill(); // scorched rim
-    const cg = g.createRadialGradient(cx, cy - 2, 2, cx, cy, 13); cg.addColorStop(0, "#0a0a0c"); cg.addColorStop(0.7, darken(BM.ashEdge, 0.3)); cg.addColorStop(1, BM.ashEdge);
-    g.fillStyle = cg; g.beginPath(); g.ellipse(cx, cy, 12, 8, 0, 0, 7); g.fill();
-    g.fillStyle = "rgba(255,255,255,0.06)"; g.beginPath(); g.ellipse(cx, cy + 3, 9, 3, 0, 0, 7); g.fill();
-    g.fillStyle = "rgba(0,0,0,0.4)"; for (let i = 0; i < 4; i++) { const a = i * 1.7; g.fillRect(cx + Math.cos(a) * 14, cy + Math.sin(a) * 9, 2, 2); }
-  }
-  function drawWreck(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.34)"; g.beginPath(); g.ellipse(cx, cy + 11, 20, 6, 0, 0, 7); g.fill();
-    g.save(); g.translate(cx, cy); g.rotate((s - 0.5) * 0.5);
-    g.fillStyle = "#1c1c20"; g.beginPath(); g.arc(-11, 11, 6.5, 0, 7); g.fill(); g.beginPath(); g.arc(12, 11, 6.5, 0, 7); g.fill(); // wheels
-    g.fillStyle = "#33343a"; g.beginPath(); g.arc(-11, 11, 3, 0, 7); g.fill(); g.beginPath(); g.arc(12, 11, 3, 0, 7); g.fill();
-    const bg = g.createLinearGradient(0, -8, 0, 12); bg.addColorStop(0, lighten(C.rust, 0.15)); bg.addColorStop(1, C.rustDark);
-    g.fillStyle = bg; grr(g, -19, -7, 38, 17, 3); g.fill();
-    g.fillStyle = C.rustDark; grr(g, -12, -17, 22, 13, 3); g.fill(); // cabin
-    g.fillStyle = "#14161a"; grr(g, -9, -15, 16, 8, 2); g.fill(); // broken windshield
-    g.fillStyle = "rgba(120,180,200,0.15)"; g.fillRect(-9, -15, 16, 3);
-    g.fillStyle = "rgba(0,0,0,0.4)"; g.fillRect(-19, 1, 38, 2);
-    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(-19, -7, 38, 2.5); // top rim light
-    g.fillStyle = "rgba(30,20,16,0.5)"; g.fillRect(-6, -5, 5, 14); g.fillRect(4, -6, 4, 15); // rust streaks
-    g.restore();
-  }
-  function drawSandbags(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2 + 6;
-    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(cx, cy + 5, 18, 5, 0, 0, 7); g.fill();
-    const sand = mix("#7a6a44", BM.ash1, 0.2);
-    for (let row = 0; row < 3; row++) {
-      const yy = cy + 2 - row * 7, n = 4 - row, off = row * 5;
-      for (let i = 0; i < n; i++) {
-        const bx = cx - 16 + off + i * 9 + (hash2(x + i, y + row) - 0.5) * 2;
-        g.fillStyle = darken(sand, 0.3); grr(g, bx, yy, 11, 8, 4); g.fill();
-        g.fillStyle = row % 2 ? sand : lighten(sand, 0.1); grr(g, bx, yy - 1, 11, 8, 4); g.fill();
-        g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 0.8; g.beginPath(); g.moveTo(bx + 5.5, yy); g.lineTo(bx + 5.5, yy + 7); g.stroke();
-      }
-    }
-  }
-  function drawDeadtree(g, x, y, s) {
-    const cx = x + TILE / 2, cy = y + TILE / 2 + 14;
-    g.fillStyle = "rgba(0,0,0,0.28)"; g.beginPath(); g.ellipse(cx, cy, 12, 4, 0, 0, 7); g.fill();
-    g.strokeStyle = "#2b2420"; g.lineCap = "round"; g.lineJoin = "round";
-    g.lineWidth = 4; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx - 1, cy - 26); g.stroke();
-    g.lineWidth = 2.4; g.beginPath();
-    g.moveTo(cx - 1, cy - 14); g.lineTo(cx - 11, cy - 20); g.moveTo(cx - 6, cy - 17.5); g.lineTo(cx - 8, cy - 25);
-    g.moveTo(cx - 1, cy - 20); g.lineTo(cx + 9, cy - 27); g.moveTo(cx + 4, cy - 23.5); g.lineTo(cx + 5, cy - 31);
-    g.moveTo(cx - 1, cy - 25); g.lineTo(cx - 3, cy - 33); g.stroke();
-    g.strokeStyle = "rgba(255,255,255,0.06)"; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 1.5, cy - 4); g.lineTo(cx - 2, cy - 24); g.stroke();
-  }
-  function drawBuilding(g, x, y, s) {
-    // ruined multi-story structure, extends upward from the tile
-    const cx = x + TILE / 2, baseY = y + TILE / 2 + 16, w = 40, tall = 52;
-    g.fillStyle = "rgba(0,0,0,0.4)"; g.beginPath(); g.ellipse(cx + 4, baseY + 3, 26, 7, 0, 0, 7); g.fill();
-    const con = mix(C.concrete, BM.ash2, 0.35), topY = baseY - tall;
-    // body with a broken jagged top
-    g.beginPath(); g.moveTo(cx - w / 2, baseY); g.lineTo(cx - w / 2, topY + 6);
-    g.lineTo(cx - w / 4, topY); g.lineTo(cx - 4, topY + 8); g.lineTo(cx + 6, topY - 2); g.lineTo(cx + w / 2 - 6, topY + 5); g.lineTo(cx + w / 2, topY + 1); g.lineTo(cx + w / 2, baseY); g.closePath();
-    const bg = g.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0); bg.addColorStop(0, darken(con, 0.4)); bg.addColorStop(0.5, con); bg.addColorStop(1, darken(con, 0.55));
-    g.fillStyle = bg; g.fill();
-    g.fillStyle = "rgba(255,255,255,0.07)"; g.fillRect(cx - w / 2, topY + 6, 3, tall - 6); // left rim light
-    // windows (dark, a few faintly lit)
-    for (let ry = 0; ry < 4; ry++) for (let cxi = 0; cxi < 3; cxi++) {
-      const wx = cx - 15 + cxi * 12, wy = baseY - 12 - ry * 11; if (wy < topY + 4) continue;
-      const lit = hash2(x + cxi * 3 + ry, y + ry * 5) > 0.82;
-      g.fillStyle = lit ? "rgba(242,178,58,0.5)" : "#111318"; g.fillRect(wx, wy, 7, 7);
-      g.fillStyle = "rgba(0,0,0,0.5)"; g.fillRect(wx, wy, 7, 1);
-    }
-    g.strokeStyle = "rgba(0,0,0,0.4)"; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 6, topY + 8); g.lineTo(cx - 9, baseY); g.stroke(); // crack
-    // rubble at base
-    g.fillStyle = darken(con, 0.25); for (let i = 0; i < 4; i++) { const h = hash2(x + i, y * 2 + i); grr(g, cx - 20 + i * 11 + h * 3, baseY - 4 + h * 3, 8, 6, 1.5); g.fill(); }
-  }
-  function drawDropship(g, x, y, s) {
-    // crashed dropship: fuselage + swept wings + cockpit, nose-down, scorched
-    const cx = x + TILE / 2, cy = y + TILE / 2;
-    g.fillStyle = "rgba(0,0,0,0.36)"; g.beginPath(); g.ellipse(cx, cy + 13, 26, 7, 0, 0, 7); g.fill();
-    // scorch under it
-    g.fillStyle = "rgba(10,8,8,0.4)"; g.beginPath(); g.ellipse(cx + 14, cy + 6, 16, 8, 0, 0, 7); g.fill();
-    g.save(); g.translate(cx, cy); g.rotate(-0.35 + (s - 0.5) * 0.2);
-    const met = "#5a616b";
-    // wings
-    g.fillStyle = darken(met, 0.35); g.beginPath(); g.moveTo(-4, -2); g.lineTo(-24, -12); g.lineTo(-20, -4); g.lineTo(-2, 4); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(-4, 2); g.lineTo(-22, 12); g.lineTo(-18, 5); g.lineTo(-2, 0); g.closePath(); g.fill();
-    // fuselage
-    const fg = g.createLinearGradient(0, -9, 0, 9); fg.addColorStop(0, lighten(met, 0.2)); fg.addColorStop(1, darken(met, 0.4));
-    g.fillStyle = fg; grr(g, -14, -9, 40, 18, 8); g.fill();
-    g.fillStyle = darken(met, 0.5); grr(g, 18, -6, 12, 12, 5); g.fill(); // nose (buried)
-    g.fillStyle = "#0e1a20"; grr(g, 14, -5, 9, 9, 3); g.fill(); // cockpit glass
-    g.fillStyle = "rgba(120,190,210,0.25)"; g.fillRect(15, -4, 8, 2.5);
-    g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(-12, -9, 34, 2.5); // top rim
-    g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(-14, 4, 40, 2);
-    g.fillStyle = darken(met, 0.5); g.beginPath(); g.arc(-4, 0, 5, 0, 7); g.fill(); // engine
-    g.fillStyle = "#ff7a3a"; g.globalAlpha = 0.5; g.beginPath(); g.arc(-4, 0, 2.4, 0, 7); g.fill(); g.globalAlpha = 1;
-    g.restore();
   }
 
   /* ---------------- CANVAS ---------------- */
@@ -7544,7 +7247,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.40 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.41 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -8228,11 +7931,14 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     var _grungeTex = null;
     function grungeTex() {
       if (_grungeTex) return _grungeTex;
-      const N = 128, cvv = document.createElement("canvas"); cvv.width = cvv.height = N;
+      const N = 256, cvv = document.createElement("canvas"); cvv.width = cvv.height = N;
       const g = cvv.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, N, N);
-      for (let i = 0; i < 1400; i++) { const v = 150 + ((i * 61) % 90); const a = 0.05 + ((i * 13) % 20) / 200; g.fillStyle = "rgba(" + v + "," + v + "," + v + "," + a + ")"; const x = (i * 971) % N, y = (i * 613) % N, r = 0.5 + ((i * 7) % 3); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
-      for (let i = 0; i < 26; i++) { g.strokeStyle = "rgba(120,120,120," + (0.05 + (i % 5) / 60) + ")"; g.lineWidth = 0.6; g.beginPath(); const x = (i * 977) % N, y = (i * 331) % N; g.moveTo(x, y); g.lineTo(x + ((i * 37) % 40) - 20, y + ((i * 53) % 40) - 20); g.stroke(); }
+      for (let i = 0; i < 5600; i++) { const v = 150 + ((i * 61) % 90); const a = 0.04 + ((i * 13) % 20) / 260; g.fillStyle = "rgba(" + v + "," + v + "," + v + "," + a + ")"; const x = (i * 971) % N, y = (i * 613) % N, r = 0.5 + ((i * 7) % 3); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+      for (let i = 0; i < 60; i++) { g.strokeStyle = "rgba(120,120,120," + (0.02 + (i % 5) / 180) + ")"; g.lineWidth = 0.5; g.beginPath(); const x = (i * 977) % N, y = (i * 331) % N; g.moveTo(x, y); g.lineTo(x + ((i * 37) % 22) - 11, y + ((i * 53) % 22) - 11); g.stroke(); }
       _grungeTex = new T.CanvasTexture(cvv); _grungeTex.wrapS = _grungeTex.wrapT = T.RepeatWrapping;
+      // The mesh UVs are built for the normal map's fine scale; scale the colour map down so it
+      // repeats every ~4 tiles instead of every 1.5, which is where the eye caught the tiling.
+      _grungeTex.repeat.set(0.36, 0.36);
       return _grungeTex;
     }
     var _glowTex = null;
@@ -8301,8 +8007,11 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
 
     /* ---- merged-geometry helpers (terrain bakes to 2 draw calls) ---- */
     function mk() { return { pos: [], nor: [], col: [], idx: [], n: 0 }; }
+    // `col` is one Color for a flat face, or an array of 4 (one per corner, in a-b-c-d order)
+    // so a face can carry a gradient — that is what dissolves the ground's tile seams.
     function quad(m, a, b, c, d, nx, ny, nz, col) {
-      for (const p of [a, b, c, d]) { m.pos.push(p[0], p[1], p[2]); m.nor.push(nx, ny, nz); m.col.push(col.r, col.g, col.b); }
+      const cs = Array.isArray(col) ? col : null, pts = [a, b, c, d];
+      for (let i = 0; i < 4; i++) { const p = pts[i], k = cs ? cs[i] : col; m.pos.push(p[0], p[1], p[2]); m.nor.push(nx, ny, nz); m.col.push(k.r, k.g, k.b); }
       m.idx.push(m.n, m.n + 1, m.n + 2, m.n, m.n + 2, m.n + 3); m.n += 4;
     }
     function boxM(m, x0, y0, z0, x1, y1, z1, top, sideN, sideS, sideW, sideE) {
@@ -8316,7 +8025,11 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       seg = seg || 14; const c0 = m.n;
       m.pos.push(x, y, z); m.nor.push(0, 1, 0); m.col.push(col.r, col.g, col.b); m.n++;
       for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2; m.pos.push(x + Math.cos(a) * rad, y, z + Math.sin(a) * rad); m.nor.push(0, 1, 0); m.col.push(col.r, col.g, col.b); m.n++; }
-      for (let i = 0; i < seg; i++) m.idx.push(c0, c0 + 1 + i, c0 + 2 + i);
+      // Wind the fan clockwise in XZ, which is counter-clockwise seen from +Y — i.e. front-facing
+      // upward. It used to be the other way round, and because the land mesh is DoubleSide three.js
+      // flipped the normal for those back-faces, so every ground decal was lit from *underneath* and
+      // rendered near-black. That is what the "holes" in the ground were.
+      for (let i = 0; i < seg; i++) m.idx.push(c0, c0 + 2 + i, c0 + 1 + i);
     }
     function toMesh(m, mat, uvScale) {
       const g = new T.BufferGeometry();
@@ -8333,8 +8046,23 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     let tileH = new Map();
     const inB = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS;
     const isRoad = (c, r) => PATH_SET.has(c + "," + r);
-    const slabH = (c, r) => Math.floor(hash2(c * 3 + 1, r * 5 + 2) * 3) * 1.1; // 0 / 1.1 / 2.2 broken-slab steps
+    // Smooth value noise on the tile lattice, period `p` tiles. Bilinear + smoothstep, so
+    // neighbouring tiles read the *same* field instead of drawing independent random numbers —
+    // this is what turns per-tile confetti into terrain that has regions.
+    function vnoise(c, r, p, sd) {
+      const x = c / p, z = r / p, xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi;
+      const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+      const a = hash2(xi * 7 + sd, zi * 11 + sd), b = hash2((xi + 1) * 7 + sd, zi * 11 + sd);
+      const d = hash2(xi * 7 + sd, (zi + 1) * 11 + sd), e = hash2((xi + 1) * 7 + sd, (zi + 1) * 11 + sd);
+      const t = a + (b - a) * u, w = d + (e - d) * u;
+      return t + (w - t) * v;
+    }
+    // Slab height comes from the same field, so the broken-slab steps form plateaus instead of a
+    // per-tile quilt. Same 0 / 1.1 / 2.2 values, same gameplay — only the arrangement changes.
+    const slabH = (c, r) => Math.floor(clamp(vnoise(c, r, 4.5, 17) * 1.15 + hash2(c * 3 + 1, r * 5 + 2) * 0.18 - 0.09, 0, 0.999) * 3) * 1.1;
     const topAt = (c, r) => !inB(c, r) ? -DEPTH : (isRoad(c, r) ? ROAD_Y : slabH(c, r));
+    // ground height under a world position — decals need it, or they sink into a raised slab
+    const groundYAt = (x, z) => { const c = Math.floor(x / TILE), r = Math.floor(z / TILE); return inB(c, r) ? topAt(c, r) : 0; };
     function jit(col, amt) { const c = col.clone(); const f = 1 + (amt || 0); c.r = Math.min(1, c.r * f); c.g = Math.min(1, c.g * f); c.b = Math.min(1, c.b * f); return c; }
     // V3.6 focal structures: ruined breach portal + reactor fortress, authored with the toolkit
     function buildBreach(st) {
@@ -8374,11 +8102,35 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const land = mk(), glow = mk(), metal = mk();
       tileH = new Map();
       const lip = c3(BM.ashEdge).multiplyScalar(1.55);
+      // Ground colour sampled at a tile CORNER (not its centre), memoised because every interior
+      // corner is shared by four tiles. Two octaves: broad regions plus mid-scale variation, with a
+      // little per-corner grain on top. The old code picked one of two ashes per tile by a hash,
+      // which is precisely what read as a checkerboard.
+      const gcolCache = new Map();
+      const gcol = (c, r) => {
+        const k = c + "," + r; let v = gcolCache.get(k); if (v) return v;
+        const macro = vnoise(c, r, 7.5, currentMap * 3 + 1);
+        const mid = vnoise(c, r, 2.6, currentMap * 3 + 61);
+        const grain = hash2(c * 7 + currentMap, r * 13);
+        const t = clamp(macro * 0.7 + mid * 0.3, 0, 1);
+        v = g1.clone().lerp(g2, t).multiplyScalar(0.93 + grain * 0.14);
+        gcolCache.set(k, v); return v;
+      };
+      // Roads get the same treatment, much subtler — they are poured slabs, not terrain, but a
+      // per-tile step still draws the grid.
+      const rcolCache = new Map();
+      const rcol = (c, r) => {
+        const k = c + "," + r; let v = rcolCache.get(k); if (v) return v;
+        v = jit(road, (vnoise(c, r, 3.2, currentMap * 3 + 131) - 0.5) * 0.09);
+        rcolCache.set(k, v); return v;
+      };
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const top = topAt(c, r), x0 = c * TILE, z0 = r * TILE, x1 = x0 + TILE, z1 = z0 + TILE;
         if (!isRoad(c, r)) tileH.set(c + "," + r, top);
-        const h = hash2(c * 7 + currentMap, r * 13), patch = hash2(c >> 1, (r >> 1) + 40) > 0.72 ? 0.9 : 1;
-        let tcol = isRoad(c, r) ? jit(road, (h - 0.5) * 0.08) : jit(h > 0.5 ? g1 : g2, (h - 0.5) * 0.2).multiplyScalar(patch);
+        // Four corner colours from the shared lattice, so every top face is a gradient and
+        // neighbouring tiles agree along the edge they share. No per-tile flat fill anywhere.
+        const cf = isRoad(c, r) ? rcol : gcol;
+        let tcol = [cf(c, r), cf(c, r + 1), cf(c + 1, r + 1), cf(c + 1, r)];
         const edge = (dc, dr) => topAt(c + dc, r + dr) < top;
         const scol = (dc, dr, lit) => topAt(c + dc, r + dr) <= -DEPTH ? cliff : (lit ? wallLit : wallDk);
         boxM(land, x0, -DEPTH, z0, x1, top, z1, tcol,
@@ -8425,12 +8177,13 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const barrel = c3("#7a5a30"), rock = c3(BM.ashEdge), rust = c3("#6f4a30"), bld = c3("#3d434c"), bldDk = c3("#282d34");
       for (const d of DECOR) {
         const cx = d.c * TILE + 32 + (d.seed - 0.5) * 18, cz = d.r * TILE + 32 + (hash2(d.c * 5, d.r * 3) - 0.5) * 18, sd = d.seed;
+        const dy = topAt(d.c, d.r);   // decals must sit on the slab they are on, not at y=0 under it
         if (d.type === "pool") {
           const pm = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: c3(BM.toxic), transparent: true, opacity: 0.55 }));
-          pm.rotation.x = -Math.PI / 2; pm.scale.set(14, 10, 1); pm.position.set(cx, 0.5, cz);
+          pm.rotation.x = -Math.PI / 2; pm.scale.set(14, 10, 1); pm.position.set(cx, dy + 0.5, cz);
           world.add(pm); poolMats.push(pm.material);
-          const pg2 = glowSprite(BM.toxic, 42, 0.3); pg2.position.set(cx, 5, cz); world.add(pg2);
-          discM(land, cx, 0.35, cz, 17, c3(BM.ashEdge).multiplyScalar(0.5), 12);
+          const pg2 = glowSprite(BM.toxic, 42, 0.3); pg2.position.set(cx, dy + 5, cz); world.add(pg2);
+          discM(land, cx, dy + 0.35, cz, 17, gcol(d.c, d.r).clone().multiplyScalar(0.74), 14);
         } else if (d.type === "barrel") {
           const bc = jit(barrel, (sd - 0.5) * 0.3), band = c3("#463521");
           boxM(metal, cx - 6, 0, cz - 6, cx + 6, 12, cz + 6, bc, bc, bc, bc, bc);
@@ -8447,7 +8200,8 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         } else if (d.type === "sandbags") {
           for (let i = 0; i < 3; i++) boxM(land, cx - 18 + i * 12, 0, cz - 5, cx - 6 + i * 12, 7, cz + 5, c3("#8a7a58"), c3("#6a5c40"), c3("#6a5c40"), null, null);
         } else if (d.type === "crater") {
-          discM(land, cx, 0.3, cz, 13 + sd * 6, c3(BM.ashEdge).multiplyScalar(0.55), 12);
+          // a scorch mark tinted off the ground it sits on — the old fixed dark disc read as a hole
+          discM(land, cx, dy + 0.3, cz, 13 + sd * 6, gcol(d.c, d.r).clone().multiplyScalar(0.66), 16);
         } else if (d.type === "deadtree") {
           boxM(land, cx - 1.6, 0, cz - 1.6, cx + 1.6, 20 + sd * 8, cz + 1.6, c3("#3a3028"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"));
           boxM(land, cx - 7, 12, cz - 1.2, cx + 7, 14.4, cz + 1.2, c3("#332a24"), null, null, null, null);
@@ -8464,7 +8218,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
           boxM(metal, cx + 12, 11, cz - 2.5, cx + 30, 22, cz + 2.5, hull, hullD, hullD, hullD, hullD);        // raised tail
           for (const sd2 of [-1, 1]) boxM(metal, cx - 18, 4, cz + sd2 * 11, cx - 2, 8, cz + sd2 * 22, hullD, hullD, hullD, hullD, hullD);  // stub wings
           boxM(metal, cx - 30, 5, cz - 6, cx - 24, 12, cz + 6, hullD, hullD, hullD, hullD, hullD);            // nose
-          discM(land, cx - 6, 0.4, cz, 32, c3(BM.ashEdge).multiplyScalar(0.5), 14);
+          discM(land, cx - 6, dy + 0.4, cz, 32, gcol(d.c, d.r).clone().multiplyScalar(0.7), 16);
         }
       }
       // focal structures: detailed breach portals + reactor fortress
@@ -8937,7 +8691,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       for (const s of scorches) {
         if (ci >= scorchPool.length) break;
         const m = scorchPool[ci++]; m.visible = true;
-        const gy = PATH_SET.has(Math.floor(s.x / TILE) + "," + Math.floor(s.y / TILE)) ? ROAD_Y : 0;
+        const gy = groundYAt(s.x, s.y);   // follow the slab, not a flat y=0 that raised tiles bury
         m.position.set(s.x, gy + 0.7 + ci * 0.02, s.y); m.scale.setScalar(s.r);
         m.material.opacity = s.a * 0.85;
       }

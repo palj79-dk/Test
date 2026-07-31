@@ -1,6 +1,8 @@
 # Plan for the open findings after V6.40
 
-**Status:** planned, not started. Written 2026-07-31 against `fallengrid-v6.40.html`.
+**Status:** Part A in progress. **A.0, A.5 and A.1 shipped as V6.41**; A.4 was dropped after the
+re-audit showed the towers are already good. A.2 and A.3 remain, scheduled for V6.42.
+Part B is planned in `PLAN-commander.md`. Written 2026-07-31 against `fallengrid-v6.40.html`.
 
 Two things are outstanding. They are unrelated and should not share an iteration.
 
@@ -112,7 +114,12 @@ thumbnail size" test.
 **Risk:** medium. Emissive accents interact with the bloom pass; too much and the screen blows out
 during a big wave. Cap emissive intensity and check a 60-enemy frame.
 
-## A.4 Towers: make the branch choice visible
+## A.4 Towers: make the branch choice visible — **DROPPED (A.0, V6.41)**
+
+The re-audit close-ups show detailed models with distinct silhouettes and strong branch accent rings.
+There is nothing here worth spending an iteration on. Section kept for the record.
+
+### original text
 
 **To check in A.0, not assumed:** whether an `a`-branch and `b`-branch tower of the same type are
 distinguishable at play zoom. The audit shots exist (`art_tower_*_a.png` / `_b.png`) — compare them
@@ -135,8 +142,8 @@ the visual work, so the diff of the actual graphics change stays readable.
 
 | iter | contents | why together |
 |---|---|---|
-| **V6.41** | A.0 re-audit · A.5 dead-code deletion · A.1 ground | Ground is the biggest surface and the safest change; the deletion clears the ground first |
-| **V6.42** | A.2 props · A.3 enemies · A.4 towers (if A.0 justifies it) | All object-level; can be judged on one contact sheet |
+| ~~**V6.41**~~ | ✅ **shipped** — A.0 re-audit · A.5 dead-code deletion · A.1 ground · plus the `discM` winding bug the work uncovered | done |
+| **V6.42** | A.2 props · A.3 enemies (A.4 dropped) | All object-level; can be judged on one contact sheet. **The enemy close-up harness needs fixing first — the A.0 run framed them wrong and produced unusable crops.** |
 
 Both follow the standing loop: `git mv` to a new version, `gamecheck.sh`, both wave guards, a new
 `verifyNNN.py`, **all fourteen** existing suites, a HANDOFF entry, commit + push with `[skip ci]`,
