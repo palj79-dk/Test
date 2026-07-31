@@ -8,8 +8,10 @@ Two things are outstanding. They are unrelated and should not share an iteration
   fjender samt om lyden kan forbedres"*. V6.40 delivered the audio half. The graphics half is
   untouched.
 - **B. The Command branch.** Backlog #11. Structurally dominated; the user has bought 0/8 of it after
-  8 missions while the other three branches sit at 7/8. **This one needs a decision from the user
-  before any code is written** — see §B.1.
+  8 missions while the other three branches sit at 7/8. **Decided 2026-07-31: direction 2, make the
+  Commander load-bearing.** The measurement in §B.2 has been run and confirms the finding by a wide
+  margin. Part B is now specified in full in **`PLAN-commander.md`**; §B.2-B.4 below are kept as the
+  record of how the decision was reached.
 
 ---
 
@@ -173,7 +175,12 @@ economy — always correct purchases.
 It is also the **second most expensive branch** at 6410 Alloy (Ordnance 6195, Arc 6770, Logistics
 6005), so it charges a premium for the weakest effect.
 
-## B.2 The measurement to run first, regardless of direction
+## B.2 The measurement to run first, regardless of direction — **DONE, see `PLAN-commander.md` §1**
+
+Result: the Commander is **2.9%** of army damage; the entire 6 410-Alloy branch takes it to **4.2%**.
+Ordnance buys **25× more damage per Alloy**. Confirmed, and worse than "dominated" implied.
+The win-rate half of the measurement was not usable — the auto-player is bimodal — which is itself
+carried forward as a blocker in `PLAN-commander.md` §5.5.
 
 Before changing anything, quantify how much the Commander actually contributes. Use the existing
 headless `sim()` harness across 5 maps × 3 difficulties:
@@ -187,9 +194,9 @@ If Command's win-rate delta at equal cost is within noise of the others, the bra
 dominated and the numbers go in the HANDOFF entry. If it is not, the finding was wrong and this part
 is dropped. Cost: ~1 hour, mostly compute.
 
-## B.3 The three directions — **your call**
+## B.3 The three directions — **decided: option 2**
 
-I am not picking this for you; it changes what the branch *is*.
+Kept for the record. The user chose **option 2** on 2026-07-31.
 
 **1. Make Command unconditional.** Replace 2-3 hero/strike nodes with effects that always apply — an
 extra build plot, a second Airstrike charge, a global economy or utility node. *Result:* Command
@@ -207,7 +214,7 @@ its conditional value, label it in the Armory as the branch for players who are 
 the implicit "buy everything" framing. *Result:* honest, cheap, no balance risk. *Cost:* a completionist
 player still sees a branch they will never buy.
 
-**My recommendation: 2, with 1 as the fallback.** The user plays on Hard with almost no leaks, which
+**Chosen: 2.** (This was also my recommendation.) The user plays on Hard with almost no leaks, which
 is exactly the profile that finds a defensive branch worthless — but it is also the profile that would
 enjoy a Commander worth actively using. Option 2 turns dead weight into a mechanic. If B.2 shows the
 Commander is too deeply wired into balance to raise safely, fall back to 1.
@@ -230,7 +237,9 @@ Sizing depends entirely on the answer, so this is deliberately coarse:
 1. **A.0** — re-audit, ~30 min, strikes the stale findings before any effort is spent
 2. **A.5 + A.1** → V6.41 (dead code out, ground grid gone)
 3. **A.2 + A.3 (+A.4)** → V6.42
-4. **B.2** — the Command measurement, which can run while A is in flight
-5. **B.3** — your decision, then V6.43
+4. ~~**B.2** — the Command measurement~~ — **done**, see `PLAN-commander.md` §1
+5. ~~**B.3** — your decision~~ — **done**, option 2
+6. **V6.43 / V6.44** per `PLAN-commander.md`
 
-Part A needs no decisions and can start immediately. Part B is blocked on §B.3.
+Neither part is blocked. Part B now carries its own blocker — the balance harness has to be rebuilt
+before any Commander stat change can be verified (`PLAN-commander.md` §5.5).

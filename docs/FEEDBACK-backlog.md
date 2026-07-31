@@ -245,7 +245,7 @@ depends on a browser feature: *passing in Playwright is not evidence it works in
 Shipped: clipboard-first export with a visible success/failure line, a raw selectable text box as a
 manual fallback, and the file-download button hidden inside the app instead of silently failing.
 
-## 11. Command branch is dead weight — `OPEN` (observed V6.38, not yet actioned)
+## 11. Command branch is dead weight — `MEASURED & PLANNED` (observed V6.38, quantified V6.40)
 
 Not a user complaint — an observation from the screenshot in #10, recorded so it is not lost.
 
@@ -260,6 +260,17 @@ Fixing it changes what the branch *is*, so it needs an explicit decision. Three 
 give Command something unconditional (an extra Airstrike charge, a build plot, an economy node);
 make the Commander genuinely load-bearing so its buffs matter; or accept it as a deliberate
 "insurance" branch for struggling players and stop treating 32/32 as the intended end state.
+
+**Quantified 2026-07-31 against V6.40.** Measured in the headless sim: a fully-levelled Commander is
+**2.9%** of the army's damage at wave 20 against a 24-tower line. Buying **all eight** Command nodes —
+6 410 Alloy, a quarter of the entire tree — takes it to **4.2%**. Per Alloy: Ordnance 0.433 DPS,
+Arc 0.234, **Command 0.017** — Ordnance is **25× more efficient**. The user's 0/8 is not taste, it is
+correct play.
+
+**Decided: make the Commander load-bearing** (the second of the three directions). The diagnosis is
+that the Commander is simply a worse tower — static, un-upgradeable, auto-targeting, and it eats a
+build plot — so every Command node multiplies ~3% of the army. The fix leads with mobility, not
+numbers. Full plan in `docs/PLAN-commander.md`; ships as V6.43 (what it is) and V6.44 (how strong).
 
 ## 9. The intro never teaches the UI, and the hero is never placed — `DONE` (V6.38)
 
