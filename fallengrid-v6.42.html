@@ -4528,6 +4528,13 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
   let CROSS_MAP = new Map(), BRIDGES = []; // true route crossings (perpendicular overlap) render as bridges
   const buildableBase = (c, r) => c >= 0 && r >= 0 && c < COLS && r < ROWS && !PATH_SET.has(c + "," + r);
   const buildable = (c, r) => buildableBase(c, r) && !BLOCKED_SET.has(c + "," + r);
+  // push the blocked set into the 3D scene; call after anything that changes it
+  function refreshObstacles() {
+    if (!window.G3D || !G3D.setObstacles) return;
+    const out = [];
+    for (const k of BLOCKED_SET) { const i = k.indexOf(","); out.push([+k.slice(0, i), +k.slice(i + 1)]); }
+    G3D.setObstacles(out);
+  }
   // V6.9: obstacles sit on buildable ground and block placement, breaking up dense tower walls.
   // Count scales with difficulty; seeded per (map, difficulty) so it's deterministic; biased next to
   // the path (where players cram towers). Capped so a map is never walled off.
@@ -4553,7 +4560,22 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     const cap = auth + Math.min(want, Math.floor(cand.length * 0.22)); // random on top of authored; random never eats more than ~22% of open ground
     cand.sort((a, b) => (b.adj - a.adj) || (a.h - b.h)); // path-adjacent first, then hashed order
     for (let i = 0; i < cand.length && BLOCKED_SET.size < cap; i++) BLOCKED_SET.add(cand[i].c + "," + cand[i].r);
+    refreshObstacles();
   }
+  // Prop density: `BASE` is the sparse ground between clusters, `PEAK` the extra at a cluster core.
+  // Tuned so the total prop count lands within ~15% of the pre-V6.42 uniform placement.
+  // RATE is the share of eligible tiles that get a prop. The pre-V6.42 uniform placement used 0.27,
+  // and holding that number is what made clustering pointless: at 27% coverage the cluster cores
+  // saturate and the field flattens back out into confetti. Props are **purely decorative** — DECOR
+  // is read only by the 3D build loop, never by buildable()/pathing/combat — so the count is a
+  // draw-cost question, not a gameplay one, and the lower rate is free.
+  const DECOR_BASE = 0.04, DECOR_PEAK = 1.0, DECOR_RATE = 0.19;
+  const DECOR_THEMES = [
+    ["wreck", "wreck", "rubble", "barrel", "wreck"],        // vehicle graveyard
+    ["rubble", "rubble", "crater", "rubble", "sandbags"],   // shelled ground
+    ["deadtree", "deadtree", "crater", "rubble", "pool"],   // dead grove
+    ["sandbags", "barrel", "rubble", "barrel", "crater"],   // abandoned camp
+  ];
   function buildDecor(seed) {
     DECOR = []; POOLS = []; const s1 = seed * 101, s2 = seed * 211;
     // authored set-pieces first (composed landmarks); hash decor fills around them
@@ -4563,18 +4585,62 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       reserved.add(k); DECOR.push({ c: p.c, r: p.r, type: p.type, seed: hash2(p.c * 3 + seed, p.r * 7 + seed) });
       if (p.type === "pool") { const pt = center(p.c, p.r); POOLS.push({ x: pt.x, y: pt.y }); }
     }
+    // V6.42: props cluster. They used to be an independent per-tile draw from one fixed
+    // distribution, i.e. spatially uniform — which is exactly what reads as confetti. Now a handful
+    // of seeded centres carry the density, each with a theme, and the ground between them is
+    // genuinely empty.
+    //
+    // The density field is *normalised* to the old uniform rate before it is sampled, so however
+    // the clusters happen to land on a given map the expected prop count still matches V6.41.
+    // Without that the count swung -15% to -70% map to map purely on cluster luck.
+    const eligible = [];
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       if (PATH_SET.has(c + "," + r) || reserved.has(c + "," + r)) continue;
-      const h = hash2(c + s1, r + s2), sd = hash2(c * 3 + seed, r * 7 + seed);
-      let type = null;
-      if (h > 0.986) type = sd > 0.5 ? "building" : "dropship"; // rare landmark set-pieces
-      else if (h > 0.95) type = "wreck";
-      else if (h > 0.915) type = "pool";
-      else if (h > 0.878) type = "sandbags";
-      else if (h > 0.84) type = "barrel";
-      else if (h > 0.78) type = "rubble";
-      else if (h > 0.73) type = sd > 0.62 ? "deadtree" : "crater";
-      if (type) { DECOR.push({ c, r, type, seed: sd }); if (type === "pool") { const p = center(c, r); POOLS.push({ x: p.x, y: p.y }); } }
+      eligible.push({ c, r });
+    }
+    if (eligible.length) {
+      const NC = Math.max(4, Math.min(12, Math.round(eligible.length / 45)));
+      const clusters = [];
+      for (let i = 0; i < NC; i++) {
+        const pick = eligible[Math.floor(hash2(seed * 3 + i * 17, 41 + i * 7) * eligible.length) % eligible.length];
+        clusters.push({ c: pick.c, r: pick.r,
+                        rad: 3.4 + hash2(seed + i * 11, 83) * 4.6,
+                        theme: Math.floor(hash2(seed * 9 + i * 13, 29) * DECOR_THEMES.length) % DECOR_THEMES.length });
+      }
+      const nearRoad = (c, r) => PATH_SET.has((c + 1) + "," + r) || PATH_SET.has((c - 1) + "," + r) ||
+                                 PATH_SET.has(c + "," + (r + 1)) || PATH_SET.has(c + "," + (r - 1));
+      let sum = 0;
+      for (const e of eligible) {
+        let w = 0, th = 0;
+        for (const cl of clusters) {
+          const d = Math.hypot(e.c - cl.c, e.r - cl.r) / cl.rad;
+          if (d < 1) { const f = (1 - d) * (1 - d); if (f > w) { w = f; th = cl.theme; } }
+        }
+        // thin the tiles beside the road — those are the ones the player looks at and builds on
+        e.p = (DECOR_BASE + DECOR_PEAK * w) * (nearRoad(e.c, e.r) ? 0.5 : 1);
+        e.th = th; sum += e.p;
+      }
+      // Solve for the scale that lands the expected count on target, accounting for tiles whose
+      // probability saturates at 1 — a plain sum/target ratio undershoots badly on maps where the
+      // clusters pile up (it cost map 9 44% of its props).
+      let k = 1;
+      const want = DECOR_RATE * eligible.length;
+      for (let it = 0; it < 16; it++) {
+        let tot = 0;
+        for (const e of eligible) tot += Math.min(1, e.p * k);
+        if (Math.abs(tot - want) < 0.5 || tot <= 0) break;
+        k *= want / tot;
+      }
+      for (const e of eligible) {
+        if (hash2(e.c + s1, e.r + s2) > Math.min(1, e.p * k)) continue;
+        const sd = hash2(e.c * 3 + seed, e.r * 7 + seed);
+        const set = DECOR_THEMES[e.th];
+        const type = hash2(e.c * 19 + seed, e.r * 23 + seed) > 0.988
+          ? (sd > 0.5 ? "building" : "dropship")        // rare landmark set-pieces, theme-independent
+          : set[Math.floor(sd * set.length) % set.length];
+        DECOR.push({ c: e.c, r: e.r, type, seed: sd });
+        if (type === "pool") { const pt = center(e.c, e.r); POOLS.push({ x: pt.x, y: pt.y }); }
+      }
     }
   }
   function loadMap(i) {
@@ -4600,7 +4666,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     ROUTES = tileLists.map((tl) => tl.map(([c, r]) => center(c, r)));
     PATH_PTS = ROUTES[0];
     buildDecor(m.seed);
-    if (window.G3D) G3D.buildMap(); // 3D world build (terrain bake retired in V3)
+    if (window.G3D) { G3D.buildMap(); refreshObstacles(); } // 3D world build (terrain bake retired in V3)
   }
   function selectMap(i) { if (i !== currentMap) loadMap(i); }
 
@@ -5184,7 +5250,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.41",
+        ts: Date.now(), ver: "6.42",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -6247,21 +6313,6 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     for (const f of floats) { ctx.save(); uprightAt(f.y); ctx.globalAlpha = Math.max(0, f.life / 0.85); ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(f.text, f.x, f.y); ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y); ctx.restore(); }
     ctx.globalAlpha = 1;
   }
-  function drawObstacles() {
-    for (const k of BLOCKED_SET) {
-      const ci = k.indexOf(","), c = +k.slice(0, ci), r = +k.slice(ci + 1);
-      const p0 = worldToScreen(c * TILE + 5, r * TILE + 5), p1 = worldToScreen((c + 1) * TILE - 5, r * TILE + 5),
-            p2 = worldToScreen((c + 1) * TILE - 5, (r + 1) * TILE - 5), p3 = worldToScreen(c * TILE + 5, (r + 1) * TILE - 5);
-      if (p2.y < PLAY_TOP || p0.y > PLAY_BOTTOM) continue;
-      ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.closePath();
-      ctx.fillStyle = "rgba(26,22,18,0.82)"; ctx.fill();
-      ctx.strokeStyle = "rgba(122,90,58,0.75)"; ctx.lineWidth = 1.5; ctx.stroke();
-      const cx = (p0.x + p1.x + p2.x + p3.x) / 4, cy = (p0.y + p1.y + p2.y + p3.y) / 4, sz = Math.max(4, Math.abs(p1.x - p0.x) * 0.3);
-      ctx.fillStyle = "#4a4038"; ctx.beginPath(); ctx.arc(cx, cy - sz * 0.35, sz, 0, 7); ctx.fill();
-      ctx.fillStyle = "#615446"; ctx.beginPath(); ctx.arc(cx - sz * 0.35, cy - sz * 0.6, sz * 0.55, 0, 7); ctx.fill();
-      ctx.fillStyle = "#37312b"; ctx.beginPath(); ctx.arc(cx + sz * 0.4, cy - sz * 0.15, sz * 0.45, 0, 7); ctx.fill();
-    }
-  }
   function drawSelRange() {
     if (S.selTower != null && towers[S.selTower]) { const t = towers[S.selTower], p = center(t.c, t.r), range = tStats(t).range * rangeMul(); ctx.fillStyle = C.range; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; ctx.beginPath(); ctx.arc(p.x, p.y, range, 0, 7); ctx.fill(); ctx.stroke(); }
     if (S.selTile) { const cx = S.selTile.c * TILE, cy = S.selTile.r * TILE; ctx.fillStyle = "rgba(55,224,208,0.14)"; ctx.strokeStyle = C.rangeEdge; ctx.lineWidth = 2 / cam.zoom; rr(cx + 4, cy + 4, TILE - 8, TILE - 8, 6); ctx.fill(); ctx.stroke(); }
@@ -7247,7 +7298,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.41 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.42 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7735,7 +7786,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (t) { S.scrap += Math.round(towerSpent(t) * sellRefund()); Telemetry.ev("sells"); towers.splice(pd.tower, 1); S.selTower = null; Sound.sell(); vibrate(18); }
     } else if (pd.kind === "excavate") {
       const cost = excavateCost();
-      if (S.scrap >= cost) { S.scrap -= cost; BLOCKED_SET.delete(pd.c + "," + pd.r); S.excavated = (S.excavated || 0) + 1; Telemetry.ev("scrapSpent", cost); Telemetry.ev("excavations"); const p = center(pd.c, pd.r); burst(p.x, p.y, "#c9a06a", 12); Sound.place(); vibrate(18); }
+      if (S.scrap >= cost) { S.scrap -= cost; BLOCKED_SET.delete(pd.c + "," + pd.r); refreshObstacles(); S.excavated = (S.excavated || 0) + 1; Telemetry.ev("scrapSpent", cost); Telemetry.ev("excavations"); const p = center(pd.c, pd.r); burst(p.x, p.y, "#c9a06a", 12); Sound.place(); vibrate(18); }
       else { Sound.err(); vibrate(40); }
     }
     S.pending = null; S.rangePreview = null;
@@ -8390,6 +8441,10 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     /* ---- enemies ---- */
     const enemyPool = {};
     function tintable(col) { return new T.MeshLambertMaterial({ color: col }); }
+    // how loud each unit's emissive accent is; roughly "how much should this worry you"
+    const ENEMY_THREAT = { stalker: 0.45, raider: 0.45, spawnling: 0.35, wraith: 0.6, phantom: 0.55,
+                           splitter: 0.7, brute: 0.85, sentinel: 0.85, mender: 0.9, cinder: 0.95,
+                           insulator: 0.9, warden: 1.0, juggernaut: 1.5 };
     function buildEnemy(type) {
       const b = ENEMIES[type], r = b.r, g = new T.Group();
       const mats = [], legs = [];
@@ -8457,6 +8512,16 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         eye([r * 0.4, r * 1.32, 0], 3.4);
         bodyH = r * 1.4;
       }
+      // V6.42 (A.3): one emissive accent per enemy, sized by how dangerous the unit is. Every
+      // model used to be a desaturated body/dark pair whose only lit element was a small eye, so at
+      // play zoom the whole roster read as one grey mass. The strip sits on `bodyH`, which every
+      // shape branch sets, so it lands on the body whatever the silhouette. Intensity is capped
+      // because these go through the bloom pass and a 60-enemy wave must not blow the screen out.
+      const th = ENEMY_THREAT[type] || 0.6;
+      const accM = emis(b.eye, 1.0 + th * 0.85);
+      m.box(r * (0.15 + th * 0.2), r * 0.1, r * (0.42 + th * 0.46), [0, bodyH * 0.93, 0], accM);
+      if (th >= 0.9) for (const sd of [-1, 1])                    // heavies get flank vents as well
+        m.box(r * (0.1 + th * 0.14), r * 0.24, r * 0.07, [0, bodyH * 0.45, sd * r * (0.42 + th * 0.2)], accM);
       g.add(m.build());
       const bub = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.18, depthWrite: false }));
       bub.scale.setScalar(r * 1.4); bub.position.y = r * 0.6; bub.visible = false; g.add(bub);
@@ -8613,6 +8678,45 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     const flashPool = makePool(10, () => glowSprite("#ffffff", 1, 0.9));
     const orbPool = makePool(14, () => { const m = new T.Mesh(GEO.sph, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false })); const gl2 = glowSprite("#ffffff", 4, 0.6); m.add(gl2); return m; });
     const shellPool = makePool(10, () => new T.Mesh(GEO.box, new T.MeshLambertMaterial({ color: 0x3a3c40 })));
+    // V6.42: blocked tiles are geometry in the world now. They used to be painted by drawObstacles()
+    // on the 2D UI canvas, which sits *above* the GL canvas — so the marker drew on top of every
+    // enemy walking past on the road behind it. As real meshes they depth-sort like everything else.
+    const OBS_LIT = new T.MeshLambertMaterial({ color: 0x53483b }), OBS_DK = new T.MeshLambertMaterial({ color: 0x372f28 });
+    const OBS_PAD = new T.MeshLambertMaterial({ color: 0x2a241e });
+    const OBS_CHUNKS = [[0, 0, 0, 15, 11, 14, 0], [-11, 0, 7, 10, 15, 9, 1], [9, 0, -8, 9, 8, 11, 1], [3, 0, 12, 8, 7, 8, 0], [-8, 0, -10, 7, 6, 7, 1]];
+    const obsPool = makePool(64, () => {
+      const g = new T.Group();
+      // a dark pad the size of the plot, so the tile still reads as "occupied, clear me" the way the
+      // old 2D marker did — but as world geometry, so enemies in front of it occlude it
+      const pad = new T.Mesh(GEO.box, OBS_PAD);
+      pad.position.set(0, 0.35, 0); pad.scale.set(TILE - 10, 0.7, TILE - 10);
+      pad.receiveShadow = true; g.add(pad);
+      for (const [x, , z, sx, sy, sz, dk] of OBS_CHUNKS) {
+        const b = new T.Mesh(GEO.box, dk ? OBS_DK : OBS_LIT);
+        b.position.set(x, sy / 2, z); b.scale.set(sx, sy, sz);
+        b.rotation.y = (x * 0.11 + z * 0.07);
+        b.castShadow = true; b.receiveShadow = true; g.add(b);
+      }
+      return g;
+    });
+    // cells is a list of [c, r]; anything past the pool size is simply not shown (never happens in
+    // practice — the obstacle cap is far below 64)
+    function setObstacles(cells) {
+      let i = 0;
+      for (const cr of cells) {
+        if (i >= obsPool.length) break;
+        const c = cr[0], r = cr[1], g = obsPool[i++];
+        g.visible = true;
+        g.position.set(c * TILE + 32, topAt(c, r), r * TILE + 32);
+        // rotate/scale only the rubble; the pad stays square to the plot it marks
+        const rot = hash2(c * 5 + 3, r * 9 + 1) * 6.283, sc = 0.8 + hash2(c * 11, r * 7) * 0.45;
+        for (let k = 1; k < g.children.length; k++) { g.children[k].rotation.y = rot; }
+        g.rotation.y = 0; g.scale.set(sc, sc, sc);
+        g.children[0].scale.set((TILE - 10) / sc, 0.7 / sc, (TILE - 10) / sc);
+        g.children[0].position.y = 0.35 / sc;
+      }
+      for (; i < obsPool.length; i++) obsPool[i].visible = false;
+    }
     const scorchPool = makePool(26, () => { const m = new T.Mesh(GEO.disc, new T.MeshBasicMaterial({ color: 0x0a0908, transparent: true, opacity: 0.5, depthWrite: false })); m.rotation.x = -Math.PI / 2; return m; });
     var _smokeTex = null;
     const smokePool = makePool(36, () => { const m = new T.Sprite(new T.SpriteMaterial({ map: smokeTex(), transparent: true, opacity: 0.4, depthWrite: false })); return m; });
@@ -8827,7 +8931,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     resize3d(Math.min(window.innerWidth / W, window.innerHeight / H), window.devicePixelRatio || 1);
 
     return { buildMap, frame: frame3d, overlay, pick, project, resize: resize3d, scene, camera, renderer, applyCam,
-      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; }, setEco, heroRingOn: () => heroRing.visible };
+      setPost(on, ssao) { post.on = on; if (ssao !== undefined) post.ssao = ssao; }, setEco, setObstacles, heroRingOn: () => heroRing.visible };
   })();
   window.G3D = G3D;
 
@@ -8859,7 +8963,6 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     ctx.clearRect(0, 0, W, H);
     G3D.frame(so, raw, dtMs);
     G3D.overlay();
-    if ((S.screen === "playing" || S.screen === "paused") && BLOCKED_SET.size) drawObstacles();
     if (S.screen === "playing" || S.screen === "paused") drawOverclockMarks();
 
     // screen layer
@@ -8915,7 +9018,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
   }
 
   // debug hooks (no-op in normal play)
-  window.__GAME = { S, cam, Meta, Tech, TECH, Sound, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, worldToScreen, tStats, overclockCost, excavateCost, get blocked() { return BLOCKED_SET; }, get devArmory() { return devArmory; },
+  window.__GAME = { S, cam, Meta, Tech, TECH, Sound, screenToWorld, startWave, tap, fitCamera, render, G3D, setDevArmory, earnTaper, awardAlloy, reset, selectMap, computeObstacles, buildable, worldToScreen, tStats, overclockCost, excavateCost, get blocked() { return BLOCKED_SET; }, get __decor() { return DECOR; }, __ENEMIES: ENEMIES, __TOWERS: TOWERS, get devArmory() { return devArmory; },
     build(c, r, type) { if (!buildable(c, r) || towers.some((t) => t.c === c && t.r === r)) return false; towers.push({ c, r, type, lvl: 0, cd: 0, angle: -Math.PI / 2, recoil: 0, flash: 0, target: null, mode: "first" }); (S.builtTypes || (S.builtTypes = {}))[type] = 1; return true; },
     // headless auto-battle: advance the sim (no render) until the run ends or maxIters
     sim(stepMs, maxIters) {
