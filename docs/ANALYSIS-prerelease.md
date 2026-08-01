@@ -68,8 +68,8 @@ i forhold til ambitionen om Google Play.
    ikke variation.
 5. **Teknisk gæld.** Én fil ~1,08 MB med three.js r147 (2022) inline; builds via
    python-strengudskiftning med tælle-asserts — ét flertydigt anker kan korrumpere filen
-   stille. Verifikations-scripts ligger i sessions-scratchpad, IKKE i repoet — dør
-   containeren, dør testsuiten. Save-data er kun localStorage (WebView kan rydde den);
+   stille. **RESOLVED (V6.43):** the harness now lives in `tools/` and is committed. Was: verifikations-scripts
+   lå i sessions-scratchpad, IKKE i repoet — døde med samtalen.
    V6.14's bane-omrokering brød allerede medalje-indeks én gang → launch kræver
    migreringsstrategi.
 6. **Udestående release-risici.** Ydelse kun testet i SwiftShader headless — postFX på

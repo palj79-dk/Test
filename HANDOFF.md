@@ -469,6 +469,10 @@ docs/monetization/     deferred V7 monetization plan and spec
 docs/PLAN-audio.md     the V6.40 audio plan, and what it actually shipped as
 docs/PLAN-open-findings.md  the graphics plan (Part A) and how the Command decision was reached
 docs/PLAN-commander.md      V6.43/V6.44: making the Commander load-bearing (planned, not started)
+tools/gamecheck.sh     game-block syntax check — marker-based, never selects by size
+tools/verify/          the standing suite set + run_all.sh (the whole definition of done)
+tools/verify/_harness.py  finds the build, the browser, and old builds from git history
+tools/mapsheet.py      renders all 25 maps + measures props/relief/colour spread
 tools/heromeasure.py   Commander damage share vs the tower line (the B.2 measurement)
 tools/enemysheet.py    renders all 12 enemies at one camera + measures thumbnail confusability
 tools/propmeasure.py   prop count and nearest-neighbour spread, before/after a baseline build
@@ -478,7 +482,13 @@ tools/preview/         WAV renders + index.html audition page (gitignored — re
 app/ + .github/workflows/android.yml   Capacitor wrapper and the APK build
 ```
 Each iteration is a **new version-numbered copy** (`git mv fallengrid-v6.42.html fallengrid-v6.43.html`), so every shipped build stays reproducible. **The filename version must match the version label inside the file** — the APK workflow selects by `sort -V` and fails the build if they disagree. That guard exists because `fallengrid-v2.5.html` (meaning V2.5) version-sorted as 25 and beat v6.38, so the APK would have silently bundled a 2D build from months earlier; it is now `fallengrid-v2.5.html`.
-Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed; verification scripts live in the scratchpad (see 2.7).
+Git: work on branch `claude/tower-defense-graphics-l7p9mn`. No build artifacts committed.
+
+> **The verification harness is in the repo (`tools/`), not in a session scratchpad.** It used to
+> live in the scratchpad, which meant the entire standing suite set died with the conversation that
+> created it and a new session could not run the definition of done at all. `docs/ANALYSIS-prerelease.md`
+> flagged that risk and it went unfixed for months. Nothing in `tools/` may reference a path outside
+> the repo; the before/after suites recover old builds from **git history** via `tools/verify/_harness.py`.
 
 ## 2.2 Edit and verify loop
 
@@ -593,7 +603,11 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
 
 ## 2.7 Definition of done for any change
 
-1. **Syntax + hex.** Run `scratchpad/gamecheck.sh <file>`. It selects the game block by the markers
+0. **Just run `tools/verify/run_all.sh`.** It does everything below — syntax, both guards, the
+   filename/label agreement the APK workflow enforces, and every suite — against the newest
+   `fallengrid-v*.html` (or a path you pass it). The steps are spelled out individually because you
+   still need to understand what each one is for.
+1. **Syntax + hex.** Run `tools/gamecheck.sh <file>`. It selects the game block by the markers
    `PLAY_BOTTOM` **and** `function drawTray`, hard-fails unless exactly one block matches, then runs
    `node --check` on it and scans for malformed hex literals. Since V6.40 the file has **five** blocks
    (the audio bank is its own); the markers still match exactly one, which is the whole point of them.
@@ -604,7 +618,7 @@ Each phase is a separate verified commit. All must keep the 1.10 guards, the "te
    > code reached a build (the Playwright suites execute the real game with a `pageerror` listener and
    > would have caught a parse error), but the check itself was worthless. **Never select a script block
    > by size.**
-2. **Headless logic/render.** Playwright + Chromium (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, args `--no-sandbox --enable-unsafe-swiftshader`) driving `__GAME`: assert waves resolve, auto-advance fires, no NaN in `S`/enemies across several waves (incl. a boss shield wave), and capture at least one screenshot confirming the change renders. Watch `pageerror`/console for zero errors. **Write a new `verifyNNN.py` for the iteration's own claims, and re-run every existing suite** (core regression plus the per-feature suites) against the new file — the standing set as of V6.43 is core + V6.25, V6.26, V6.28, V6.29, V6.30, V6.31, V6.32, V6.35, V6.36, V6.37, V6.38, V6.39, V6.40, V6.41, V6.42, V6.43 (seventeen).
+2. **Headless logic/render.** Playwright + Chromium (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, args `--no-sandbox --enable-unsafe-swiftshader`) driving `__GAME`: assert waves resolve, auto-advance fires, no NaN in `S`/enemies across several waves (incl. a boss shield wave), and capture at least one screenshot confirming the change renders. Watch `pageerror`/console for zero errors. **Write a new `verifyNNN.py` for the iteration's own claims, and re-run every existing suite** (core regression plus the per-feature suites) against the new file — the standing set lives in `tools/verify/` — one file per iteration, seventeen as of V6.43, all run by `run_all.sh`.
 
    > **Two RAF traps, both of which have cost a debugging session.** (a) The tray, HUD and build panel are drawn by `requestAnimationFrame`, **not** by `render()` — wait ~250-300ms before reading `__GAME.trayBtns` / `buildBtns` / `hudBtns`, or they are stale or empty. DOM overlay screens do come from `render()` and can be read immediately. (b) Seed `localStorage.setItem('seenIntro','true')` before reloading, or a suite that clears storage lands on the first-launch briefing instead of the game — and since V6.38, seed `tutDone` too if the suite drives the UI directly, because the tour's first card legitimately swallows a tap.
 3. **Performance.** Sample frame times; hold ~60fps. Never move baked terrain work into the per-frame path.

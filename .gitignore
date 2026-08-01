@@ -7,3 +7,7 @@ _ex.js
 # ~7 MB of derived data; re-run the renderer to recreate it.
 tools/preview/
 tools/.render/
+
+# python bytecode from the verify harness
+__pycache__/
+*.pyc
