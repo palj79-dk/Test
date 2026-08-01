@@ -68,7 +68,7 @@ def baseline(version):
     out = pathlib.Path(tempfile.gettempdir()) / ("fg-baseline-%s.html" % version)
     if out.exists() and out.stat().st_size > 1000:
         return out
-    revs = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--all", "--", name],
+    revs = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--all", "--full-history", "--", name],
                           capture_output=True, text=True).stdout.split()
     for rev in revs:
         for spec in ("%s:%s" % (rev, name), "%s^:%s" % (rev, name)):
