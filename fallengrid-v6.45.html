@@ -4120,7 +4120,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         a: { name: "Gatling", short: "GATLING", desc: "shreds swarms", cost: 75, dmg: 16, range: 190, rate: 175, t4: { name: "Vortex", cost: 120, dmg: 26, range: 205, rate: 150 } },
         b: { name: "Breacher", short: "BREACHER", desc: "armor-piercing", cost: 85, dmg: 44, range: 205, rate: 500, pierce: true, t4: { name: "Siege", cost: 150, dmg: 78, range: 228, rate: 460, pierce: true } },
       } },
-    cryo:   { name: "Cryo Emitter", short: "CRYO", kind: "orb", dmgType: "energy", metal: "#3a5460", metalLt: "#557886", accent: "#37e0d0", desc: "slows a cluster",
+    cryo:   { name: "Cryo Emitter", short: "CRYO", kind: "orb", dmgType: "energy", support: true, metal: "#3a5460", metalLt: "#557886", accent: "#37e0d0", desc: "slows a cluster",
       levels: [ { cost: 65, dmg: 4, range: 136, rate: 720, splash: 60, slow: 0.35 }, { cost: 55, dmg: 7, range: 150, rate: 660, splash: 68, slow: 0.42 }, { cost: 80, dmg: 10, range: 164, rate: 600, splash: 78, slow: 0.5 } ],
       branches: {
         a: { name: "Glacier", short: "GLACIER", desc: "heavy slow on hit", cost: 80, dmg: 9, range: 172, rate: 560, splash: 96, slow: 0.6, t4: { name: "Absolute", cost: 130, dmg: 15, range: 186, rate: 520, splash: 112, slow: 0.66 } },
@@ -5284,7 +5284,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.44",
+        ts: Date.now(), ver: "6.45",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -5469,6 +5469,13 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       return;
     }
     e.hp -= dmg; e.flash = 0.12;
+    // V6.45 assist: a support tower's whole value is damage it ENABLES, which no DPS number can
+    // show. Credit every live slow source on this foe with a share of the hit, so the tower can
+    // report what it is actually worth instead of its own (misleadingly tiny) damage.
+    if (e.slowSrc) {
+      let n = 0; for (const k in e.slowSrc) if (e.slowSrc[k].t > 0) n++;
+      if (n) for (const k in e.slowSrc) { const tw = SID_TOWER[k]; if (tw && e.slowSrc[k].t > 0) tw.assist = (tw.assist || 0) + dmg / n; }
+    }
     const big = e.type === "juggernaut", heavy = e.type === "brute" || e.type === "sentinel";
     sparks(e.x, e.y - e.r * 0.2, e.armor ? "#cfd6de" : "#ffd27a", big ? 5 : 2, null, 6);
     if (e.hp <= 0 && e.alive) {
@@ -5524,6 +5531,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
   // sources from DISTINCT towers stack with diminishing returns toward a soft floor, so one
   // frost tower is strong and each additional tower that also lands hits adds only a little.
   let towerSeq = 0;
+  const SID_TOWER = {};   // slow-source id -> tower, for V6.45 assist crediting
   function updSlow(dt) {
     if (activeMod && activeMod.noSlow) return;
     const MAXRED = 1 - SLOW_ASYMPTOTE;
@@ -5572,16 +5580,41 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
   }
   // L3 stats come from the chosen branch; levels[2] is a fallback if somehow unbranched
   const tStats = (t) => { const sp = TOWERS[t.type]; let base; if (t.lvl >= 2 && t.branch && sp.branches[t.branch]) { const br = sp.branches[t.branch]; base = (t.lvl >= 3 && br.t4) ? br.t4 : br; } else base = sp.levels[t.lvl]; return t.oc ? Object.assign({}, base, { dmg: Math.round(base.dmg * (1 + t.oc * OC_DMG)), rate: Math.round(base.rate / (1 + t.oc * OC_RATE)) }) : base; };
+  // V6.45 — STRONG and CLOSE are now LEAD-AWARE, and that is the whole fix.
+  // Measured on a 22-tower board: first 31 leaks, strong 74, close 76. Both alternatives were more
+  // than twice as bad, which makes a visible control a trap for exactly the players who explore it.
+  // The cause was not the priority itself but that it was UNBOUNDED: with STRONG every tower piled
+  // onto the tankiest foe in range while the enemy about to reach the Core walked past unshot.
+  // So the candidate set is now restricted to the leading part of the pack (by path progress) and
+  // the mode picks within it. STRONG still means "focus the big one" and CLOSE still means "hit what
+  // is nearest", they just can no longer ignore the leaker to do it.
+  const LEAD_BAND = 0.5;   // consider the front half of the in-range pack, by path progress
   function findTarget(t, p) {
-    const st = tStats(t), air = canHitAir(TOWERS[t.type].kind); let best = null, score = -Infinity;
+    const st = tStats(t), air = canHitAir(TOWERS[t.type].kind), rng = st.range * rangeMul();
+    const lead = t.mode === "strong" || t.mode === "close";
+    let cut = -Infinity;
+    if (lead) {
+      // first pass: how far along is the front of the pack this tower can actually reach?
+      let hi = -Infinity, lo = Infinity;
+      for (const e of enemies) {
+        if (!e.alive || (e.flying && !air) || (e.camo && !(e.revealed > 0))) continue;
+        if (Math.hypot(e.x - p.x, e.y - p.y) > rng) continue;
+        if (e.pi > hi) hi = e.pi;
+        if (e.pi < lo) lo = e.pi;
+      }
+      if (hi === -Infinity) return null;
+      cut = hi - (hi - lo) * LEAD_BAND;
+    }
+    let best = null, score = -Infinity;
     for (const e of enemies) {
       if (!e.alive) continue;
       if (e.flying && !air) continue; // ground splash towers can't reach flyers
       if (e.camo && !(e.revealed > 0)) continue; // stealth: untargetable until a detector reveals it
       const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d > st.range * rangeMul()) continue;
+      if (d > rng) continue;
+      if (lead && e.pi < cut) continue;   // never ignore the front of the pack
       let s;
-      if (t.mode === "strong") s = e.hp + e.shield;
+      if (t.mode === "strong") s = (e.maxHp || e.hp) + (e.shieldMax || 0) + e.pi * 0.001;
       else if (t.mode === "close") s = -d;
       else s = e.pi + (1 - d / (st.range + 1)) * 0.01;
       if (s > score) { score = s; best = e; }
@@ -5620,7 +5653,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       // Arc-Coil branch: lightning chains to nearby foes (flyers included)
       if (st.chain) { let from = tg, hit = new Set([tg]); for (let i = 0; i < st.chain; i++) { let nx = null, nd = 120; for (const e of enemies) { if (!e.alive || hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < nd) { nd = d; nx = e; } } if (!nx) break; hurt(nx, dmg * 0.6, dtype, pierce); beams.push({ x1: from.x, y1: from.y, x2: nx.x, y2: nx.y, life: 0.12, mlife: 0.12, color: spec.accent, w: 2, bolt: true }); hit.add(nx); from = nx; } }
     }
-    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: dmg, splash: st.splash * splashMul(), slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4, sid: (t._sid || (t._sid = ++towerSeq)) }); Sound.cryo(mx, my); }
+    else if (spec.kind === "orb") { projs.push({ x: mx, y: my, tx: tg, sx: tg.x, sy: tg.y, dmg: dmg, splash: st.splash * splashMul(), slow: st.slow, shatter: !!st.shatter, dtype, pierce, speed: 320, color: spec.accent, kind: "orb", life: 1.4, sid: (t._sid || (t._sid = ++towerSeq, SID_TOWER[t._sid] = t, t._sid)) }); Sound.cryo(mx, my); }
     else if (spec.kind === "lob") { const gx = tg.x, gy = tg.y, dist = Math.hypot(gx - mx, gy - my); projs.push({ x: mx, y: my, ox: mx, oy: my, gx, gy, dmg: dmg, splash: st.splash * splashMul(), dtype, pierce, kind: "lob", t: 0, dur: clamp(dist / 260, 0.35, 0.9), arc: 26 + dist * 0.14, color: spec.accent }); if (t.type === "siege") Sound.siege(mx, my); else Sound.gun(mx, my); }
     else if (spec.kind === "burn") {
       const range = st.range * rangeMul(), ox = p.x, oy = p.y - 12; let any = false;
@@ -7028,7 +7061,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
   // plain-language role line — plus a close button, since "tap the plot again" was not discoverable.
   const TOWER_ROLE = {
     turret: "Cheap all-round · hits air",
-    cryo:   "Frost field · slows packs",
+    cryo:   "Support · slowed foes take more from every tower",
     mortar: "Splash · strong vs swarms",
     tesla:  "Long range · sees cloaked",
     pyre:   "Short range · burn damage",
@@ -7095,6 +7128,10 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
       ctx.textAlign = "right"; ctx.fillStyle = banned ? C.textDim : dtCol; ctx.font = "800 9px ui-monospace, monospace";
       ctx.fillText(DMG_SYM[spec.dmgType], x + bw - 8, y1);
+      if (spec.support && !banned) {
+        ctx.fillStyle = "#9fe8ff"; ctx.font = "800 7px ui-monospace, monospace";
+        ctx.fillText("SUPPORT", x + bw - 20, y1);
+      }
       ctx.textAlign = "left";
       if (modBan) { ctx.fillStyle = C.danger; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("⊘ BANNED THIS OP", tx, y2); }
       else if (locked) { ctx.fillStyle = C.neonC; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText("🔒 RESEARCH IN ARMORY", tx, y2); }
@@ -7102,7 +7139,10 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         coin(tx + 4, y2, 4);
         ctx.fillStyle = afford ? C.scrap : C.danger; ctx.font = "800 10px ui-monospace, monospace"; ctx.fillText(String(l0.cost), tx + 12, y2);
         ctx.textAlign = "right"; ctx.fillStyle = C.textDim; ctx.font = "700 7.5px ui-monospace, monospace";
-        ctx.fillText("DMG " + l0.dmg + " · RNG " + Math.round(l0.range * rangeMul()), x + bw - 8, y2);
+        // A support tower's DMG is the worst number in the game (cryo L1 is 4) and it is the wrong
+        // number: a 1/3 cryo mix was measured to halve leaks. Show the effect, not the damage.
+        ctx.fillText(spec.support ? ("SLOW " + Math.round((l0.slow || 0) * 100) + "% · RNG " + Math.round(l0.range * rangeMul()))
+                                  : ("DMG " + l0.dmg + " · RNG " + Math.round(l0.range * rangeMul())), x + bw - 8, y2);
         ctx.textAlign = "left";
         if (!slim) { ctx.fillStyle = "rgba(186,202,212,0.6)"; ctx.font = "600 8px system-ui"; ctx.fillText(TOWER_ROLE[key] || spec.desc, tx, y + 39); }
       }
@@ -7152,6 +7192,16 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     trayAction(b);
   }
   function towerSpent(t) { const spec = TOWERS[t.type]; return spec.levels[0].cost + (t.lvl >= 1 ? spec.levels[1].cost : 0) + (t.lvl >= 2 && t.branch ? spec.branches[t.branch].cost : 0) + (t.lvl >= 3 && t.branch && spec.branches[t.branch].t4 ? spec.branches[t.branch].t4.cost : 0); }
+  // V6.45 — what a tower's headline number should be depends on what the tower is FOR.
+  // A support tower reports the damage it has ENABLED (every hit landed on a foe it was slowing),
+  // because its own damage is the worst number in the game and says nothing true about its value.
+  function statLine(t, spec, st, wide) {
+    if (spec.support) {
+      const a = Math.round(t.assist || 0);
+      return "SLOW " + Math.round((st.slow || 0) * 100) + "%" + (wide ? "  RNG " : " RNG ") + st.range + "  ⟡ " + a + " ASSIST";
+    }
+    return "DMG " + st.dmg + (wide ? "  RNG " : " RNG ") + st.range + (wide ? "  " + (st.rate / 1000).toFixed(1) + "s" : "");
+  }
   function drawTowerMenu() {
     trayBtns = [];
     const rect = trayRect();
@@ -7163,7 +7213,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       drawTowerArt(x0 + 16, rect.y + 24, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.5, t.branch);
       ctx.fillStyle = C.text; ctx.font = "800 10.5px ui-monospace, monospace"; ctx.fillText(title + " L" + (t.lvl + 1) + (t.oc ? " ⚡" + t.oc : ""), x0 + 34, rect.y + 15);
       ctx.fillStyle = C.textDim; ctx.font = "700 8px ui-monospace, monospace";
-      ctx.fillText("DMG " + st.dmg + " RNG " + st.range, x0 + 34, rect.y + 28);
+      ctx.fillText(statLine(t, spec, st), x0 + 34, rect.y + 28);
       const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
       let y = rect.y + 44;
       ctx.fillStyle = dtCol; ctx.font = "800 7.5px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), x0, y);
@@ -7207,7 +7257,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       drawTowerArt(30, rect.y + 28, t.type, t.lvl, -Math.PI / 2, 0, 0, false, 0.66, t.branch);
       ctx.fillStyle = C.text; ctx.font = "800 13px ui-monospace, monospace"; ctx.fillText(title + "  L" + (t.lvl + 1) + (t.oc ? "  ⚡" + t.oc : ""), 54, rect.y + 14);
       ctx.fillStyle = C.textDim; ctx.font = "700 9.5px ui-monospace, monospace";
-      ctx.fillText("DMG " + st.dmg + "  RNG " + st.range + "  " + (st.rate / 1000).toFixed(1) + "s", 54, rect.y + 28);
+      ctx.fillText(statLine(t, spec, st, true), 54, rect.y + 28);
       // damage-type tag (teaches the counterplay triangle)
       const dtCol = spec.dmgType === "kinetic" ? "#f2b23a" : spec.dmgType === "explosive" ? "#f28a3a" : "#37e0d0";
       ctx.fillStyle = dtCol; ctx.font = "800 8px ui-monospace, monospace"; ctx.fillText(DMG_SYM[spec.dmgType] + " " + spec.dmgType.toUpperCase() + (st.pierce ? " · PIERCE" : st.chain ? " · CHAIN" : ""), 54, rect.y + 40);
@@ -7332,7 +7382,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.44 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.45 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -7557,6 +7607,8 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         <li><b>Daily Op</b> is a fresh seeded challenge each day — build a streak. <b>Campaign</b> plays all maps in sequence.</li>
         <li><b>Camera:</b> pinch to zoom, drag to pan, or use the on-screen controls.</li>
         <li>Clear 20 waves to win, or push your luck in <b>Endless</b>. Each run earns <b>Alloy</b> for permanent <b>Armory</b> upgrades.</li>
+        <li><b>Support towers are not weak, they are read wrong.</b> The Cryo Emitter's own damage is tiny on purpose. Its job is to slow, and everything you own hits a slowed target for longer. Mixing roughly one Cryo per two damage towers cuts leaks about in half compared with the same scrap spent on damage alone. The tower menu shows <b>⟡ ASSIST</b>: the damage it has enabled.</li>
+        <li><b>TARGET</b> on a tower menu sets who it shoots. <b>FIRST</b> hits whatever is closest to your Core and is the safe default. <b>STRONG</b> and <b>CLOSE</b> pick within the leading part of the pack, so use them to focus a boss or a Mender without letting a leaker walk past.</li>
         <li>Higher-★ sectors field genuinely tougher machines. The <b>Armory</b> is your lever: when a sector stops you, upgrade and come back stronger.</li>
         <li>Lose all <b>Core</b> integrity and the reactor falls.</li>
       </ul>`;
@@ -9108,7 +9160,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __waveCounts: waveCounts, __WAVE_BIAS: WAVE_BIAS, __MAPS: MAPS, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __waveCounts: waveCounts, __WAVE_BIAS: WAVE_BIAS, __MAPS: MAPS, __findTarget: findTarget, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     __zoomAt: zoomAt, __exportText: () => Telemetry.exportText(), __copyJSON: (cb) => Telemetry.copyJSON(cb), __isNativeApp: isNativeApp, deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };
