@@ -4635,7 +4635,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         if (hash2(e.c + s1, e.r + s2) > Math.min(1, e.p * k)) continue;
         const sd = hash2(e.c * 3 + seed, e.r * 7 + seed);
         const set = DECOR_THEMES[e.th];
-        const type = hash2(e.c * 19 + seed, e.r * 23 + seed) > 0.988
+        const type = hash2(e.c * 19 + seed, e.r * 23 + seed) > 0.955
           ? (sd > 0.5 ? "building" : "dropship")        // rare landmark set-pieces, theme-independent
           : set[Math.floor(sd * set.length) % set.length];
         DECOR.push({ c: e.c, r: e.r, type, seed: sd });
@@ -5250,7 +5250,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.42",
+        ts: Date.now(), ver: "6.43",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
@@ -7298,7 +7298,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.42 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.43 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -8110,7 +8110,11 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     }
     // Slab height comes from the same field, so the broken-slab steps form plateaus instead of a
     // per-tile quilt. Same 0 / 1.1 / 2.2 values, same gameplay — only the arrangement changes.
-    const slabH = (c, r) => Math.floor(clamp(vnoise(c, r, 4.5, 17) * 1.15 + hash2(c * 3 + 1, r * 5 + 2) * 0.18 - 0.09, 0, 0.999) * 3) * 1.1;
+    // Terrace height. This used to be 0 / 1.1 / 2.2 units against a 64-unit tile — 3.4% relief,
+    // i.e. invisible at play zoom, so the ground read as a flat plane no matter how the colours
+    // varied. STEP is now comparable to the road trench (10 units) so the plateaus actually read.
+    const STEP = 7;
+    const slabH = (c, r) => Math.floor(clamp(vnoise(c, r, 4.5, 17) * 1.15 + hash2(c * 3 + 1, r * 5 + 2) * 0.18 - 0.09, 0, 0.999) * 3) * STEP;
     const topAt = (c, r) => !inB(c, r) ? -DEPTH : (isRoad(c, r) ? ROAD_Y : slabH(c, r));
     // ground height under a world position — decals need it, or they sink into a raised slab
     const groundYAt = (x, z) => { const c = Math.floor(x / TILE), r = Math.floor(z / TILE); return inB(c, r) ? topAt(c, r) : 0; };
@@ -8237,38 +8241,38 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
           discM(land, cx, dy + 0.35, cz, 17, gcol(d.c, d.r).clone().multiplyScalar(0.74), 14);
         } else if (d.type === "barrel") {
           const bc = jit(barrel, (sd - 0.5) * 0.3), band = c3("#463521");
-          boxM(metal, cx - 6, 0, cz - 6, cx + 6, 12, cz + 6, bc, bc, bc, bc, bc);
-          boxM(metal, cx - 6.6, 10.4, cz - 6.6, cx + 6.6, 12.6, cz + 6.6, band, band, band, band, band);   // lid rim
-          boxM(metal, cx - 6.6, 3.6, cz - 6.6, cx + 6.6, 5, cz + 6.6, band, band, band, band, band);        // mid band
-          if (sd > 0.6) discM(glow, cx, 12.8, cz, 4, c3(BM.toxic), 8);
+          boxM(metal, cx - 6, dy, cz - 6, cx + 6, dy + 12, cz + 6, bc, bc, bc, bc, bc);
+          boxM(metal, cx - 6.6, dy + 10.4, cz - 6.6, cx + 6.6, dy + 12.6, cz + 6.6, band, band, band, band, band);   // lid rim
+          boxM(metal, cx - 6.6, dy + 3.6, cz - 6.6, cx + 6.6, dy + 5, cz + 6.6, band, band, band, band, band);        // mid band
+          if (sd > 0.6) discM(glow, cx, dy + 12.8, cz, 4, c3(BM.toxic), 8);
         } else if (d.type === "rubble" || d.type === "wreck") {
           const n = d.type === "wreck" ? 3 : 2 + Math.floor(sd * 3);
           for (let i = 0; i < n; i++) {
             const ox = (hash2(i * 3, d.c + i) - 0.5) * 34, oz = (hash2(i * 7, d.r + i) - 0.5) * 34, s = 5 + hash2(i, d.c * d.r + i) * (d.type === "wreck" ? 14 : 7);
             const cc = d.type === "wreck" ? jit(rust, (sd - 0.5) * 0.4) : jit(rock, (sd - 0.5) * 0.3);
-            boxM(d.type === "wreck" ? metal : land, cx + ox - s, 0, cz + oz - s, cx + ox + s, s * 1.1, cz + oz + s, cc, cc, cc, cc, cc);
+            boxM(d.type === "wreck" ? metal : land, cx + ox - s, dy, cz + oz - s, cx + ox + s, dy + s * 1.1, cz + oz + s, cc, cc, cc, cc, cc);
           }
         } else if (d.type === "sandbags") {
-          for (let i = 0; i < 3; i++) boxM(land, cx - 18 + i * 12, 0, cz - 5, cx - 6 + i * 12, 7, cz + 5, c3("#8a7a58"), c3("#6a5c40"), c3("#6a5c40"), null, null);
+          for (let i = 0; i < 3; i++) boxM(land, cx - 18 + i * 12, dy, cz - 5, cx - 6 + i * 12, dy + 7, cz + 5, c3("#8a7a58"), c3("#6a5c40"), c3("#6a5c40"), null, null);
         } else if (d.type === "crater") {
           // a scorch mark tinted off the ground it sits on — the old fixed dark disc read as a hole
           discM(land, cx, dy + 0.3, cz, 13 + sd * 6, gcol(d.c, d.r).clone().multiplyScalar(0.66), 16);
         } else if (d.type === "deadtree") {
-          boxM(land, cx - 1.6, 0, cz - 1.6, cx + 1.6, 20 + sd * 8, cz + 1.6, c3("#3a3028"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"));
-          boxM(land, cx - 7, 12, cz - 1.2, cx + 7, 14.4, cz + 1.2, c3("#332a24"), null, null, null, null);
+          boxM(land, cx - 1.6, dy, cz - 1.6, cx + 1.6, dy + 20 + sd * 8, cz + 1.6, c3("#3a3028"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"), c3("#2a221c"));
+          boxM(land, cx - 7, dy + 12, cz - 1.2, cx + 7, dy + 14.4, cz + 1.2, c3("#332a24"), null, null, null, null);
         } else if (d.type === "building") {
           const bh = 30 + sd * 14;
-          boxM(land, cx - 22, 0, cz - 18, cx + 22, bh, cz + 18, bld, bldDk, bldDk, bldDk, bldDk);
-          boxM(land, cx - 12, bh, cz - 10, cx + 10, bh + 14, cz + 8, jit(bld, 0.1), bldDk, bldDk, bldDk, bldDk);   // penthouse
-          boxM(metal, cx + 2, bh + 14, cz - 4, cx + 9, bh + 20, cz + 3, c3("#5a626c"), null, null, null, null);    // rooftop unit
-          boxM(metal, cx - 8, bh, cz - 6, cx - 6.4, bh + 16, cz - 4.4, c3("#6a727c"), null, null, null, null);     // antenna
-          for (let row = 0; row < 2; row++) for (let i = 0; i < 3; i++) boxM(glow, cx - 14 + i * 11, 8 + row * 12, cz + 18, cx - 8 + i * 11, 14 + row * 12, cz + 18.4, c3("#ffb84a").multiplyScalar(0.5 + sd * 0.3), null, null, null, null);  // lit windows (2 rows)
+          boxM(land, cx - 22, dy, cz - 18, cx + 22, dy + bh, cz + 18, bld, bldDk, bldDk, bldDk, bldDk);
+          boxM(land, cx - 12, dy + bh, cz - 10, cx + 10, dy + bh + 14, cz + 8, jit(bld, 0.1), bldDk, bldDk, bldDk, bldDk);   // penthouse
+          boxM(metal, cx + 2, dy + bh + 14, cz - 4, cx + 9, dy + bh + 20, cz + 3, c3("#5a626c"), null, null, null, null);    // rooftop unit
+          boxM(metal, cx - 8, dy + bh, cz - 6, cx - 6.4, dy + bh + 16, cz - 4.4, c3("#6a727c"), null, null, null, null);     // antenna
+          for (let row = 0; row < 2; row++) for (let i = 0; i < 3; i++) boxM(glow, cx - 14 + i * 11, dy + 8 + row * 12, cz + 18, cx - 8 + i * 11, dy + 14 + row * 12, cz + 18.4, c3("#ffb84a").multiplyScalar(0.5 + sd * 0.3), null, null, null, null);  // lit windows (2 rows)
         } else if (d.type === "dropship") {
           const hull = jit(rust, 0.12), hullD = c3("#4a3220");
-          boxM(metal, cx - 26, 3, cz - 11, cx + 20, 13, cz + 11, hull, hullD, hullD, hullD, hullD);          // fuselage
-          boxM(metal, cx + 12, 11, cz - 2.5, cx + 30, 22, cz + 2.5, hull, hullD, hullD, hullD, hullD);        // raised tail
-          for (const sd2 of [-1, 1]) boxM(metal, cx - 18, 4, cz + sd2 * 11, cx - 2, 8, cz + sd2 * 22, hullD, hullD, hullD, hullD, hullD);  // stub wings
-          boxM(metal, cx - 30, 5, cz - 6, cx - 24, 12, cz + 6, hullD, hullD, hullD, hullD, hullD);            // nose
+          boxM(metal, cx - 26, dy + 3, cz - 11, cx + 20, dy + 13, cz + 11, hull, hullD, hullD, hullD, hullD);          // fuselage
+          boxM(metal, cx + 12, dy + 11, cz - 2.5, cx + 30, dy + 22, cz + 2.5, hull, hullD, hullD, hullD, hullD);        // raised tail
+          for (const sd2 of [-1, 1]) boxM(metal, cx - 18, dy + 4, cz + sd2 * 11, cx - 2, dy + 8, cz + sd2 * 22, hullD, hullD, hullD, hullD, hullD);  // stub wings
+          boxM(metal, cx - 30, dy + 5, cz - 6, cx - 24, dy + 12, cz + 6, hullD, hullD, hullD, hullD, hullD);            // nose
           discM(land, cx - 6, dy + 0.4, cz, 32, gcol(d.c, d.r).clone().multiplyScalar(0.7), 16);
         }
       }
@@ -8280,6 +8284,45 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const glowMesh = toMesh(glow, new T.MeshBasicMaterial({ vertexColors: true, side: T.DoubleSide }));
       const metalMesh = toMesh(metal, new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.62, normalMap: metalNormal(), normalScale: new T.Vector2(0.5, 0.5), side: T.DoubleSide }), 1 / 48);
       metalMesh.castShadow = true; metalMesh.receiveShadow = true;
+      // Horizon. Until V6.43 the island ended at a hard edge with nothing behind it, so every map
+      // read as a slab floating in black. This is a large plain at the base of the cliffs plus a
+      // ring of distant mesas; the existing fog (800-2600) blends both into the sky, so it costs
+      // two meshes and reads as "the wasteland continues".
+      // Keep the horizon inside the fog range (800-2600) — pushed further out it is fogged to the
+      // sky colour and may as well not exist, which is what the first attempt did.
+      const far = 2100;   // inside the fog far plane (2600), so the plain fades out instead of ending
+      const plainCol = c3(BM.ashEdge).multiplyScalar(0.36);   // sits behind the island, must not compete
+      const plain = mk();
+      // A frame, not a slab. The middle would be completely hidden under the island but would still
+      // be shaded and overdrawn — pure wasted fill, and fill is what a big background quad costs.
+      const ix = WORLD_W / 2, iz = WORLD_H / 2, inx = WORLD_W / 2 + 40, inz = WORLD_H / 2 + 40;
+      const band = [[-far, -far, far, -inz], [-far, inz, far, far], [-far, -inz, -inx, inz], [inx, -inz, far, inz]];
+      for (const [x0, z0, x1, z1] of band)
+        boxM(plain, ix + x0, -DEPTH - 6, iz + z0, ix + x1, -DEPTH - 2, iz + z1, plainCol, null, null, null, null);
+      // distant mesas around the rim, seeded per map so no two skylines match
+      // Two rings of low, wide mesas — near ones catch some light, far ones sit darker and are
+      // half-eaten by fog, which is what gives the skyline depth instead of a row of flat walls.
+      // Distance is measured *outward from the island edge*, not as a multiple of map size, or the
+      // ring crowds small maps and vanishes on large ones. They must sit clearly behind and darker
+      // than the play area — a horizon that competes with the board is worse than no horizon.
+      const half = Math.max(WORLD_W, WORLD_H) * 0.5;
+      for (let ring = 0; ring < 2; ring++) {
+        const lit = c3(BM.ashEdge).multiplyScalar(ring ? 0.22 : 0.34);
+        const dk = c3(BM.ashEdge).multiplyScalar(ring ? 0.14 : 0.21);
+        const n = ring ? 34 : 26;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + hash2(i * 7 + ring * 91, currentMap) * 0.3;
+          const rr2 = half + (ring ? 1050 : 520) + hash2(i * 3 + ring * 13, currentMap * 5) * (ring ? 620 : 380);
+          const mx = WORLD_W / 2 + Math.cos(a) * rr2, mz = WORLD_H / 2 + Math.sin(a) * rr2;
+          const w = 150 + hash2(i * 11 + ring, currentMap) * 300;
+          const h = (ring ? 44 : 34) + hash2(i * 13 + ring * 7, currentMap * 3) * (ring ? 120 : 86);
+          // a stepped mesa reads as rock; a single box reads as a wall
+          boxM(plain, mx - w, -DEPTH - 4, mz - w * 0.75, mx + w, -DEPTH - 4 + h, mz + w * 0.75, lit, dk, lit, dk, lit);
+          boxM(plain, mx - w * 0.55, -DEPTH - 4 + h, mz - w * 0.42, mx + w * 0.62, -DEPTH - 4 + h * 1.42, mz + w * 0.42, lit, dk, lit, dk, lit);
+        }
+      }
+      const plainMesh = toMesh(plain, new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide }));
+      world.add(plainMesh);
       world.add(landMesh); world.add(glowMesh); world.add(metalMesh);
       scene.add(world);
       // biome sky, fog, lights, sun shadow frustum
@@ -8533,7 +8576,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     const enemyObjs = new Map(), frostCol = new T.Color(0x9fd8ff), flashCol = new T.Color(0xffffff);
     function enemyGroundY(e) {
       const c = Math.floor(e.x / TILE), r = Math.floor(e.y / TILE), k = c + "," + r;
-      let y = PATH_SET.has(k) ? ROAD_Y : 0;
+      let y = PATH_SET.has(k) ? ROAD_Y : (tileH.get(k) || 0);   // off-path, follow the terrace
       const ci = CROSS_MAP.get(k); if (ci && e.route === ci.over) y = DECK_Y;
       return y;
     }
