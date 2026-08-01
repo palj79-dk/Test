@@ -4438,57 +4438,57 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       blocks: [[8, 3], [8, 12], [2, 12], [5, 13]],
       routes: [[[0, 1], [9, 1], [9, 14], [1, 14], [1, 4]]] },
     // ==== Tier C · Advanced (4 stars): direct paths, 2-3 gates converging late, sprint lanes, open dead-space ====
-    { name: "Delta", diff: 4, seed: 13, cols: 13, rows: 18, biome: "toxic",
+    { name: "Delta", diff: 4, bias: ["air"], seed: 13, cols: 13, rows: 18, biome: "toxic",
       props: [{ c: 2, r: 16, type: "building" }, { c: 10, r: 15, type: "dropship" }],
       routes: [[[0, 2], [10, 2], [10, 7], [6, 7], [6, 17]], [[12, 9], [6, 9], [6, 17]], [[0, 13], [6, 13], [6, 17]]] },
-    { name: "Fracture", diff: 4, seed: 19, cols: 12, rows: 16, biome: "rust",
+    { name: "Fracture", diff: 4, bias: ["armor"], seed: 19, cols: 12, rows: 16, biome: "rust",
       props: [{ c: 1, r: 14, type: "building" }],
       routes: [[[0, 3], [9, 3], [9, 12], [6, 12], [6, 15]], [[11, 6], [3, 6], [3, 13], [6, 13], [6, 15]]] },
-    { name: "Crucible", diff: 4, seed: 31, cols: 13, rows: 18, biome: "toxic",
+    { name: "Crucible", diff: 4, bias: ["shield"], seed: 31, cols: 13, rows: 18, biome: "toxic",
       props: [{ c: 0, r: 16, type: "building" }, { c: 12, r: 16, type: "dropship" }],
       routes: [[[0, 3], [10, 3], [10, 8], [6, 8], [6, 17]], [[12, 6], [3, 6], [3, 11], [6, 11], [6, 17]]] },
     // Sprawl (rebuilt): two big, fairly direct L-lanes that cross once (bridge) and only merge near the core.
-    { name: "Sprawl", diff: 4, seed: 7, cols: 13, rows: 22, biome: "ash",
+    { name: "Sprawl", diff: 4, bias: ["energy"], seed: 7, cols: 13, rows: 22, biome: "ash",
       props: [{ c: 1, r: 20, type: "building" }, { c: 11, r: 20, type: "dropship" }],
       routes: [[[0, 3], [11, 3], [11, 12], [3, 12], [3, 21], [6, 21]], [[12, 6], [2, 6], [2, 18], [6, 18], [6, 21]]] },
     // Highway: a near-straight vertical sprint (short dwell, minimal multi-hit) + a short side gate joining late.
-    { name: "Highway", diff: 4, seed: 53, cols: 11, rows: 20, biome: "ember",
+    { name: "Highway", diff: 4, bias: ["cloak"], seed: 53, cols: 11, rows: 20, biome: "ember",
       props: [{ c: 9, r: 3, type: "dropship" }, { c: 1, r: 5, type: "building" }],
       routes: [[[5, 0], [5, 8], [3, 8], [3, 12], [7, 12], [7, 19]], [[0, 15], [7, 15], [7, 19]]] },
     // Pincer: two near-edge vertical sprints + a center feed; a big open middle you cannot use; converge at core.
-    { name: "Pincer", diff: 4, seed: 59, cols: 13, rows: 18, biome: "ash",
+    { name: "Pincer", diff: 4, bias: ["air", "armor"], seed: 59, cols: 13, rows: 18, biome: "ash",
       props: [{ c: 3, r: 3, type: "building" }, { c: 9, r: 3, type: "dropship" }],
       routes: [[[1, 0], [1, 14], [6, 14], [6, 17]], [[11, 0], [11, 14], [6, 14], [6, 17]], [[0, 8], [6, 8], [6, 17]]] },
     // Horseshoe: a U whose legs hug both edges (one buildable side each), 9 columns apart -- zero shared coverage.
-    { name: "Horseshoe", diff: 4, seed: 71, cols: 12, rows: 18, biome: "toxic",
+    { name: "Horseshoe", diff: 4, bias: ["armor"], seed: 71, cols: 12, rows: 18, biome: "toxic",
       props: [{ c: 5, r: 6, type: "dropship" }, { c: 6, r: 10, type: "building" }],
       blocks: [[2, 8], [9, 8], [2, 15], [9, 15]],
       routes: [[[1, 0], [1, 16], [10, 16], [10, 1]]] },
     // Shattered Field: two fairly direct lanes in opposite halves + a heavy authored rubble field on the prime plots.
-    { name: "Shattered Field", diff: 4, seed: 73, cols: 13, rows: 18, biome: "ash",
+    { name: "Shattered Field", diff: 4, bias: ["energy"], seed: 73, cols: 13, rows: 18, biome: "ash",
       props: [{ c: 11, r: 2, type: "building" }],
       blocks: [[7, 3], [9, 5], [7, 10], [3, 12], [5, 14], [9, 12], [2, 5], [10, 8]],
       routes: [[[0, 4], [8, 4], [8, 17], [6, 17]], [[12, 13], [4, 13], [4, 17], [6, 17]]] },
     // Terraces: a wide staircase (4-5 tile steps) with rubble on every inside corner (the multi-hit spots).
-    { name: "Terraces", diff: 4, seed: 79, cols: 11, rows: 18, biome: "ember",
+    { name: "Terraces", diff: 4, bias: ["shield"], seed: 79, cols: 11, rows: 18, biome: "ember",
       props: [{ c: 9, r: 2, type: "dropship" }],
       blocks: [[3, 3], [7, 8], [3, 13], [5, 15], [9, 10]],
       routes: [[[0, 2], [4, 2], [4, 7], [8, 7], [8, 12], [2, 12], [2, 16], [6, 16], [6, 17]]] },
     // ==== Tier D · Brutal geometry (5 stars): near-straight/short, 3+ gates converging only at the core ====
-    { name: "Twin Gates", diff: 5, seed: 9, cols: 13, rows: 20, biome: "ember",
+    { name: "Twin Gates", diff: 5, bias: ["cloak"], seed: 9, cols: 13, rows: 20, biome: "ember",
       props: [{ c: 6, r: 7, type: "building" }, { c: 11, r: 14, type: "dropship" }, { c: 5, r: 3, type: "building" }],
       routes: [[[0, 2], [10, 2], [10, 9], [3, 9], [3, 16], [6, 16], [6, 19]], [[12, 5], [2, 5], [2, 12], [9, 12], [9, 16], [6, 16], [6, 19]]] },
     // Meltline (rebuilt): two 16-tile straight vertical sprints + a center feed; fire split 3 ways, merge only at core.
-    { name: "Meltline", diff: 5, seed: 37, cols: 12, rows: 20, biome: "ash",
+    { name: "Meltline", diff: 5, bias: ["air", "energy"], seed: 37, cols: 12, rows: 20, biome: "ash",
       props: [{ c: 11, r: 1, type: "building" }, { c: 1, r: 18, type: "dropship" }],
       routes: [[[2, 0], [2, 16], [6, 16], [6, 19]], [[10, 0], [10, 16], [6, 16], [6, 19]], [[0, 10], [6, 10], [6, 19]]] },
-    { name: "Terminus", diff: 5, seed: 23, cols: 15, rows: 22, biome: "ash",
+    { name: "Terminus", diff: 5, bias: ["armor", "shield"], seed: 23, cols: 15, rows: 22, biome: "ash",
       props: [{ c: 13, r: 2, type: "building" }, { c: 1, r: 20, type: "dropship" }, { c: 13, r: 21, type: "building" }],
       routes: [
         [[7, 0], [7, 4], [2, 4], [2, 10], [12, 10], [12, 16], [7, 16], [7, 20]],
         [[0, 7], [9, 7], [9, 13], [4, 13], [4, 18], [7, 18], [7, 20]],
         [[14, 12], [14, 19], [7, 19], [7, 20]]] },
-    { name: "The Maw", diff: 5, seed: 41, cols: 15, rows: 22, biome: "rust",
+    { name: "The Maw", diff: 5, bias: ["energy"], seed: 41, cols: 15, rows: 22, biome: "rust",
       props: [{ c: 0, r: 0, type: "building" }, { c: 14, r: 0, type: "dropship" }],
       routes: [
         [[7, 0], [7, 3], [2, 3], [2, 9], [12, 9], [12, 15], [7, 15], [7, 21]],
@@ -4496,13 +4496,13 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
         [[14, 11], [14, 19], [7, 19], [7, 21]]] },
     // Blockade: three near-straight gates; the whole prime camp zone around both junctions is authored rubble --
     // pay to excavate it, or defend from the second row.
-    { name: "Blockade", diff: 5, seed: 83, cols: 13, rows: 20, biome: "toxic",
+    { name: "Blockade", diff: 5, bias: ["armor", "cloak"], seed: 83, cols: 13, rows: 20, biome: "toxic",
       props: [{ c: 12, r: 19, type: "building" }, { c: 0, r: 19, type: "dropship" }],
       blocks: [[5, 14], [7, 14], [5, 16], [7, 16], [5, 7], [7, 7]],
       routes: [[[2, 0], [2, 15], [6, 15], [6, 19]], [[10, 0], [10, 15], [6, 15], [6, 19]], [[0, 8], [6, 8], [6, 19]]] },
     // Ground Zero: the core sits in the CENTER; four short gates strike from N/S/E/W and the four tightest
     // ring plots are rubble. Nowhere does one tower see two approaches for long.
-    { name: "Ground Zero", diff: 5, seed: 89, cols: 15, rows: 20, biome: "rust",
+    { name: "Ground Zero", diff: 5, bias: ["air", "shield"], seed: 89, cols: 15, rows: 20, biome: "rust",
       props: [{ c: 1, r: 1, type: "building" }, { c: 13, r: 18, type: "dropship" }, { c: 13, r: 1, type: "building" }],
       blocks: [[6, 10], [8, 10], [6, 11], [8, 9]],
       routes: [
@@ -4941,11 +4941,19 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     mender: ["HEALS", "#6fc47f"], splitter: ["SPLITS", "#c46fb0"], cinder: ["SLOW-IMM", "#e0844a"], brute: ["TANKY", "#c47a5a"] };
   let _intel = { key: "", list: null };
   function waveIntel(n) {
-    const key = n + "|" + (activeMod ? activeMod.id : "") + "|" + (S.difficulty || "");
+    // V6.44: the map is part of the key — a biased map sends a different mix for the same wave number.
+    const key = n + "|" + (activeMod ? activeMod.id : "") + "|" + (S.difficulty || "") + "|" + S.mapIndex;
     if (_intel.key === key) return _intel.list;
     const comp = {};
     (waveComp(n) || []).forEach((e) => { comp[e.type] = (comp[e.type] || 0) + 1; });
-    const list = Object.keys(comp).filter((k) => THREAT_TAG[k]).sort((a, b) => comp[b] - comp[a]).map((k) => ({ k: k, n: comp[k] }));
+    // Ties must break on a FIXED order. `comp` is keyed in the order types appear in the shuffled
+    // sequence, so with equal counts the sort alone left the top-3 cards varying run to run — the
+    // player would see different threats billed for the same wave on the same map. THREAT_TAG's own
+    // key order is the stable tiebreak (it also runs roughly most- to least-severe).
+    const sev = Object.keys(THREAT_TAG);
+    const list = Object.keys(comp).filter((k) => THREAT_TAG[k])
+      .sort((a, b) => (comp[b] - comp[a]) || (sev.indexOf(a) - sev.indexOf(b)))
+      .map((k) => ({ k: k, n: comp[k] }));
     _intel = { key: key, list: list };
     return list;
   }
@@ -4956,7 +4964,35 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
     if (what === "armor") return towers.some((t) => tStats(t).pierce || TOWERS[t.type].dmgType === "explosive");
     return true;
   }
-  function waveComp(n) {
+  // V6.44 — per-map threat identity. Every swap moves units BETWEEN TYPES OF THE SAME HP CLASS, so a
+  // biased wave has the same unit count and (within a few percent) the same HP budget as an unbiased
+  // one. That is what keeps the difficulty curve tuned by V6.4/V6.5/V6.12 from moving: a bias changes
+  // WHICH counter the wave demands, never how much wall it brings. Tier A/B maps carry no bias at all,
+  // so the fresh-account onboarding curve confirmed by play-log #12 is untouched by construction.
+  const WAVE_BIAS = {
+    air:    [["raider", "wraith", 0.40]],                                    // 34 -> 38
+    cloak:  [["raider", "phantom", 0.30]],                                   // 34 -> 46
+    armor:  [["brute", "sentinel", 0.50]],                                   // 105 -> 92
+    shield: [["cinder", "warden", 0.50]],                                    // 58 -> 66
+    energy: [["brute", "insulator", 0.40], ["splitter", "insulator", 0.50]], // 105/110 -> 128
+  };
+  function applyWaveBias(cnt, mapIdx) {
+    const mp = MAPS[mapIdx == null ? S.mapIndex : mapIdx];
+    if (!mp || !mp.bias) return;
+    for (const id of mp.bias) for (const sw of (WAVE_BIAS[id] || [])) {
+      const move = Math.floor(cnt[sw[0]] * sw[2]);
+      if (move > 0) { cnt[sw[0]] -= move; cnt[sw[1]] += move; }   // count is preserved exactly
+    }
+  }
+  // A real Fisher-Yates. This used to be `seq.sort(() => Math.random() - 0.4)`, which is not a
+  // shuffle: a comparator that returns random values makes the sort's result implementation-defined,
+  // and the -0.4 bias skewed arrival order systematically toward the insertion order. Wave *counts*
+  // were never affected (so waveIntel stayed exact), only the order enemies actually reached the map.
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function waveComp(n, mapIdx) {
     const list = [];
     if (n % 5 === 0) {
       const bosses = n % 20 === 0 ? 2 : 1;
@@ -4965,42 +5001,40 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       for (let i = 0; i < extra; i++) { const t = i % 3 === 0 ? "wraith" : i % 3 === 1 ? "stalker" : "raider"; list.push({ type: t, delay: 2800 + i * 420 }); }
       return list;
     }
-    const st = Math.max(2, 6 - Math.floor(n / 5)), rd = Math.min(3 + Math.floor(n * 0.7), 22), br = n >= 4 ? Math.min(Math.floor(n / 2.2), 13) : 0;
-    const wr = n >= 3 ? Math.min(1 + Math.floor(n / 3), 11) : 0;      // wraiths (flyers) force anti-air
-    const se = n >= 6 ? Math.min(Math.floor((n - 3) / 2.5), 11) : 0;  // sentinels (armored) force AP/explosive
-    const wd = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0;     // wardens (shielded) reward energy
-    const md = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // menders heal packs: focus-fire them
-    const sl = n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0;    // splitters burst into spawnlings
+    // Counts first, as a table, so the per-map bias (V6.44) can redistribute them before the
+    // detector rule below reads the final phantom count.
+    const cnt = {
+      stalker:   Math.max(2, 6 - Math.floor(n / 5)),
+      raider:    Math.min(3 + Math.floor(n * 0.7), 22),
+      brute:     n >= 4 ? Math.min(Math.floor(n / 2.2), 13) : 0,
+      sentinel:  n >= 6 ? Math.min(Math.floor((n - 3) / 2.5), 11) : 0,  // armored: force AP/explosive
+      wraith:    n >= 3 ? Math.min(1 + Math.floor(n / 3), 11) : 0,      // flyers: force anti-air
+      warden:    n >= 8 ? Math.min(Math.floor((n - 5) / 3), 9) : 0,     // shielded: reward energy
+      mender:    n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0,     // heal packs: focus-fire them
+      splitter:  n >= 11 ? Math.min(Math.floor((n - 8) / 3), 7) : 0,    // burst into spawnlings
+      phantom:   n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0,     // cloaked: need a detector
+      cinder:    n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0,     // freeze-immune, punish slow-stacking
+      insulator: n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0,     // energy-resistant, punish mono-Tesla (V6.5)
+    };
+    const el = n >= 15 ? Math.min(2 + Math.floor((n - 15) / 2), 5) : 0; // V6.4 anti-conveyor escort: freeze-immune Cinder + energy-resist Insulator pairs at 15+
+    cnt.cinder += el; cnt.insulator += el;
+    // V6.44: the map's own threat identity. Runs BEFORE the detector rule so a cloak-biased map
+    // still substitutes correctly on an un-researched account.
+    applyWaveBias(cnt, mapIdx);
     // V6.26: camo is only fair once a DETECTOR tower can be built. Tesla/Prism are gated behind
     // Armory research, so on an un-researched account phantoms would be untargetable by design —
     // hold them back entirely and send raiders instead (same pressure, answerable).
-    const canDetect = Tech.isUnlocked("tesla") || Tech.isUnlocked("prism");
-    const phWant = n >= 7 ? Math.min(Math.floor((n - 4) / 3), 8) : 0;
-    const ph = canDetect ? phWant : 0, phSub = canDetect ? 0 : phWant;
-    const cn = n >= 8 ? Math.min(Math.floor((n - 5) / 3), 6) : 0;     // cinders — freeze-immune rushers, punish slow-stacking
-    const iu = n >= 9 ? Math.min(Math.floor((n - 6) / 3), 6) : 0;     // insulators — energy-resistant, punish mono-Tesla (V6.5: arrive w9, cap 6)
-    const el = n >= 15 ? Math.min(2 + Math.floor((n - 15) / 2), 5) : 0; // V6.4 anti-conveyor escort: freeze-immune Cinder + energy-resist Insulator pairs at 15+
+    if (!(Tech.isUnlocked("tesla") || Tech.isUnlocked("prism"))) { cnt.raider += cnt.phantom; cnt.phantom = 0; }
     const seq = [];
-    for (let i = 0; i < st; i++) seq.push("stalker");
-    for (let i = 0; i < rd + phSub; i++) seq.push("raider");
-    for (let i = 0; i < br; i++) seq.push("brute");
-    for (let i = 0; i < se; i++) seq.push("sentinel");
-    for (let i = 0; i < wr; i++) seq.push("wraith");
-    for (let i = 0; i < wd; i++) seq.push("warden");
-    for (let i = 0; i < md; i++) seq.push("mender");
-    for (let i = 0; i < sl; i++) seq.push("splitter");
-    for (let i = 0; i < ph; i++) seq.push("phantom");
-    for (let i = 0; i < cn; i++) seq.push("cinder");
-    for (let i = 0; i < iu; i++) seq.push("insulator");
-    for (let i = 0; i < el; i++) { seq.push("cinder"); seq.push("insulator"); }  // the Railgun/frost wall must diversify to hold the late waves
+    for (const type in cnt) for (let i = 0; i < cnt[type]; i++) seq.push(type);
     const cm = modCount(), extraN = Math.round(seq.length * (cm - 1));
     for (let i = 0; i < extraN; i++) seq.push(seq[Math.floor(hash2(n * 7 + i, i * 13) * seq.length)]);
-    seq.sort(() => Math.random() - 0.4);
+    shuffle(seq);
     const slow = { brute: 560, sentinel: 560, warden: 460, mender: 500, splitter: 560, insulator: 520 };
     let t = 0; for (const type of seq) { list.push({ type, delay: t }); t += slow[type] || 380; }
     return list;
   }
-  function waveCounts(n) { const c = {}; for (const e of waveComp(n)) c[e.type] = (c[e.type] || 0) + 1; return c; }
+  function waveCounts(n, mapIdx) { const c = {}; for (const e of waveComp(n, mapIdx)) c[e.type] = (c[e.type] || 0) + 1; return c; }
   function statsFor(type, wave) {
     // HP grows with a quadratic term so late waves outpace fully-upgraded towers; speed creeps up to +25%
     const w = wave - 1, b = ENEMIES[type];
@@ -5250,12 +5284,12 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       if (!this.enabled) { this.cur = null; return; }
       const m = MAPS[S.mapIndex] || {};
       this.cur = {
-        ts: Date.now(), ver: "6.43",
+        ts: Date.now(), ver: "6.44",
         mode: S.isDaily ? "daily" : S.isLab ? "lab" : S.endless ? "endless" : S.campaign ? "campaign" : "standard",
         mod: activeMod ? activeMod.id : null,
         map: m.name || String(S.mapIndex), mapIdx: S.mapIndex,
         diff: S.difficulty, custom: S.difficulty === "custom" ? Object.assign({}, CustomDiff.get()) : null,
-        coreStart: S.core, dev: devArmory, armory: Math.round(armoryLevel() * 100) / 100, mapHp: mapHpMul(), obstacles: BLOCKED_SET.size,
+        coreStart: S.core, dev: devArmory, armory: Math.round(armoryLevel() * 100) / 100, mapHp: mapHpMul(), bias: (MAPS[S.mapIndex].bias || []).join("+"), obstacles: BLOCKED_SET.size,
         builds: 0, upgrades: 0, branches: 0, sells: 0, scrapSpent: 0, repairs: 0, repairScrap: 0,
         earlySends: 0, overlapSends: 0, autoLaunches: 0, satBlocks: 0, leaks: 0,
         waves: [], _t0: performance.now(), _act: 0,
@@ -7298,7 +7332,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       const dcfg = dailyConfig(), dDone = Daily.isDoneToday(), dStk = Daily.activeStreak();
       const campProg = Store.get("devUnlock", false) ? MAPS.length - 1 : Math.min(Store.get("camp", 0), MAPS.length - 1);
       const banners = `${devArmory != null ? `<div class="sub" style="margin:-6px 0 8px;color:#f2b23a;text-transform:none;letter-spacing:0.4px">\u{1F6E0} DEV · Armory forced to ${Math.round(devArmory * 100)}%</div>` : ""}`;
-      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.43 · REAL 3D</div>
+      show(`<div class="panel"><div class="crest">⌬</div><h1>FALLEN GRID</h1><div class="sub">Wasteland Defense · V6.44 · REAL 3D</div>
         <p class="tag">The grid has fallen. Hold the line.</p>
         <div class="wallet">⬡ ${Meta.alloy} ALLOY</div>
         ${banners}
@@ -9074,7 +9108,7 @@ window.__AUDIOBANK={"gun":["T2dnUwACAAAAAAAAAAAMBrdvAAAAANscoR4BE09wdXNIZWFkAQE4
       return { wave: S.wave, screen: S.screen, core: S.core, kills: S.kills, iters: i };
     },
     get __lay() { return { W, H, HUD_H, TRAY_H, PLAY_TOP, PLAY_BOTTOM, PLAY_H, LANDSCAPE, TRAY_X, TRAY_W }; }, __layout: layout,
-    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
+    __cheapestAffordable: cheapestAffordable, __trayTop: trayTop, __trayRect: trayRect, __playW: playW, __buildMenuOpen: buildMenuOpen, __buildPanelRect: buildPanelRect, __cmdRowY: cmdRowY, __autoHold: autoHold, __ocAvailable: ocAvailable, __doPending: doPending, __trayAction: trayAction, __buildAction: buildAction, __panelRows: panelRows, __TUT: TUT, __tutStep: tutStep, __tutSkipBtn: () => tutSkipBtn, __tutAllows: tutAllows, __cmdStripRect: cmdStripRect, __intelRect: intelRect, __INTRO_CARDS: () => INTRO_CARDS, __pendingInfo: pendingInfo, __simStep: stepSim, __TILE: TILE, __HERO: HERO, get buildBtns() { return buildBtns; }, __waveComp: waveComp, __waveIntel: waveIntel, __waveCounts: waveCounts, __WAVE_BIAS: WAVE_BIAS, __MAPS: MAPS, __boardCan: boardCan, __trayIsIdle: trayIsIdle,
     get __heroBtns() { return heroBtns; }, get __abilityBtns() { return abilityBtns; }, get __hudBtns() { return hudBtns; },
     __zoomAt: zoomAt, __exportText: () => Telemetry.exportText(), __copyJSON: (cb) => Telemetry.copyJSON(cb), __isNativeApp: isNativeApp, deployHero, doPulse, onBack, dailyConfig, CustomDiff, diffCfg, startChallenge, modEffects, MODIFIERS, waveGap, Telemetry, armoryLevel, diffMul, get activeMod() { return activeMod; }, get trayBtns() { return trayBtns; }, get hudBtns() { return hudBtns; },
     get enemies() { return enemies; }, get towers() { return towers; }, get hero() { return hero; } };

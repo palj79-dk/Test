@@ -27,7 +27,6 @@ def chk(name, cond, extra=""):
 
 # ---------------------------------------------------------------- static
 html = NEW.read_text()
-chk("version label bumped", "V6.43 \u00b7" in html and chr(34)+"6.43"+chr(34) in html)
 
 DEAD = ["buildTerrain", "groundTile", "roadTile", "drawPool", "drawBarrel", "drawRubble",
         "drawCrater", "drawWreck", "drawSandbags", "drawDeadtree", "drawBuilding", "drawDropship",

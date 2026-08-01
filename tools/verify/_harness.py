@@ -68,7 +68,7 @@ def baseline(version):
     out = pathlib.Path(tempfile.gettempdir()) / ("fg-baseline-%s.html" % version)
     if out.exists() and out.stat().st_size > 1000:
         return out
-    revs = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--all", "--", name],
+    revs = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--all", "--full-history", "--", name],
                           capture_output=True, text=True).stdout.split()
     for rev in revs:
         for spec in ("%s:%s" % (rev, name), "%s^:%s" % (rev, name)):
@@ -77,6 +77,21 @@ def baseline(version):
                 out.write_text(_inject_hooks(r.stdout.decode("utf-8")), encoding="utf-8")
                 return out
     raise SystemExit("could not recover %s from git history" % name)
+
+
+def game_block(html):
+    """Just the GAME <script> block, selected by the same markers gamecheck.sh uses.
+
+    Any suite that greps the raw file is also grepping three.js (one ~607 KB minified line) and the
+    base64 audio bank, so a source assertion can pass or fail on vendored code it never meant to
+    look at. That is the same "never select a script block by size / never scan the whole file"
+    trap HANDOFF 2.7 records. Scope source assertions with this instead.
+    """
+    blocks = re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
+    game = [b for b in blocks if "PLAY_BOTTOM" in b and "function drawTray" in b]
+    if len(game) != 1:
+        raise SystemExit("expected exactly 1 game block, found %d" % len(game))
+    return game[0]
 
 
 def scratch():

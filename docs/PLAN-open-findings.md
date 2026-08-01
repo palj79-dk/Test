@@ -162,7 +162,7 @@ looks good is your call**, and I will send screenshots at each step rather than 
 
 ---
 
-# Part B — The Command branch (V6.43)
+# Part B — The Command branch (now V6.45/V6.46)
 
 ## B.1 The finding, and why it needs you
 
@@ -247,7 +247,7 @@ Sizing depends entirely on the answer, so this is deliberately coarse:
 3. **A.2 + A.3 (+A.4)** → V6.42
 4. ~~**B.2** — the Command measurement~~ — **done**, see `PLAN-commander.md` §1
 5. ~~**B.3** — your decision~~ — **done**, option 2
-6. **V6.43 / V6.44** per `PLAN-commander.md`
+6. **V6.45 / V6.46** per `PLAN-commander.md` (renumbered — 6.43/6.44 were spent on terrain and on per-map threat identity)
 
 Neither part is blocked. Part B now carries its own blocker — the balance harness has to be rebuilt
 before any Commander stat change can be verified (`PLAN-commander.md` §5.5).

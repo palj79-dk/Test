@@ -1,6 +1,14 @@
-# V6.43 — Make the Commander load-bearing
+# Make the Commander load-bearing
 
 **Status:** planned, not started. Written 2026-07-31 against `fallengrid-v6.40.html`.
+
+> **Renumbered 2026-08-01.** This plan was written as "V6.43/V6.44", but both numbers were spent
+> elsewhere: V6.43 shipped the terrain relief pass and V6.44 shipped per-map threat identity. The
+> two iterations below are therefore **V6.45 (what the Commander is) and V6.46 (how strong it is)**.
+> The plan is otherwise unchanged and still unstarted. Its blocker in §5.5 also still stands, and
+> V6.44's `tools/biasmeasure.py` ran into the same wall from a different direction: a saturated
+> board leaks the same amount whatever you change, so any balance probe has to be checked for
+> saturation before its numbers mean anything.
 Direction chosen by the user from `PLAN-open-findings.md` §B.3: **option 2 — make the Commander
 load-bearing**, rather than re-costing the branch or replacing its nodes.
 
@@ -168,20 +176,20 @@ without these.**
 
 | iter | contents | risk |
 |---|---|---|
-| **V6.43** | §5.5 harness rebuild, then §4.1 movement + §4.2 plot + §4.3 targeting/XP. **No stat changes.** | medium — new verb, UI conflict, pathing |
-| **V6.44** | §4.4 the numbers, §4.5 tour/Codex, Command node re-tune | high — live balance |
+| **V6.45** | §5.5 harness rebuild, then §4.1 movement + §4.2 plot + §4.3 targeting/XP. **No stat changes.** | medium — new verb, UI conflict, pathing |
+| **V6.46** | §4.4 the numbers, §4.5 tour/Codex, Command node re-tune | high — live balance |
 
-Splitting matters: V6.43 changes *what the Commander is* and can be judged on feel alone; V6.44
-changes *how strong it is* and needs the harness. If V6.43 feels wrong, V6.44 never happens and
+Splitting matters: V6.45 changes *what the Commander is* and can be judged on feel alone; V6.44
+changes *how strong it is* and needs the harness. If V6.45 feels wrong, V6.46 never happens and
 nothing about balance has been disturbed.
 
 Standing loop applies to both: `git mv` to a new version, `gamecheck.sh`, both wave guards, a new
-`verifyNNN.py`, **all fourteen** existing suites, a HANDOFF entry, commit + push with `[skip ci]`,
+`verifyNNN.py`, **every** existing suite, a HANDOFF entry, commit + push with `[skip ci]`,
 HTML exported.
 
 ---
 
-## 7. Open question I will need answered during V6.43
+## 7. Open question I will need answered during V6.45
 
 Whether repositioning should be **free** (tap anywhere, walk there, only travel time is the cost) or
 **limited** (a cooldown, or only between waves). Free is more fun and more readable; limited is far

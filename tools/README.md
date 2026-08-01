@@ -41,9 +41,20 @@ workflow enforces, and every suite in `verify/`. Per-suite logs land in `/tmp/fg
 
 `$FG_TARGET` overrides which build every tool operates on.
 
-## Two traps that have each cost a debugging session
+## Three traps that have each cost a debugging session
 
 1. The tray, HUD and build panel are drawn by `requestAnimationFrame`, **not** by `render()`. Wait
    250-300 ms before reading `__GAME.trayBtns` / `buildBtns` / `hudBtns`.
 2. The RAF loop applies `clampCam()` **after** you set `cam`. Reading `worldToScreen` immediately
    reports where the camera was *asked* to go, not where it ended up — wait a frame first.
+3. `baseline()` must pass **`--full-history`** to `git rev-list`. Without it, git's history
+   simplification returns *nothing* for a build that was only ever added on a side branch, so the
+   before/after suites die with "could not recover fallengrid-vX.YZ.html from git history" in a fresh
+   clone while working fine in the container that created it. Every build older than the current one
+   is reachable only through merged history, so this affects every before/after suite eventually.
+
+## Environment setup in a fresh container
+
+`pip install playwright` (the Python package; the Chromium binary is already at
+`/opt/pw-browsers/`, so do **not** run `playwright install`). Without it all suites fail with
+`ModuleNotFoundError: No module named 'playwright'` before any real check runs.
