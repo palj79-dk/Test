@@ -469,6 +469,7 @@ docs/monetization/     deferred V7 monetization plan and spec
 docs/PLAN-audio.md     the V6.40 audio plan, and what it actually shipped as
 docs/PLAN-open-findings.md  the graphics plan (Part A) and how the Command decision was reached
 docs/PLAN-commander.md      V6.43/V6.44: making the Commander load-bearing (planned, not started)
+tools/README.md        how to run the harness + the environment it needs
 tools/gamecheck.sh     game-block syntax check — marker-based, never selects by size
 tools/verify/          the standing suite set + run_all.sh (the whole definition of done)
 tools/verify/_harness.py  finds the build, the browser, and old builds from git history
