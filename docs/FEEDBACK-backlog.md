@@ -270,7 +270,7 @@ correct play.
 **Decided: make the Commander load-bearing** (the second of the three directions). The diagnosis is
 that the Commander is simply a worse tower — static, un-upgradeable, auto-targeting, and it eats a
 build plot — so every Command node multiplies ~3% of the army. The fix leads with mobility, not
-numbers. Full plan in `docs/PLAN-commander.md`; ships as V6.43 (what it is) and V6.44 (how strong).
+numbers. Full plan in `docs/PLAN-commander.md`; ships as **V6.45** (what it is) and **V6.46** (how strong) — renumbered, since 6.43 went to terrain relief and 6.44 to per-map threat identity. Still unstarted, and still blocked on the balance harness (§5.5).
 
 ## 9. The intro never teaches the UI, and the hero is never placed — `DONE` (V6.38)
 
@@ -296,3 +296,42 @@ the layout, and a corrected Codex Guide.
 **Bug caught while shooting the tour:** SKIP and DEPLOY overlapped by 5px in landscape, and SKIP is
 hit-tested first — so tapping the bottom of DEPLOY on the final step would have skipped the tutorial
 instead of sending the wave. Fixed, with a permanent assertion that the two never intersect.
+
+## 12. Four design findings from the 2026-08-01 review — `OPEN` (one of five acted on as V6.44)
+
+Not user complaints. A critical review of the project's central design decisions, requested by the
+user, who then picked the first point to fix. The other four are recorded here so they are not lost.
+Each was verified against `fallengrid-v6.43.html` rather than taken from the docs.
+
+**1. Every map ran the same 20-wave script — `DONE` (V6.44).** `waveComp(n)` had nul references to
+`mapIndex`/`MAPS`/biome, and `BIOMES` holds only colours. Fixed by per-map threat profiles.
+
+**2. The last third of a mission is decision-free — `OPEN`.** The board is largely built by wave
+14-16 and the remaining waves are watched rather than played. Four iterations attacked the symptom
+(V6.5 taper, V6.12 HP accelerator, V6.13 sinks, V6.14 geometry) and each helped, moving surplus from
+5.9-6.9k to 1.6-3.5k, but the model is unchanged: income scales with kills, spending is one-off, and
+defence never loses value. **Not re-measured since the taper** — the "90% built by wave 14-16" figure
+predates it, and re-measuring it needs a real play-log, not the auto-player. The structural levers
+are perishable defence (towers take damage) or late income tied to risk rather than to kills. V6.44
+may have moved this indirectly, since a map that demands a different counter late is harder to
+finish building against; check it in the next log before spending an iteration on it.
+
+**3. The Commander direction is the most expensive of the three — `PLANNED`, see #11.** The chosen
+direction (make it load-bearing) is the highest-risk path and is blocked on a balance harness that
+does not work. Direction 3 (re-price the branch as insurance, one iteration, no balance risk) remains
+available as a stopgap that does not close the door on direction 2.
+
+**4. Confirm-on-everything pulls against the continuous wave clock — `OPEN`, deliberately not acted
+on.** Build, upgrade, branch, sell, overclock and hero deploy all take two taps, in a game whose wave
+timer runs continuously (V4.10), so the tap cost doubles exactly when time pressure is highest. Each
+confirmation was added for a real reported problem, so **this should not be changed on argument
+alone** — wait until it is felt in play. If it is, the cheaper shape already exists in the code:
+`previewFromPoint` gives press-to-preview, so press-hold-release could carry both the stat preview
+and the mis-tap protection in one gesture, ideally as an expert-mode setting rather than a rollback.
+
+**5. Three multiplicative difficulty axes with no guidance — `OPEN`.** Difficulty tier, the map's ★
+tier (`MAP_HP_BY_DIFF` 1/1/1.15/1.35/1.6), and Armory progression all multiply, and V6.17 removed the
+recommended-Armory hints from both free-play and campaign. A player cannot tell whether Brutal on a
+★2 map is harder than Normal on a ★5 one. This is **not** an argument for bringing the percentage
+hints back — they read as noise, which is why they went. It is an argument for one axis carrying the
+information visibly, most likely the ★ tier, which is already displayed and is now mechanical.

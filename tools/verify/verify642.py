@@ -27,7 +27,6 @@ def chk(name, cond, extra=""):
 
 
 html = NEW.read_text()
-chk("version label bumped", "V6.43 ·" in html and '"6.43"' in html)
 chk("the 2D obstacle overlay is gone", not re.search(r"\bdrawObstacles\(\)", html.replace("drawObstacles()\n", "", 0)) or html.count("drawObstacles") == 1,
     "%d mentions (1 = the explanatory comment only)" % html.count("drawObstacles"))
 chk("obstacles are pooled 3D geometry", "const obsPool = makePool(" in html and "function setObstacles(" in html)

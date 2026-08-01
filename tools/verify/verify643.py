@@ -25,7 +25,6 @@ def chk(name, cond, extra=""):
 
 
 html = NEW.read_text()
-chk("version label bumped", "V6.43 ·" in html and '"6.43"' in html)
 chk("terrace step is a named constant", "const STEP = 7;" in html)
 chk("horizon geometry exists", "plainMesh" in html and "distant mesas" in html.lower() or "mesas" in html)
 
