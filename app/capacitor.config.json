@@ -1,0 +1,8 @@
+{
+  "appId": "dk.lundjacobsen.fallengrid",
+  "appName": "Fallen Grid",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
