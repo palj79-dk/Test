@@ -335,3 +335,48 @@ recommended-Armory hints from both free-play and campaign. A player cannot tell 
 ★2 map is harder than Normal on a ★5 one. This is **not** an argument for bringing the percentage
 hints back — they read as noise, which is why they went. It is an argument for one axis carrying the
 information visibly, most likely the ★ tier, which is already displayed and is now mechanical.
+
+## 13. Second design review, 2026-08-01 — five measured findings
+
+Requested by the user after V6.44. Every number below was measured in the headless sim against
+`fallengrid-v6.44.html`, on Gauntlet (★3) at Hard with maxed boards and Core pinned high so the
+metric is total leak pressure rather than win/lose. **One map, so directions are trustworthy and
+absolute values are not.**
+
+**1. The UI's numbers hide the game's strongest mechanic — `DONE` (V6.45).** Cryo shows 5.6 DPS at
+L1 and 28.8 maxed against Vortex's 173. But `22× Auto-Gun` leaked 112 while `Auto-Gun with every
+third plot Cryo` leaked **54** for 4% more scrap. Shipped: SUPPORT chip, SLOW% instead of DMG, an
+⟡ ASSIST readout of enabled damage, and a Codex bullet stating the mix ratio.
+
+**2. Two of three targeting modes were traps — `DONE` (V6.45).** first 34.5±15.6, strong 106.0±23.2,
+close 42.7±9.0 over 6 trials, and the 7-step tour (`hud, build, upgrade, hero, cmd, intel, deploy`)
+never mentions targeting. Shipped: STRONG/CLOSE restricted to the leading half of the pack and STRONG
+scoring on maxHp → strong 50.0±12.9. **Correction:** CLOSE was never broken; the original 76 was a
+single-run outlier and it measures 42.7 → 39.3, inside noise.
+
+**3. The L3 a/b fork has a dominant side — `OPEN`.** Same tower, same count, only the branch changed;
+normalised to leaks per 1,000 scrap, **branch b wins 5 of 5**: turret 28.3 vs 16.5, cryo 32.4 vs 12.3,
+mortar 12.7 vs 10.2, tesla 1.4 vs 0.16, pyre 13.9 vs 11.9. Play-log #1's 39-of-43 Railgun was this
+finding seen from the player's side. **Do not act on this yet.** The a-branches are the wide ones
+(Gatling, Carpet, Arc-Coil, Inferno) and the test map may simply not present dense enough packs;
+re-measure against the V6.44 air- and swarm-biased maps first. If the fork is still one-sided, raise
+a-branch splash radius and chain count rather than cutting b — V6.35 is the standing warning that a
+flat nerf on these breaks the top end.
+
+**4. "Tall always beats wide, so the board collapses" — `DISPROVED` (V6.45).** The arithmetic is
+real: DPS per 100 scrap roughly doubles L1→L2 on every tower (gun 36→76, mortar 27→58, tesla 34→66,
+prism 48→95) and upgrades cost less than the initial build. But the conclusion drawn from it was
+wrong. A synergy bonus was built to reward mixed boards, and the baseline measured before enabling it
+showed `22× mono turret` at **100.0±14.8** leaks against `22× mixed` at **0.0±0.0**. Diversity was
+already rewarded overwhelmingly, so the bonus was deleted rather than shipped. The tall-vs-wide
+arithmetic remains an open question; the "no reason to diversify" claim does not.
+
+**5. Alloy pacing and campaign length do not meet at either end — `OPEN`, deferred to V7.** With a
+realistic ~930 spawns in a 20-wave Hard run: Normal pays 753/mission, Hard 1,130, Brutal 1,507
+against a 25,380 tree, i.e. 34 / 22 / 17 missions to complete it. The campaign is 25. So a Normal
+player finishes the whole campaign having seen **~74%** of the tree, including never buying the two
+capstone towers they unlocked access to at mission 12; a Brutal player maxes the tree at **mission 17
+of 25** and plays the last eight with no meta-progression at all. Medals (🥉🥈🥇) then ask for three
+passes of the same 25 missions. Fix is a normalisation toward roughly equal tree-share per campaign,
+but alloy scarcity is exactly what `docs/monetization/` sells the Double-Alloy rewarded ad on, so
+this belongs with the V7 line rather than as an isolated balance patch.
